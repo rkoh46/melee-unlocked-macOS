@@ -1,7 +1,7 @@
 #!/bin/zsh
 # melee-unlocked-macOS installer for players. Paste this into Terminal:
 #
-#   curl -fsSL https://raw.githubusercontent.com/rkoh46/dashdance/melee-unlocked-macos/install.sh | zsh
+#   curl -fsSL https://raw.githubusercontent.com/rkoh46/melee-unlocked-macOS/melee-unlocked-macos/install.sh | zsh
 #
 # It checks the Mac, gets Apple's developer tools if needed, downloads (or updates) the source into ~/Dashdance, asks for your
 # Melee disc image, builds the app from it on this Mac (the melee-unlocked engine needs Docker: OrbStack or Docker Desktop),
@@ -26,10 +26,21 @@ if [[ -d "$DIR/.git" ]]; then
   # The build verifies the Slippi files against an upstream commit in this repo's history, so a shallow
   # download from an older installer has to be completed first.
   [[ "$(git -C "$DIR" rev-parse --is-shallow-repository)" == "true" ]] && git -C "$DIR" fetch --unshallow --quiet origin
+  # A download from before the move (rkoh46/dashdance, branch dashdance2) switches to this repository's branch when it has
+  # no local changes; with local changes it is left alone and says so.
+  git -C "$DIR" remote set-url origin https://github.com/rkoh46/melee-unlocked-macOS.git 2>/dev/null || true
+  if [[ "$(git -C "$DIR" rev-parse --abbrev-ref HEAD)" != "melee-unlocked-macos" ]]; then
+    if [[ -z "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]]; then
+      git -C "$DIR" fetch --quiet origin melee-unlocked-macos
+      git -C "$DIR" checkout --quiet -B melee-unlocked-macos --track origin/melee-unlocked-macos
+    else
+      fail "$DIR has local changes on another branch; commit or stash them, or move the folder away, and run this again."
+    fi
+  fi
   git -C "$DIR" pull --ff-only --quiet
 else
   yellow "Downloading melee-unlocked-macOS into $DIR"
-  git clone --branch melee-unlocked-macos --quiet https://github.com/rkoh46/dashdance.git "$DIR"   # full history: see above
+  git clone --branch melee-unlocked-macos --quiet https://github.com/rkoh46/melee-unlocked-macOS.git "$DIR"   # full history: see above
 fi
 
 ISO="${1:-${DASHDANCE_ISO:-}}"

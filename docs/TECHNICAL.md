@@ -65,7 +65,7 @@ tables from the open-source decompilation, pulls `main.dol` out of your own disc
 `dist/Dashdance.app`:
 
 ```bash
-git clone -b dashdance2 https://github.com/rkoh46/dashdance.git && cd dashdance
+git clone -b melee-unlocked-macos https://github.com/rkoh46/melee-unlocked-macOS.git && cd melee-unlocked-macOS
 ./setup.sh /path/to/melee.iso
 ```
 
@@ -309,7 +309,7 @@ when the app is packaged (`tools/mu_launcher_art.py`).
 Requirements: Xcode Command Line Tools, Homebrew (`cmake ninja python`), a checkout of [doldecomp/melee](https://github.com/doldecomp/melee) for the animation helpers, and your disc's `main.dol`. (libusb is no longer needed: the GameCube adapter is read through IOKit.)
 
 ```bash
-git clone -b dashdance2 https://github.com/rkoh46/dashdance.git
+git clone -b melee-unlocked-macos https://github.com/rkoh46/melee-unlocked-macOS.git
 cd dashdance
 tools/bootstrap_aurora.sh
 python3 tools/bootstrap_port.py --decomp-root /path/to/doldecomp-melee \

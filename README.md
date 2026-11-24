@@ -42,7 +42,7 @@ on Apple silicon, in melee-unlocked's own launcher and with its icon.
 melee-unlocked's game is compiled from source in a container on your Mac (nothing from the game is downloaded):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/rkoh46/dashdance/melee-unlocked-macos/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/rkoh46/melee-unlocked-macOS/melee-unlocked-macos/install.sh | zsh
 ```
 
 It builds from your own Melee NTSC 1.02 disc image, replaces DashDance2 in Applications with melee-unlocked-macOS, and keeps
@@ -63,7 +63,7 @@ packs. The full list, row by row, is in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## About this fork
 
-This is [rkoh46's](https://github.com/rkoh46/dashdance) playtest fork of [TheAndersMadsen/dashdance](https://github.com/TheAndersMadsen/dashdance). Everything here is the original Dashdance plus fixes found by playing it on a Mac, kept on the `dashdance2` branch until they go upstream. What is different from the original:
+This repository ([rkoh46/melee-unlocked-macOS](https://github.com/rkoh46/melee-unlocked-macOS)) grew out of rkoh46's playtest fork of [TheAndersMadsen/dashdance](https://github.com/TheAndersMadsen/dashdance). Everything here is the original Dashdance plus fixes found by playing it on a Mac, kept on the `dashdance2` branch until they go upstream. What is different from the original:
 
 - **Online games no longer drop 30 seconds after connecting** when the opponent's router remaps their port. An expired connection attempt to the advertised port no longer counts the player as gone.
 - **Characters no longer stay invisible after an app update.** A draw whose shader is still waiting in the boot-time precompile queue compiles it at once instead of waiting up to a minute and a half.
@@ -127,7 +127,7 @@ Every other way to play Melee on a Mac runs a GameCube in software, one instruct
 **Install.** Open Terminal: press ⌘ Space, type *Terminal* and press Return. Paste this line and press Return:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rkoh46/dashdance/dashdance2/install.sh | zsh
+curl -fsSL https://raw.githubusercontent.com/rkoh46/melee-unlocked-macOS/melee-unlocked-macos/install.sh | zsh
 ```
 
 When it asks, drag your Melee disc image into the Terminal window and press Return. Dashdance builds itself on your Mac from your own disc, which takes fifteen to twenty minutes the first time. Then it's in your Applications folder as **DashDance2**, with an orange icon, and it opens. It installs next to the original Dashdance and leaves it alone, so you can keep both. To update, paste the same line again.
@@ -137,7 +137,7 @@ When it asks, drag your Melee disc image into the Terminal window and press Retu
 **Building by hand.** Clone the full repository (not `--depth 1`: the build checks the Slippi files against a commit in its history), then run `setup.sh` with your disc. It fetches doldecomp/melee at the revision pinned in [`tools/port_source_pins.json`](tools/port_source_pins.json).
 
 ```bash
-git clone --branch dashdance2 https://github.com/rkoh46/dashdance.git ~/Dashdance
+git clone --branch melee-unlocked-macos https://github.com/rkoh46/melee-unlocked-macOS.git ~/Dashdance
 ~/Dashdance/setup.sh /path/to/melee.iso
 ```
 
@@ -183,7 +183,7 @@ Yes. Dashdance uses Slippi's own matchmaking and netcode.
 It installs Apple's developer tools and a few build tools, then builds the app. It doesn't install drivers or change your Mac's security settings.
 
 **Something isn't working.**
-Dashdance is still in alpha. Please [open an issue](https://github.com/rkoh46/dashdance/issues) on this fork and tell us what happened.
+Dashdance is still in alpha. Please [open an issue](https://github.com/rkoh46/melee-unlocked-macOS/issues) on this fork and tell us what happened.
 
 ## For developers
 

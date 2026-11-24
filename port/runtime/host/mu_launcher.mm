@@ -447,7 +447,7 @@ NSImage* art(NSString* name) {
   else if ([key isEqualToString:@"modsfolder"]) [self reveal:support + "/melee-unlocked/Mods" create:YES];
   else if ([key isEqualToString:@"logs"]) [self reveal:support + "/melee-unlocked" create:YES];
   else if ([key isEqualToString:@"replaysfolder"]) [self reveal:s.replay_dir create:YES];
-  else if ([key isEqualToString:@"whatsnew"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/dashdance/blob/melee-unlocked-macos/README.md"]];
+  else if ([key isEqualToString:@"whatsnew"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];
   else if ([key isEqualToString:@"show"] || [key isEqualToString:@"watch"]) {
     const std::vector<host::GameRow> rows = self.dashboard.rows();
     if (index < 0 || index >= (int)rows.size()) return;
