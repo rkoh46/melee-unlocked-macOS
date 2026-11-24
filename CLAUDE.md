@@ -1,35 +1,71 @@
-# Dashdance — guide for coding agents and new contributors
+# melee-unlocked-macOS — guide for coding agents and new contributors
 
-Dashdance is a native macOS / iPadOS / iOS / visionOS client for Super Smash Bros. Melee with Slippi
-Online, built by statically recompiling the game's PowerPC code to C++ and running it on a host
-runtime with a Metal renderer. Read this file first; it tells you how the tree is laid out, how to
-build, and the rules that are not obvious from the code.
+melee-unlocked-macOS is a native Apple-silicon Mac app for Super Smash Bros. Melee with Slippi Online. Its engine is
+melee-unlocked's (Hero88go/melee-unlocked) "Source Port": the Melee decomp's C compiled natively, fetched and built at
+install time, never committed. The app grew out of Dashdance, a client that statically recompiles the game's PowerPC
+code to C++. That engine is still in the tree as "Static Recomp (Legacy)" until the melee-unlocked engine does
+everything it did; most of the layout and build rules below are Dashdance's and still apply to it. Read this file
+first; it tells you how the tree is laid out, how to build, and the rules that are not obvious from the code.
 
-## Fork workflow (rkoh46/dashdance, branch `dashdance2`)
+## Repository and workflow (rkoh46/melee-unlocked-macOS, branch `melee-unlocked-macos`)
 
-This checkout is rkoh's playtest fork. They play, things break, and fixes land here one commit at a
-time until they go upstream as one PR. Commits are authored as `rkoh` (git config); never as the Mac login name. This section is fork-only: drop it from the PR.
+rkoh's repository: it was the playtest fork rkoh46/dashdance, renamed (the old URL redirects). Commits are authored
+as `rkoh` (git config); never as the Mac login name.
 
-- Remotes: `fork` is rkoh46/dashdance (push here), `origin` is TheAndersMadsen/dashdance (upstream; never push).
-- Work on `dashdance2` (the fork's default branch; the README's install line fetches it). One fix per commit. Push to `fork` after each fix.
+- Remote: `origin` is rkoh46/melee-unlocked-macOS. Work on `melee-unlocked-macos` (the default branch; the README's
+  install line fetches it). One change per commit; push after each. `dashdance2` is the old Dashdance-only branch:
+  don't push new work there. Upstream Dashdance (TheAndersMadsen/dashdance) is never pushed to.
+- The installed app is `/Applications/melee-unlocked-macOS.app`; its user data stays in
+  `~/Library/Application Support/Dashdance` (launcher.ini, Slippi sign-in, replays, cards; the melee-unlocked engine's
+  card is `melee-unlocked/Card A` there).
+- The interface is melee-unlocked's, not Dashdance's: the launcher (`port/runtime/host/mu_launcher.mm`, rebuilt from
+  MU's Win32 `port/app/launcher.cpp` paint code) and MU's in-game panels. MU's artwork and icon are converted from the
+  fetched tree at packaging time (`tools/mu_launcher_art.py`) and never committed. YouGame is left out.
+- The sister project is rkoh46/Melee-NX-NetPlay (the same engine on the Nintendo Switch,
+  `experiments/native-engine/`). Code is shared by copying, with notices kept: the runner, the netplay bridge, the
+  feature modules, the mod installer (`mu-engine/modinstall`). Its `FEATURES.md` is the full melee-unlocked feature
+  list; `docs/FEATURES.md` here holds the Mac status per row.
 - `/fix-logs` (`.agents/skills/fix-logs/`) reviews unreviewed session logs and crash reports and fixes what they show.
-- `docs/MAC_FIXES.md` is the issue and fix log. `docs/PR.md` is the running PR description: everything added to the
+- `docs/MAC_FIXES.md` is the issue and fix log. `docs/PR.md` is the running change list: everything added to the
   repo (fix, feature, logging, tool, skill) adds one plain bullet there in the same commit. Keep it short.
-- Rebuild with `tools/mac/rebuild.sh`, never a bare cmake build (the input manifest must be regenerated after an edit).
 - Capture evidence by hand with `tools/mac/report.sh "what happened"`; list unreviewed logs with `tools/mac/unreviewed.sh`.
-- Replays: the Recent games card plays a game back with the app's second executable, `DashdancePlayback` (`build/mac-playback`: the game translated with Slippi's playback codes plus the replay code list in `build/playback-codes/gecko_list.bin`; `tools/mac/rebuild.sh` builds both). Check a change by diffing the re-recording a playback writes against the original: zero differing post-frame records is the bar.
-- Desyncs: `tools/mac/desync.py <replay.slp>` finds the first frame where Dashdance's recording differs from Slippi
-  Dolphin re-simulating it, checks whether headless Dashdance reproduces it, compares guest RAM at that frame and
-  renders Slippi's frames (`reports/desync/<replay>/report.md`; method in `docs/MAC_FIXES.md`).
-- The disc path is in `.disc-path`; `deps/melee` must stay at the pinned decomp commit `05a1394f`.
+- The disc path is in `.disc-path`; `deps/melee` must stay at the pinned decomp commit `05a1394f` (legacy engine).
+
+## The melee-unlocked engine (`mu-engine/`)
+
+- `mu-engine/fetch.sh` clones melee-unlocked at its pinned commit into `build/mu-engine/mu` and applies
+  `mu-engine/patches/` (`0*.patch` against MU, `decomp-*.patch` against its decomp). Change MU only through patches.
+- `mu-engine/build.sh game` builds MU's game image (an AArch64 Linux ELF) with GCC 15.2 in Docker (OrbStack): every
+  container gets `--rm`, a `mumac-*` name, `--network none` and a time limit. `build.sh runner` builds the headless
+  arm64 runner `build/mu-engine/out/mu-runner`; `tools/mac/rebuild.sh` / `setup.sh` build the app's
+  `MeleeUnlockedEngine` (`mu-engine/app`) next to the launcher.
+- macOS cannot map below 4 GB, so the console's memory ranges sit at `0x100000000000` + the console address; the
+  patches widen every 32-bit address the game turns into a pointer (`MU_WIDEN`). The game is built `-ffixed-x18`.
+- **Exactness gate:** the five reference scripts (parity_vs_onett, vs4_busy, parity_vs_items_off, parity_lcancel,
+  native_vs_ko; digests in `mu-engine/reference/`) must print "IDENTICAL for all 9000 rows compared" with `mu-runner`
+  before any change lands. Online: `mu-engine/tools/online_loopback_test.sh`, `net_rollback_test.sh` and
+  `app_online_test.sh` (net check equal, 0 desyncs). Replays: 0 differing post-frame records on playback.
+- Online tests run on loopback only, under a sandbox profile that refuses outside connections, against the
+  matchmaking stand-in `tools/mac/mock_matchmaking.cpp`. Never contact Slippi's servers from a test; never Ranked.
+- Never run melee-unlocked's release binaries, launcher or updater, and never a mod's own programs: build MU from
+  source only. Test windows stay hidden or offscreen (the user plays on this Mac).
+
+## Legacy engine notes
+
+- Replays (legacy): `DashdancePlayback` (`build/mac-playback`) played games back with Slippi's playback codes; the
+  melee-unlocked engine now does playback itself.
+- Rebuild with `tools/mac/rebuild.sh`, never a bare cmake build (the input manifest must be regenerated after an edit).
+- Desyncs (legacy): `tools/mac/desync.py <replay.slp>` finds the first frame where the recording differs from Slippi
+  Dolphin re-simulating it (`reports/desync/<replay>/report.md`; method in `docs/MAC_FIXES.md`).
 
 ## One-command setup
 
-Players use `install.sh` (the one line in the README): it clones into ~/Dashdance, asks for the disc, runs `setup.sh`, copies the app to
-Applications and opens it. Developers call `setup.sh` directly:
+Players use `install.sh` (the one line in the README): it clones into ~/Dashdance (`DASHDANCE_DIR`), asks for the disc, runs
+`setup.sh` (which builds the melee-unlocked engine when Docker is running), copies `melee-unlocked-macOS.app` to Applications
+and opens it. Developers call `setup.sh` directly:
 
 ```bash
-./setup.sh /path/to/melee.iso            # macOS app -> dist/DashDance2.app on this fork (DASHDANCE_APP_NAME=Dashdance for the original name)
+./setup.sh /path/to/melee.iso            # macOS app -> dist/melee-unlocked-macOS.app
 ./setup.sh /path/to/melee.iso --ios      # iPad/iPhone Simulator app (needs Xcode)
 ./setup.sh /path/to/melee.iso --visionos # Vision Pro Simulator app (needs Xcode)
 ./setup.sh /path/to/melee.iso --device   # dist/Dashdance.ipa for AltStore/SideStore/Sideloadly; --team auto signs and installs over USB
