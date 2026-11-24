@@ -76,3 +76,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 
 - Drop the "Fork workflow" section from `CLAUDE.md`, `.agents/skills/fix-logs`, `.claude/skills/fix-logs` and this file.
 - Set the default app name in `setup.sh` and `install.sh` (`DASHDANCE_APP_NAME`) back to `Dashdance`; the fork installs as DashDance2.
+- melee-unlocked engine on Apple silicon (`mu-engine/`): MU v1.0.5 fetched and its game built from source at build time (build-time patches only); the console address space sits at 0x100000000000 because macOS keeps the low 4 GB of an arm64 process unmapped; a headless macOS runner plays the five reference scripts with digests identical to MU's x86-64 references.

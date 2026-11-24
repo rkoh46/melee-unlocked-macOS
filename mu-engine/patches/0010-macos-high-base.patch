@@ -1,0 +1,596 @@
+diff --git a/port/linux/host_services.cpp b/port/linux/host_services.cpp
+index 79c929e..cb2031d 100644
+--- a/port/linux/host_services.cpp
++++ b/port/linux/host_services.cpp
+@@ -59,8 +59,18 @@
+ 
+ namespace linux_host {
+ namespace {
+-constexpr uintptr_t locked_cache_base = 0xE0000000u;
++constexpr uintptr_t locked_cache_base = high_base + 0xE0000000u;
+ constexpr uint32_t locked_cache_bytes = 16u << 10;
++// mumac: a pointer the game handed over as a bare console address (it kept the address in a 32-bit
++// word and did not widen it): give it MU_HIGH_BASE. Identity when there is no high base.
++template <class T> T* widened(T* p, const char* where) {
++  const uintptr_t v = reinterpret_cast<uintptr_t>(p);
++  if (!high_base || (v >> 32) || v < 0x80000000u) return p;
++  static const char* reported[16]; static int count = 0;
++  bool seen = false; for (int i = 0; i < count; ++i) if (reported[i] == where) seen = true;
++  if (!seen && count < 16) { reported[count++] = where; std::fprintf(stderr, "host: %s got the bare console address %08lx\n", where, (unsigned long)v); }
++  return reinterpret_cast<T*>(high_base | v);
++}
+ constexpr uint64_t ticks_per_frame = MU_TB_HZ / 60;
+ constexpr uint32_t aram_bytes = MU_HOST_ARAM_BYTES;
+ using Clock = std::chrono::steady_clock;
+@@ -537,10 +547,11 @@ int32_t h_disc_file(int32_t entry, uint32_t* start, uint32_t* length) {
+   return 1;
+ }
+ void h_disc_read(uint32_t offset, void* dst, uint32_t size, MuDiscDone done, void* user) {
++  dst = widened(dst, "disc_read");
+   const bool ok = size <= uint32_t(std::numeric_limits<int32_t>::max()) && read_disc(offset, dst, size);
+   ++count.disc_reads;
+   if (ok) count.disc_bytes += size;
+-  else log("disc: read %08X+%X failed", offset, size);
++  else log("disc: read %08X+%X to %p failed", offset, size, dst);
+   // The game callback queues a drive interrupt. Deliver it from poll() so boot
+   // DOL reads and ordinary DVD reads follow the same event contract.
+   completions.push_back({done, ok ? int32_t(size) : -1, user});
+@@ -803,6 +814,7 @@ int32_t h_card_rename(int32_t chan, const char* old_name, const char* new_name)
+   return card::ready;
+ }
+ int32_t h_card_read(int32_t chan, int32_t file_no, void* out, uint32_t bytes, uint32_t offset) {
++  out = widened(out, "card_read");
+   const auto* file=card::get(chan,file_no);
+   if (!file) return card::missing(chan);
+   if ((!out && bytes) || uint64_t(offset)+bytes>file->data.size()) return card::limit;
+@@ -810,6 +822,7 @@ int32_t h_card_read(int32_t chan, int32_t file_no, void* out, uint32_t bytes, ui
+   return card::ready;
+ }
+ int32_t h_card_write(int32_t chan, int32_t file_no, const void* data, uint32_t bytes, uint32_t offset) {
++  data = widened(data, "card_write");
+   auto* file=card::get(chan,file_no);
+   if (!file) return card::missing(chan);
+   if ((!data && bytes) || uint64_t(offset)+bytes>file->data.size()) return card::limit;
+@@ -820,6 +833,7 @@ int32_t h_card_write(int32_t chan, int32_t file_no, const void* data, uint32_t b
+   *file=std::move(changed); return card::ready;
+ }
+ int32_t h_card_stat(int32_t chan, int32_t file_no, void* out, uint32_t bytes) {
++  out = widened(out, "card_stat");
+   const auto* file=card::get(chan,file_no);
+   if (!file) return card::missing(chan);
+   if (!out || bytes<sizeof(card::Stat)) return card::limit;
+@@ -827,6 +841,7 @@ int32_t h_card_stat(int32_t chan, int32_t file_no, void* out, uint32_t bytes) {
+   return card::ready;
+ }
+ int32_t h_card_set_stat(int32_t chan, int32_t file_no, const void* data, uint32_t bytes) {
++  data = widened(data, "card_set_stat");
+   auto* file=card::get(chan,file_no);
+   if (!file) return card::missing(chan);
+   if (!data || bytes<sizeof(card::Stat)) return card::limit;
+@@ -854,6 +869,7 @@ int32_t h_card_format(int32_t chan) {
+ }
+ 
+ void h_ai_dma(void* buffer, uint32_t length) {
++  buffer = widened(buffer, "ai_init_dma");
+   audio.buffer = static_cast<const uint8_t*>(buffer);
+   audio.bytes = length;
+   audio.awaiting = false;
+@@ -869,6 +885,7 @@ void h_dsp_mail(uint32_t mail) { ax::handle_mail(mail); }
+ void* h_aram() { return aram.data(); }
+ uint32_t h_aram_size() { return aram_bytes; }
+ void h_aram_dma(int32_t to_aram, void* mainmem, uint32_t offset, uint32_t length) {
++  mainmem = widened(mainmem, "aram_dma");
+   if ((!mainmem && length) || uint64_t(offset) + length > aram.size())
+     h_panic("linux_host", 0, "ARAM DMA out of range");
+   if (to_aram) std::memcpy(aram.data() + offset, mainmem, length);
+@@ -1239,7 +1256,7 @@ const MuGameApi& game_api() { return game; }
+ const std::vector<MuStateRegion>& writable_image_regions() { return image_regions; }
+ uint32_t game_image_size() { return image_bytes; }
+ uint8_t* memory_pointer(uint32_t address, uint32_t size) {
+-  uintptr_t at=address;
++  uintptr_t at=high_base + address;
+   if (address < (64u << 20)) at=mem1_base + address;
+   else if (address >= 0xC0000000u && address < 0xC4000000u) at=mem1_base + (address & 0x03FFFFFFu);
+   const uint64_t end=uint64_t(at) + size;
+diff --git a/port/linux/host_services.h b/port/linux/host_services.h
+index 9aa5fea..aaff4f7 100644
+--- a/port/linux/host_services.h
++++ b/port/linux/host_services.h
+@@ -9,9 +9,13 @@
+ 
+ namespace linux_host {
+ 
+-constexpr uintptr_t mem1_base = 0x80000000u;
++#ifndef MU_HIGH_BASE
++#define MU_HIGH_BASE 0ull   // mumac: where the console's address space starts in this process (see mu_disc.h)
++#endif
++constexpr uintptr_t high_base = uintptr_t(MU_HIGH_BASE);
++constexpr uintptr_t mem1_base = high_base + 0x80000000u;
+ constexpr uint32_t mem1_bytes = 40u << 20;
+-constexpr uintptr_t game_image_base = 0x82800000u;
++constexpr uintptr_t game_image_base = high_base + 0x82800000u;
+ 
+ struct Config {
+   std::string iso_path;
+diff --git a/sourceport/game/CMakeLists.txt b/sourceport/game/CMakeLists.txt
+index 222dd4d..44c6a4c 100644
+--- a/sourceport/game/CMakeLists.txt
++++ b/sourceport/game/CMakeLists.txt
+@@ -93,6 +93,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+   add_test(NAME native_audio_map_ranges COMMAND "${Python3_EXECUTABLE}"
+     "${CMAKE_CURRENT_SOURCE_DIR}/../tools/test_audio_ranges.py")
+ endif()
++# mumac: MU_CAST_AUDIT=ON builds with the integer-to-pointer cast warning instead of -w, to list every
++# place that turns a 32-bit number into a pointer (each must widen with MU_HIGH_BASE, mu_disc.h).
++option(MU_CAST_AUDIT "Warn on integer-to-pointer casts instead of silencing all warnings" OFF)
++if(MU_CAST_AUDIT)
++  set(MU_WARN_FLAG -Wint-to-pointer-cast)
++else()
++  set(MU_WARN_FLAG -w)
++endif()
+ target_compile_options(game_flags INTERFACE
+   -O2 -g
+   -include "${CMAKE_CURRENT_SOURCE_DIR}/include/mu_native.h"   # only C targets link game_flags
+@@ -102,7 +110,7 @@ target_compile_options(game_flags INTERFACE
+   -fno-builtin               # no folding sin() at compile time or sqrt() into an instruction: the game's own maths decides
+   -ffp-contract=on           # fuse a*b+c only inside one expression, as the console compiler did
+   -fexec-charset=CP932       # the game's string literals are Shift-JIS at run time
+-  -w)
++  ${MU_WARN_FLAG})
+ # M0 evidence build only: counts non-finite inputs to the maths routines (include/mu_math_audit.h).
+ option(MU_MATH_AUDIT "Count non-finite inputs to audited maths routines" OFF)
+ if(MU_MATH_AUDIT)
+diff --git a/sourceport/game/ace/lucas2/lucas2_items.c b/sourceport/game/ace/lucas2/lucas2_items.c
+index d902a78..a0dffb0 100644
+--- a/sourceport/game/ace/lucas2/lucas2_items.c
++++ b/sourceport/game/ace/lucas2/lucas2_items.c
+@@ -86,8 +86,8 @@ static bool fire_coll(Item_GObj* gobj)
+         u32 x, y;
+         memcpy(&x, &normal.x, sizeof x);
+         memcpy(&y, &normal.y, sizeof y);
+-        ip->x0 = (void*) (uintptr_t) x;
+-        ip->entity = (HSD_GObj*) (uintptr_t) y;
++        ip->x0 = (void*) MU_WIDEN64((uintptr_t) x);
++        ip->entity = (HSD_GObj*) MU_WIDEN64((uintptr_t) y);
+         memcpy(&ip->x8, &normal.z, sizeof ip->x8);
+         ip->xD44_lifeTimer = 2.0f;
+         Item_80268E5C(gobj, 1, ITEM_ANIM_UPDATE);
+diff --git a/sourceport/game/akaneia/dedede/ftDe_SpecialNCapture.c b/sourceport/game/akaneia/dedede/ftDe_SpecialNCapture.c
+index 07cd436..359954a 100644
+--- a/sourceport/game/akaneia/dedede/ftDe_SpecialNCapture.c
++++ b/sourceport/game/akaneia/dedede/ftDe_SpecialNCapture.c
+@@ -45,7 +45,7 @@
+ 
+ static HSD_GObj* ThrowerOf(Fighter* fp)
+ {
+-    return (HSD_GObj*) MU_Z(fp->mv.co.thrownkirby.thrower_gobj);
++    return (HSD_GObj*) MU_WIDEN64(MU_Z(fp->mv.co.thrownkirby.thrower_gobj));
+ }
+ 
+ /* Who inhaled: Dedede, or a Kirby who holds Dedede's ability. Kirby's copy of the move
+diff --git a/sourceport/game/akaneia/dedede/itDe_Articles.c b/sourceport/game/akaneia/dedede/itDe_Articles.c
+index 11a269b..4b19cf8 100644
+--- a/sourceport/game/akaneia/dedede/itDe_Articles.c
++++ b/sourceport/game/akaneia/dedede/itDe_Articles.c
+@@ -118,7 +118,7 @@ static void Gordo_ReleaseOwner(HSD_GObj* gobj)
+     if (ip == NULL) {
+         return;
+     }
+-    dedede_gobj = (HSD_GObj*) MU_Z(Gordo_Vars(ip)->dedede);
++    dedede_gobj = (HSD_GObj*) MU_WIDEN64(MU_Z(Gordo_Vars(ip)->dedede));
+     if (dedede_gobj != NULL) {
+         ftDe_SpecialS_ClearHeldGordo(dedede_gobj);
+     }
+diff --git a/sourceport/game/akaneia/mu_ak_fighters.c b/sourceport/game/akaneia/mu_ak_fighters.c
+index 063b9df..691c7e3 100644
+--- a/sourceport/game/akaneia/mu_ak_fighters.c
++++ b/sourceport/game/akaneia/mu_ak_fighters.c
+@@ -424,11 +424,11 @@ const void* mu_ak_cpu_list(mu_u32 raw)
+     const mu_u32 offset = raw & 0x3FFFFFFFu;
+ 
+     if (raw == 0 || (raw & 0x80000000u) != 0) {
+-        return (const void*) (mu_uptr) raw;
++        return (const void*) MU_WIDEN64(MU_WIDEN(raw));
+     }
+     /* Not a game address: the console reads RAM at the offset while it is inside its 24 MB, and
+      * 0 past it. */
+-    return offset < 0x01800000u ? (const void*) (mu_uptr) (0x80000000u + offset) : (const void*) zeros;
++    return offset < 0x01800000u ? (const void*) MU_WIDEN64(MU_WIDEN(0x80000000u + offset)) : (const void*) zeros;
+ }
+ 
+ int mu_ak_mex_internal(int kind)
+diff --git a/sourceport/game/akaneia/tails/tails_kirby.c b/sourceport/game/akaneia/tails/tails_kirby.c
+index d62e88f..6adb430 100644
+--- a/sourceport/game/akaneia/tails/tails_kirby.c
++++ b/sourceport/game/akaneia/tails/tails_kirby.c
+@@ -261,7 +261,7 @@ static void ftKbTs_SetupHatDynamics(Fighter* fp, KirbyHatStruct* hat)
+ static void ftKbTs_ResetHatScale(HSD_JObj* jobj)
+ {
+     for (; jobj != NULL; jobj = jobj->next) {
+-        HSD_Joint* desc = (HSD_Joint*) jobj->id;
++        HSD_Joint* desc = (HSD_Joint*) MU_WIDEN64(jobj->id);
+ 
+         if (desc != NULL) {
+             jobj->scale.x = desc->scale.x;
+diff --git a/sourceport/game/include/mu_disc.h b/sourceport/game/include/mu_disc.h
+index 8c9b28b..549762f 100644
+--- a/sourceport/game/include/mu_disc.h
++++ b/sourceport/game/include/mu_disc.h
+@@ -19,14 +19,29 @@ typedef __UINTPTR_TYPE__ mu_uptr;
+ 
+ #define DISC_STRUCT __attribute__((scalar_storage_order("big-endian")))
+ 
++/* Where the console's address space starts in this process (mumac: macOS on Apple silicon keeps the
++ * low 4 GB of a process unmapped, so MEM1, the image and the locked cache live at MU_HIGH_BASE plus
++ * their console address; 0 elsewhere). A multiple of 4 GB, so narrowing a pointer to 32 bits still
++ * gives the console address. Widening puts it back for console addresses (bit 31 set) and leaves NULL
++ * and small numbers alone. */
++#ifndef MU_HIGH_BASE
++#define MU_HIGH_BASE 0ull
++#endif
++static inline __attribute__((always_inline)) mu_uptr mu_widen32(mu_u32 v) { return (mu_uptr) v | ((mu_uptr) (v >> 31) * (mu_uptr) MU_HIGH_BASE); }
++#define MU_WIDEN(v) mu_widen32((mu_u32) (v))   /* a function: the argument is evaluated once (DP(x[--i]) exists) */
++/* The same for a value that may already be a full 64-bit pointer (a uintptr_t round trip): kept as it
++ * is when its upper half is set, widened when it is a bare console address. */
++static inline __attribute__((always_inline)) mu_uptr mu_widen64(mu_uptr v) { return (v >> 32) ? v : mu_widen32((mu_u32) v); }
++#define MU_WIDEN64(v) mu_widen64((mu_uptr) (v))
++
+ /* A pointer slot inside disc data. The archive loader relocates it to a real address, and MEM1 and
+  * the game image both sit below 4 GB so that address fits. It is a union on purpose: using one as if
+  * it were a pointer is a compile error rather than a truncation, and the zero-length member carries
+  * the pointed-to type so DP() can hand back a typed pointer (it adds no size, and packed/aligned(4)
+  * keep it from raising the slot's alignment to 8). */
+ #define DISC_PTR(T) union __attribute__((packed, aligned(4), scalar_storage_order("big-endian"))) { mu_u32 raw; T* type_[0]; }
+-#define DP(slot) ((__typeof__((slot).type_[0])) (mu_uptr) (slot).raw)
+-#define DISC_GET(T, slot) ((T*) (mu_uptr) (slot).raw)
++#define DP(slot) ((__typeof__((slot).type_[0])) MU_WIDEN((slot).raw))
++#define DISC_GET(T, slot) ((T*) MU_WIDEN((slot).raw))
+ #define DISC_SET(slot, ptr) ((slot).raw = mu_addr32(ptr))
+ #define DISC_NULL(slot) ((slot).raw == 0)
+ /* A slot the decompilation types as a pointer (UNK_T) but the game uses as a 32-bit number. */
+@@ -44,7 +59,7 @@ static inline mu_u32 mu_addr32_checked(const void* ptr, const char* file, int li
+ {
+     mu_uptr value = (mu_uptr) ptr;
+ #ifndef NDEBUG
+-    if (value >> 32) {
++    if ((value >> 32) && (value >> 32) != ((mu_uptr) MU_HIGH_BASE >> 32)) {
+         mu_addr32_failed(ptr, file, line);
+     }
+ #endif
+@@ -55,7 +70,7 @@ static inline mu_u32 mu_addr32_checked(const void* ptr, const char* file, int li
+ /* A 32-bit word that holds an address, widened for a cast to a pointer. The game keeps addresses in
+  * s32 and int words all over; they all have bit 31 set here, and a signed word would come back
+  * sign-extended. tools/cast_census.py --fix puts this on every narrow int-to-pointer cast. */
+-#define MU_Z(x) ((mu_uptr) (mu_u32) (x))
++#define MU_Z(x) MU_WIDEN(x)
+ #define MU_ADDR32(ptr) mu_addr32(ptr)
+ 
+ /* Elements of a scalar array reached through a pointer: f32* weights becomes be_f32* weights. */
+diff --git a/sourceport/game/include/mu_shim.h b/sourceport/game/include/mu_shim.h
+index 5acc8eb..fb4dbdc 100644
+--- a/sourceport/game/include/mu_shim.h
++++ b/sourceport/game/include/mu_shim.h
+@@ -26,13 +26,13 @@ void mu_poll(void);
+ /* The console's physical addresses: the game hands some hardware a pointer with the cached-segment
+  * bit taken off (OSCachedToPhysical). Everything the game owns sits below 4 GB, so adding the bit
+  * back in 32-bit arithmetic recovers the pointer exactly, wherever it lives. */
+-static inline void* mu_phys_ptr(unsigned int phys) { return (void*) (uintptr_t) (unsigned int) (phys + 0x80000000u); }
++static inline void* mu_phys_ptr(unsigned int phys) { return (void*) MU_WIDEN64(MU_WIDEN(phys + 0x80000000u)); }
+ /* Hardware that took either form (ARAM DMA, audio DMA). The game's memory is the image at
+  * 0x82800000 (right after MEM1 at 0x80000000), under 64 MB together, so a value below 0x40000000 or at
+  * 0xC0000000 and up can only be one of them with the segment bit taken off. */
+ static inline void* mu_mem_ptr(unsigned int addr)
+ {
+-    return (addr < 0x40000000u || addr >= 0xC0000000u) ? mu_phys_ptr(addr) : (void*) (uintptr_t) addr;
++    return (addr < 0x40000000u || addr >= 0xC0000000u) ? mu_phys_ptr(addr) : (void*) MU_WIDEN64(MU_WIDEN(addr));
+ }
+ 
+ #endif
+diff --git a/sourceport/game/maker/engine/donor_cache.c b/sourceport/game/maker/engine/donor_cache.c
+index 863e10f..f87f78a 100644
+--- a/sourceport/game/maker/engine/donor_cache.c
++++ b/sourceport/game/maker/engine/donor_cache.c
+@@ -58,7 +58,7 @@ void Bam_LbHeapRoom(int heap, unsigned* total, unsigned* largest)
+     u32 start, end;
+     *total = *largest = 0;
+     if (!r || r->status != 0 /* LbHeapStatus_Create */ || r->type == 0) return;
+-    h = (HeapHandle*) r->handle;
++    h = (HeapHandle*) MU_WIDEN64(MU_WIDEN(r->handle));
+     if (!h || (u32) h == 0xFFFFFFFFU || (u32) h < 0x80000000U) return;
+     start = h->lo;
+     for (it = h->first;; it = it->next) {
+@@ -73,7 +73,7 @@ void Bam_LbHeapRoom(int heap, unsigned* total, unsigned* largest)
+ }
+ 
+ /* lbMemory's pool of block records, shared by all its heaps (0x83). */
+-#define LBMEM_FREE_LIST (*(MemEntry**) 0x80431EDC)
++#define LBMEM_FREE_LIST (*(MemEntry**) MU_WIDEN(0x80431EDCu))
+ int BamCache_FreeRecords(void);
+ static int free_records(void) { return BamCache_FreeRecords(); }
+ int BamCache_FreeRecords(void)
+@@ -86,7 +86,7 @@ int BamCache_FreeRecords(void)
+ }
+ 
+ /* Preloader idle: no file queued or loading, no compaction running. */
+-#define PRELOAD_CACHE ((u8*) 0x80432078)
++#define PRELOAD_CACHE ((u8*) MU_WIDEN(0x80432078u))
+ static int preloader_idle(void)
+ {
+     int i;
+@@ -170,7 +170,7 @@ static void release_all(void)
+         if (a->rec->lo != a->base)
+             BAM_LOG("cache arena heap=%d moved %08x -> %08x\n", a->heap, (unsigned) a->base,
+                      (unsigned) a->rec->lo);
+-        lbHeap_80015CA8(a->heap, (void*) a->rec->lo);
++        lbHeap_80015CA8(a->heap, (void*) MU_WIDEN64(MU_WIDEN(a->rec->lo)));
+         BAM_LOG("cache arena heap=%d used %u of %u KB, released\n", a->heap,
+                  (a->lo - a->base) / 1024, a->size / 1024);
+         memset(a, 0, sizeof(*a));
+@@ -245,7 +245,7 @@ void* BamCache_Alloc(int ram, u32 size)
+     if (a->hi - a->lo < size) return NULL;
+     p = a->lo;
+     a->lo += size;
+-    return (void*) (uintptr_t) p;
++    return (void*) MU_WIDEN64(MU_WIDEN(p));
+ }
+ 
+ /* Temporary main-RAM space (top of the AllM block), dropped by TempReset. */
+@@ -258,7 +258,7 @@ void* BamCache_TempAlloc(u32 size)
+     size = (size + 31) & ~31U;
+     if (a->hi - a->lo < size) return NULL;
+     a->hi -= size;
+-    return (void*) (uintptr_t) a->hi;
++    return (void*) MU_WIDEN64(MU_WIDEN(a->hi));
+ }
+ 
+ void BamCache_TempReset(void)
+diff --git a/sourceport/game/maker/platform/build_store.c b/sourceport/game/maker/platform/build_store.c
+index c3fb3f2..e64d41e 100644
+--- a/sourceport/game/maker/platform/build_store.c
++++ b/sourceport/game/maker/platform/build_store.c
+@@ -67,7 +67,7 @@ static void* take(u8** work, u8** sector)
+     void* raw = OSAllocFromHeap(HSD_GetHeap(), CARD_WORKAREA_SIZE + SECTOR + 32);
+     u8* p;
+     if (!raw) return NULL;
+-    p = (u8*) (((uintptr_t) raw + 31) & ~(uintptr_t) 31);
++    p = (u8*) MU_WIDEN64((((uintptr_t) raw + 31) & ~(uintptr_t) 31));
+     *work = p;
+     *sector = p + CARD_WORKAREA_SIZE;
+     return raw;
+diff --git a/sourceport/game/maker/platform/hooks.c b/sourceport/game/maker/platform/hooks.c
+index 016f5c2..11e75c7 100644
+--- a/sourceport/game/maker/platform/hooks.c
++++ b/sourceport/game/maker/platform/hooks.c
+@@ -117,7 +117,7 @@ void BAM_BeforeNativeJump(Fighter_GObj* gobj)
+ void* BAM_CheckJointPos(void* jobj)
+ {
+     uintptr_t p = (uintptr_t) jobj;
+-    if (p == 0 || (p >= 0x80000000u && p < 0x86000000u && !(p & 3))) return jobj;
++    if (p == 0 || ((p >> 32) == ((uintptr_t) MU_HIGH_BASE >> 32) && (u32) p >= 0x80000000u && (u32) p < 0x86000000u && !(p & 3))) return jobj;
+     BAM_NOTE("joint: bad joint %llx passed to lb_8000B1CC, ignored\n", (unsigned long long) p);
+     return NULL;
+ }
+diff --git a/sourceport/game/mexstages/common/mu_gr_mex.c b/sourceport/game/mexstages/common/mu_gr_mex.c
+index 641dc61..3434cbf 100644
+--- a/sourceport/game/mexstages/common/mu_gr_mex.c
++++ b/sourceport/game/mexstages/common/mu_gr_mex.c
+@@ -73,13 +73,13 @@ const void* mu_gr_mex_data(int index)
+     ft = DP(mx->fighter);
+     st = DP(mx->stage);
+     switch (index) {
+-    case MU_MXDT_FTINTNUM: return (const void*) (mu_uptr) meta->ft_internal;
+-    case MU_MXDT_FTEXTNUM: return (const void*) (mu_uptr) meta->ft_external;
+-    case MU_MXDT_FTICONNUM: return (const void*) (mu_uptr) meta->css_icons;
++    case MU_MXDT_FTINTNUM: return (const void*) MU_WIDEN64((mu_uptr) meta->ft_internal);
++    case MU_MXDT_FTEXTNUM: return (const void*) MU_WIDEN64((mu_uptr) meta->ft_external);
++    case MU_MXDT_FTICONNUM: return (const void*) MU_WIDEN64((mu_uptr) meta->css_icons);
+     case MU_MXDT_FTICONDATA: return menu != NULL ? DP(menu->css) : NULL;
+-    case MU_MXDT_GRINTNUM: return (const void*) (mu_uptr) meta->gr_internal;
+-    case MU_MXDT_GREXTNUM: return (const void*) (mu_uptr) meta->gr_external;
+-    case MU_MXDT_GRICONNUM: return (const void*) (mu_uptr) meta->sss_icons;
++    case MU_MXDT_GRINTNUM: return (const void*) MU_WIDEN64((mu_uptr) meta->gr_internal);
++    case MU_MXDT_GREXTNUM: return (const void*) MU_WIDEN64((mu_uptr) meta->gr_external);
++    case MU_MXDT_GRICONNUM: return (const void*) MU_WIDEN64((mu_uptr) meta->sss_icons);
+     case MU_MXDT_GRICONDATA: return menu != NULL ? DP(menu->sss) : NULL;
+     case MU_MXDT_GRDESC: return DP(mx->stage_desc);
+     case MU_MXDT_GREXTLOOKUP: return st != NULL ? DP(st->ext) : NULL;
+diff --git a/sourceport/game/mexstages/dolphinpark/dolphinpark.c b/sourceport/game/mexstages/dolphinpark/dolphinpark.c
+index ce08401..b24a909 100644
+--- a/sourceport/game/mexstages/dolphinpark/dolphinpark.c
++++ b/sourceport/game/mexstages/dolphinpark/dolphinpark.c
+@@ -131,7 +131,7 @@ static void dp_background_frame(Ground_GObj* gobj)
+     }
+     if (bv->aobj != NULL) {
+         HSD_AObjReqAnim(bv->aobj, lbGetJObjCurrFrame(Ground_801C3FA4(Ground_GetMapGObj(5), 0)));
+-        HSD_AObjInterpretAnim(bv->aobj, (void*) (mu_uptr) bv->sound, dp_jetski_volume);
++        HSD_AObjInterpretAnim(bv->aobj, (void*) MU_WIDEN64((mu_uptr) bv->sound), dp_jetski_volume);
+     }
+     lb_800115F4();
+ }
+diff --git a/sourceport/game/mexstages/saturnvalley/saturnvalley.c b/sourceport/game/mexstages/saturnvalley/saturnvalley.c
+index ffdd96f..a8ba5e2 100644
+--- a/sourceport/game/mexstages/saturnvalley/saturnvalley.c
++++ b/sourceport/game/mexstages/saturnvalley/saturnvalley.c
+@@ -181,7 +181,7 @@ static void sv_darken(HSD_JObj* j, int amount)
+ }
+ static const char* sv_joint_name(HSD_JObj* j)
+ {
+-    return DP(((HSD_Joint*) (mu_uptr) j->id)->class_name);
++    return DP(((HSD_Joint*) MU_WIDEN64((mu_uptr) j->id))->class_name);
+ }
+ /* +376C SaturnSimple_Generate: one Mr. Saturn on a path joint; a "water" child gets the ripple
+  * effect, a "cave" child darkens the new model. */
+diff --git a/sourceport/game/mexstages/saturnvalley/saturnvalley_coffee.c b/sourceport/game/mexstages/saturnvalley/saturnvalley_coffee.c
+index f181c11..0e4479f 100644
+--- a/sourceport/game/mexstages/saturnvalley/saturnvalley_coffee.c
++++ b/sourceport/game/mexstages/saturnvalley/saturnvalley_coffee.c
+@@ -103,7 +103,7 @@ static void sv_enter_stage_state(HSD_GObj* g, const MotionState* state, Fighter_
+     fp->x3E4_fighterCmdScript.u = DP(row->xC);
+     fp->x3E4_fighterCmdScript.timer = 0.0f;
+     ftCo_8009E7B4(fp, NULL);
+-    fp->x590 = (FigaTree*) (mu_uptr) (u32) row->x4;
++    fp->x590 = (FigaTree*) MU_WIDEN64((mu_uptr) (u32) row->x4);
+     ftAnim_8006EBE8(g, anim_start, anim_speed, anim_blend);
+     ftAnim_8006E9B4(g);
+     if (anim_start == 0.0f) {
+diff --git a/sourceport/game/mexstages/sectorz/sectorz.c b/sourceport/game/mexstages/sectorz/sectorz.c
+index 612f552..f0186c6 100644
+--- a/sourceport/game/mexstages/sectorz/sectorz.c
++++ b/sourceport/game/mexstages/sectorz/sectorz.c
+@@ -152,7 +152,7 @@ static void mexgr_sz_state_change(Ground_GObj* gobj, int state)
+     HSD_JObj* jobj = Ground_801C3FA4(gobj, 0);
+ 
+     /* joint 0 back to the pose of its joint description (jobj->id holds the HSD_Joint) */
+-    lb_8000B804(jobj, (HSD_Joint*) jobj->id);
++    lb_8000B804(jobj, (HSD_Joint*) MU_WIDEN64(jobj->id));
+     root = GET_JOBJ(gobj);
+     root->translate.x = 0.0F;
+     root->translate.y = 0.0F;
+diff --git a/sourceport/game/mexstages/sprouttower/sprouttower.c b/sourceport/game/mexstages/sprouttower/sprouttower.c
+index 764845c..f042dcd 100644
+--- a/sourceport/game/mexstages/sprouttower/sprouttower.c
++++ b/sourceport/game/mexstages/sprouttower/sprouttower.c
+@@ -342,8 +342,8 @@ static void sp_denryu_frame(HSD_GObj* g)
+         HSD_JObj* yaw = Ground_801C3FA4(g, sp_param->x0B0);
+         float tx, ty;
+         if (v->delay <= 1) {
+-            tx = ((HSD_Joint*) yaw->id)->rotation.y;
+-            ty = ((HSD_Joint*) pitch->id)->rotation.z;
++            tx = ((HSD_Joint*) MU_WIDEN64(yaw->id))->rotation.y;
++            ty = ((HSD_Joint*) MU_WIDEN64(pitch->id))->rotation.z;
+         }
+         else {
+             Vec3 origin, closest; bool found = false; float distance = 1000.0f;
+diff --git a/sourceport/game/ppcleaf/ppc.h b/sourceport/game/ppcleaf/ppc.h
+index 8ee70ff..aaddba9 100644
+--- a/sourceport/game/ppcleaf/ppc.h
++++ b/sourceport/game/ppcleaf/ppc.h
+@@ -31,10 +31,14 @@ struct Context {
+ inline void enter(Context&, uint32_t) {}
+ 
+ // ---- memory: host order, host addresses ----
+-inline uint32_t ld32(Context&, uint8_t*, uint64_t ea) { uint32_t v; std::memcpy(&v, (const void*)(uintptr_t)ea, 4); return v; }
+-inline uint64_t ld64(Context&, uint8_t*, uint64_t ea) { uint64_t v; std::memcpy(&v, (const void*)(uintptr_t)ea, 8); return v; }
+-inline void st32(Context&, uint8_t*, uint64_t ea, uint64_t v) { uint32_t w = (uint32_t)v; std::memcpy((void*)(uintptr_t)ea, &w, 4); }
+-inline void st64(Context&, uint8_t*, uint64_t ea, uint64_t v) { std::memcpy((void*)(uintptr_t)ea, &v, 8); }
++#ifndef MU_HIGH_BASE
++#define MU_HIGH_BASE 0ull
++#endif
++inline uint64_t mu_ea(uint64_t ea) { return (ea & 0x80000000u) && !(ea >> 32) ? ea | (uint64_t) MU_HIGH_BASE : ea; }
++inline uint32_t ld32(Context&, uint8_t*, uint64_t ea) { uint32_t v; std::memcpy(&v, (const void*)(uintptr_t)mu_ea(ea), 4); return v; }
++inline uint64_t ld64(Context&, uint8_t*, uint64_t ea) { uint64_t v; std::memcpy(&v, (const void*)(uintptr_t)mu_ea(ea), 8); return v; }
++inline void st32(Context&, uint8_t*, uint64_t ea, uint64_t v) { uint32_t w = (uint32_t)v; std::memcpy((void*)(uintptr_t)mu_ea(ea), &w, 4); }
++inline void st64(Context&, uint8_t*, uint64_t ea, uint64_t v) { std::memcpy((void*)(uintptr_t)mu_ea(ea), &v, 8); }
+ 
+ // ---- condition register ----
+ inline void cr_set_u(Context& c, int field, uint64_t a, uint64_t b) {
+diff --git a/sourceport/game/shim/mu_dvd.c b/sourceport/game/shim/mu_dvd.c
+index 0ee5802..a456623 100644
+--- a/sourceport/game/shim/mu_dvd.c
++++ b/sourceport/game/shim/mu_dvd.c
+@@ -11,7 +11,7 @@ s32 DVDGetDriveStatus(void) { mu_poll(); return mu_host->disc_status(); }
+ s32 DVDConvertPathToEntrynum(const char* path) { return mu_host->disc_entrynum(path); }
+ 
+ /* The disc header the console's boot loader copied to the start of MEM1; the host does the same. */
+-struct DVDDiskID* DVDGetCurrentDiskID(void) { return (struct DVDDiskID*) (uintptr_t) 0x80000000u; }
++struct DVDDiskID* DVDGetCurrentDiskID(void) { return (struct DVDDiskID*) MU_WIDEN(0x80000000u); }
+ 
+ BOOL DVDFastOpen(s32 entrynum, DVDFileInfo* fileInfo)
+ {
+diff --git a/sourceport/game/shim/mu_entry.c b/sourceport/game/shim/mu_entry.c
+index 8999c50..fa63834 100644
+--- a/sourceport/game/shim/mu_entry.c
++++ b/sourceport/game/shim/mu_entry.c
+@@ -257,7 +257,7 @@ unsigned int mu_music_volume(void)
+  * snapshot's check before it follows a fighter pointer, as the recompiled build's reader does. */
+ int mu_is_game_memory(const void* p, unsigned long size)
+ {
+-    const uintptr_t lo = 0x80000000u, hi = lo + (mu_host ? mu_host->mem1_size() : 0);
++    const uintptr_t lo = MU_WIDEN(0x80000000u), hi = lo + (mu_host ? mu_host->mem1_size() : 0);
+     const uintptr_t a = (uintptr_t) p;
+     return a >= lo && a < hi && size <= hi - a;
+ }
+@@ -292,7 +292,7 @@ extern char __data_start__[], __data_end__[], __bss_start__[], __bss_end__[];
+ static uint32_t mu_state_regions(MuStateRegion* out, uint32_t capacity)
+ {
+     MuStateRegion regions[3] = {
+-        {(void*) 0x80000000u, mu_host->mem1_size()},
++        {(void*) MU_WIDEN(0x80000000u), mu_host->mem1_size()},
+         {__data_start__, (uint32_t) (__data_end__ - __data_start__)},
+         {__bss_start__, (uint32_t) (__bss_end__ - __bss_start__)},
+     };
+diff --git a/sourceport/game/shim/mu_exclusions.c b/sourceport/game/shim/mu_exclusions.c
+index 2d0d854..75a8b49 100644
+--- a/sourceport/game/shim/mu_exclusions.c
++++ b/sourceport/game/shim/mu_exclusions.c
+@@ -83,7 +83,7 @@ uint32_t mu_snapshot_ranges(MuStateRegion* out, uint32_t capacity)
+         ranges[count].address = lo;
+         ranges[count].size = (uint32_t) ((uintptr_t) hi - (uintptr_t) lo);
+     } else {
+-        ranges[count].address = (void*) (uintptr_t) 0x80000000u;
++        ranges[count].address = (void*) MU_WIDEN(0x80000000u);
+         ranges[count].size = mu_host->mem1_size();
+     }
+     count++;
+diff --git a/sourceport/game/shim/mu_os.c b/sourceport/game/shim/mu_os.c
+index 04aae3b..6e21003 100644
+--- a/sourceport/game/shim/mu_os.c
++++ b/sourceport/game/shim/mu_os.c
+@@ -479,8 +479,8 @@ void OSSetProgressiveMode(u32 mode) { mu_host->set_progressive_mode((int32_t) mo
+ void OSInit(void)
+ {
+     /* Low memory (the first 64 KB) holds the disc header and what the host puts there for the game. */
+-    OSSetArenaLo((void*) (uintptr_t) 0x80010000u);
+-    OSSetArenaHi((void*) (uintptr_t) (0x80000000u + mu_host->mem1_size()));
++    OSSetArenaLo((void*) MU_WIDEN(0x80010000u));
++    OSSetArenaHi((void*) MU_WIDEN64(MU_WIDEN(0x80000000u + mu_host->mem1_size())));
+     OSInitAlarm();
+     mu_interrupt_level = 1;
+ }
+diff --git a/sourceport/game/shim/mu_tmce_legacy.c b/sourceport/game/shim/mu_tmce_legacy.c
+index f44e562..155ce38 100644
+--- a/sourceport/game/shim/mu_tmce_legacy.c
++++ b/sourceport/game/shim/mu_tmce_legacy.c
+@@ -1111,6 +1111,6 @@ void mu_tmce_legacy_zebes_platform_intangible(void* map_gobj)
+     if (addr == 0) {
+         return;
+     }
+-    ip = GET_ITEM((HSD_GObj*) MU_Z(addr));
++    ip = GET_ITEM((HSD_GObj*) MU_WIDEN64(MU_Z(addr)));
+     ip->xACC_itemHurtbox[0].state = HurtCapsule_Intangible;
+ }
+diff --git a/sourceport/game/tmce/MexTK/mex_native_prelude.h b/sourceport/game/tmce/MexTK/mex_native_prelude.h
+index 29db00f..c9ca36c 100644
+--- a/sourceport/game/tmce/MexTK/mex_native_prelude.h
++++ b/sourceport/game/tmce/MexTK/mex_native_prelude.h
+@@ -4,7 +4,11 @@
+ 
+ /* A pointer slot in disc data (a .dat file): 4 bytes holding the real address, which sits below
+  * 4 GB natively (MEM1 and the game image). */
+-#define MEX_DP(slot) ((void *)(uintptr_t)(unsigned int)(slot))
++#ifndef MU_HIGH_BASE
++#define MU_HIGH_BASE 0ull
++#endif
++static inline uintptr_t mex_widen32(unsigned int v) { return (uintptr_t)v | ((uintptr_t)(v >> 31) * (uintptr_t)MU_HIGH_BASE); }
++#define MEX_DP(slot) ((void *)mex_widen32((unsigned int)(slot)))
+ 
+ /* C library functions MexTK declares with the console int sizes: natively they go to wrappers
+  * (native/tmce_runtime.c), so a 32-bit size never lands in a 64-bit size_t parameter. */
+diff --git a/sourceport/game/tmce/native/tmce_compat.h b/sourceport/game/tmce/native/tmce_compat.h
+index d528d50..d941f85 100644
+--- a/sourceport/game/tmce/native/tmce_compat.h
++++ b/sourceport/game/tmce/native/tmce_compat.h
+@@ -22,7 +22,12 @@ extern char mu_mx_ifStatus_HudInfo[] __asm__("ifStatus_HudInfo");
+ /* A disc pointer slot written from host code: the address fits in 32 bits natively (MEM1, the image). */
+ #define MEX_DP_SET(slot, ptr) ((slot) = (unsigned int)(uintptr_t)(ptr))
+ /* Element i of a disc array of pointer slots (big-endian words) */
+-#define MEX_DP_AT(base, i) ((void *)(uintptr_t)__builtin_bswap32(((const unsigned int *)(base))[i]))
++#ifndef MU_HIGH_BASE
++#define MU_HIGH_BASE 0ull
++#endif
++static inline uintptr_t mex_widen32_c(unsigned int v) { return (uintptr_t) v | ((uintptr_t) (v >> 31) * (uintptr_t) MU_HIGH_BASE); }
++#define MEX_WIDEN(v) mex_widen32_c((unsigned int) (v))
++#define MEX_DP_AT(base, i) ((void *)MEX_WIDEN(__builtin_bswap32(((const unsigned int *)(base))[i])))
+ /* TM-CE's own structs read straight out of its .dat files */
+ #define MEX_DISC_STRUCT __attribute__((scalar_storage_order("big-endian")))
+ 

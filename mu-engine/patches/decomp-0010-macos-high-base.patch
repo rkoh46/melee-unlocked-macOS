@@ -1,0 +1,2413 @@
+diff --git a/libs/dolphin/include/dolphin/os.h b/libs/dolphin/include/dolphin/os.h
+index 48f9226..ab95c84 100644
+--- a/libs/dolphin/include/dolphin/os.h
++++ b/libs/dolphin/include/dolphin/os.h
+@@ -71,8 +71,8 @@ u32 __OSBusClock : (OS_BASE_CACHED | 0x00F8);
+ u32 __OSCoreClock : (OS_BASE_CACHED | 0x00FC);
+ int __EXIProbeStartTime[2] : (OS_BASE_CACHED | 0x30C0);
+ #else
+-#define __OSBusClock (*(u32*) (OS_BASE_CACHED | 0x00F8))
+-#define __OSCoreClock (*(u32*) (OS_BASE_CACHED | 0x00FC))
++#define __OSBusClock (*(u32*) MU_WIDEN(OS_BASE_CACHED | 0x00F8))
++#define __OSCoreClock (*(u32*) MU_WIDEN(OS_BASE_CACHED | 0x00FC))
+ #endif
+ #define OS_BUS_CLOCK __OSBusClock
+ #define OS_CORE_CLOCK __OSCoreClock
+@@ -178,8 +178,14 @@ void OSReport(char*, ...);
+ DOLPHIN_ATTRIBUTE_NORETURN void OSPanic(const char* file, int line,
+                                         const char* msg, ...);
+ 
++#if defined(MU_NATIVE) && defined(MU_HIGH_BASE)
++/* mumac: the rounded value is often an address that becomes a pointer again; widen it (mu_disc.h). */
++#define OSRoundUp32B(x) MU_WIDEN(((u32) (x) + 32 - 1) & ~(32 - 1))
++#define OSRoundDown32B(x) MU_WIDEN(((u32) (x)) & ~(32 - 1))
++#else
+ #define OSRoundUp32B(x) (((u32) (x) + 32 - 1) & ~(32 - 1))
+ #define OSRoundDown32B(x) (((u32) (x)) & ~(32 - 1))
++#endif
+ 
+ void* OSPhysicalToCached(u32 paddr);
+ void* OSPhysicalToUncached(u32 paddr);
+@@ -189,9 +195,9 @@ void* OSCachedToUncached(void* caddr);
+ void* OSUncachedToCached(void* ucaddr);
+ #if !DEBUG
+ #define OSPhysicalToCached(paddr)                                             \
+-    ((void*) ((u32) (OS_BASE_CACHED + (u32) (paddr))))
++    ((void*) MU_WIDEN((u32) (OS_BASE_CACHED + (u32) (paddr))))
+ #define OSPhysicalToUncached(paddr)                                           \
+-    ((void*) ((u32) (OS_BASE_UNCACHED + (u32) (paddr))))
++    ((void*) MU_WIDEN((u32) (OS_BASE_UNCACHED + (u32) (paddr))))
+ #define OSCachedToPhysical(caddr) ((u32) ((u32) (caddr) - OS_BASE_CACHED))
+ #define OSUncachedToPhysical(ucaddr)                                          \
+     ((u32) ((u32) (ucaddr) - OS_BASE_UNCACHED))
+diff --git a/libs/dolphin/src/dolphin/ax/AXAlloc.c b/libs/dolphin/src/dolphin/ax/AXAlloc.c
+index 1a0424d..6583425 100644
+--- a/libs/dolphin/src/dolphin/ax/AXAlloc.c
++++ b/libs/dolphin/src/dolphin/ax/AXAlloc.c
+@@ -67,7 +67,7 @@ AXVPB* __AXPopFreeStack(void)
+ {
+     AXVPB* p;
+ 
+-    p = (void*) MU_Z((u32) &__AXStackHead[0]->next);
++    p = (void*) MU_WIDEN64(MU_Z((u32) &__AXStackHead[0]->next));
+     if (p) {
+         __AXStackHead[0] = p->next;
+     }
+@@ -84,7 +84,7 @@ AXVPB* __AXPopCallbackStack(void)
+ {
+     AXVPB* p;
+ 
+-    p = (void*) MU_Z((u32) &__AXCallbackStack[0]);
++    p = (void*) MU_WIDEN64(MU_Z((u32) &__AXCallbackStack[0]));
+     if (p) {
+         __AXCallbackStack = p->next1;
+     }
+diff --git a/libs/dolphin/src/dolphin/gx/GXMisc.c b/libs/dolphin/src/dolphin/gx/GXMisc.c
+index 40e853e..889a815 100644
+--- a/libs/dolphin/src/dolphin/gx/GXMisc.c
++++ b/libs/dolphin/src/dolphin/gx/GXMisc.c
+@@ -277,7 +277,7 @@ void GXPeekARGB(u16 x, u16 y, u32* color)
+     SET_REG_FIELD(0x2DC, addr, 10, 2, x);
+     SET_REG_FIELD(0x2DD, addr, 10, 12, y);
+     SET_REG_FIELD(0x2DE, addr, 2, 22, 0);
+-    *color = *(u32*) addr;
++    *color = *(u32*) MU_WIDEN64(addr);
+ }
+ 
+ void GXPokeARGB(u16 x, u16 y, u32 color)
+@@ -287,7 +287,7 @@ void GXPokeARGB(u16 x, u16 y, u32 color)
+     SET_REG_FIELD(0x2E6, addr, 10, 2, x);
+     SET_REG_FIELD(0x2E7, addr, 10, 12, y);
+     SET_REG_FIELD(0x2E8, addr, 2, 22, 0);
+-    *(u32*) addr = color;
++    *(u32*) MU_WIDEN64(addr) = color;
+ }
+ 
+ void GXPeekZ(u16 x, u16 y, u32* z)
+@@ -297,7 +297,7 @@ void GXPeekZ(u16 x, u16 y, u32* z)
+     SET_REG_FIELD(0x2F0, addr, 10, 2, x);
+     SET_REG_FIELD(0x2F1, addr, 10, 12, y);
+     SET_REG_FIELD(0x2F2, addr, 2, 22, 1);
+-    *z = *(u32*) addr;
++    *z = *(u32*) MU_WIDEN64(addr);
+ }
+ 
+ void GXPokeZ(u16 x, u16 y, u32 z)
+@@ -307,7 +307,7 @@ void GXPokeZ(u16 x, u16 y, u32 z)
+     SET_REG_FIELD(0x2FA, addr, 10, 2, x);
+     SET_REG_FIELD(0x2FB, addr, 10, 12, y);
+     SET_REG_FIELD(0x2FC, addr, 2, 22, 1);
+-    *(u32*) addr = z;
++    *(u32*) MU_WIDEN64(addr) = z;
+ }
+ 
+ GXDrawSyncCallback GXSetDrawSyncCallback(GXDrawSyncCallback cb)
+diff --git a/libs/dolphin/src/dolphin/gx/GXTexture.c b/libs/dolphin/src/dolphin/gx/GXTexture.c
+index fd0149c..73bfe79 100644
+--- a/libs/dolphin/src/dolphin/gx/GXTexture.c
++++ b/libs/dolphin/src/dolphin/gx/GXTexture.c
+@@ -433,7 +433,7 @@ void GXGetTexObjAll(const GXTexObj* obj, void** image_ptr, u16* width,
+     const __GXTexObjInt* t = (const __GXTexObjInt*) obj;
+ 
+     ASSERTMSGLINE(0x359, obj, "Texture Object Pointer is null");
+-    *image_ptr = (void*) (GET_REG_FIELD(t->image3, 21, 0) << 5);
++    *image_ptr = (void*) MU_WIDEN64((GET_REG_FIELD(t->image3, 21, 0) << 5));
+     *width = (u32) GET_REG_FIELD(t->image0, 10, 0) + 1;
+     *height = (u32) GET_REG_FIELD(t->image0, 10, 10) + 1;
+ #ifdef MU_NATIVE
+@@ -451,7 +451,7 @@ void* GXGetTexObjData(const GXTexObj* to)
+     const __GXTexObjInt* t = (const __GXTexObjInt*) to;
+ 
+     ASSERTMSGLINE(0x366, to, "Texture Object Pointer is null");
+-    return (void*) (GET_REG_FIELD(t->image3, 21, 0) << 5);
++    return (void*) MU_WIDEN64((GET_REG_FIELD(t->image3, 21, 0) << 5));
+ }
+ 
+ u16 GXGetTexObjWidth(const GXTexObj* to)
+@@ -703,7 +703,7 @@ void GXGetTlutObjAll(const GXTlutObj* tlut_obj, void** data, GXTlutFmt* format,
+     const __GXTlutObjInt* t = (const __GXTlutObjInt*) tlut_obj;
+ 
+     ASSERTMSGLINE(0x472, tlut_obj, "TLut Object Pointer is null");
+-    *data = (void*) (GET_REG_FIELD(t->loadTlut0, 21, 0) << 5);
++    *data = (void*) MU_WIDEN64((GET_REG_FIELD(t->loadTlut0, 21, 0) << 5));
+     *format = GET_REG_FIELD(t->tlut, 2, 10);
+     *numEntries = t->numEntries;
+ }
+@@ -713,7 +713,7 @@ void* GXGetTlutObjData(const GXTlutObj* tlut_obj)
+     const __GXTlutObjInt* t = (const __GXTlutObjInt*) tlut_obj;
+ 
+     ASSERTMSGLINE(0x47B, tlut_obj, "TLut Object Pointer is null");
+-    return (void*) (GET_REG_FIELD(t->loadTlut0, 21, 0) << 5);
++    return (void*) MU_WIDEN64((GET_REG_FIELD(t->loadTlut0, 21, 0) << 5));
+ }
+ 
+ GXTlutFmt GXGetTlutObjFmt(const GXTlutObj* tlut_obj)
+diff --git a/libs/dolphin/src/dolphin/os/OS.c b/libs/dolphin/src/dolphin/os/OS.c
+index 7bee07b..b152d37 100644
+--- a/libs/dolphin/src/dolphin/os/OS.c
++++ b/libs/dolphin/src/dolphin/os/OS.c
+@@ -113,8 +113,8 @@ unsigned long OSGetConsoleType() {
+     return BootInfo->consoleType;
+ }
+ 
+-#define BOOT_REGION_START (*(u32*) 0x812FDFF0)
+-#define BOOT_REGION_END (*(u32*) 0x812FDFEC)
++#define BOOT_REGION_START (*(u32*) MU_WIDEN(0x812FDFF0u))
++#define BOOT_REGION_END (*(u32*) MU_WIDEN(0x812FDFECu))
+ 
+ static void ClearArena(void)
+ {
+diff --git a/libs/dolphin/src/dolphin/os/OSAlloc.c b/libs/dolphin/src/dolphin/os/OSAlloc.c
+index 52b8469..e9e6034 100644
+--- a/libs/dolphin/src/dolphin/os/OSAlloc.c
++++ b/libs/dolphin/src/dolphin/os/OSAlloc.c
+@@ -237,8 +237,8 @@ void* OSAllocFixed(void* rstart, void* rend)
+     void* end;
+     void* cellEnd;
+ 
+-    start = (void*) ((*(u32*) rstart) & ~((32) - 1));
+-    end = (void*) ((*(u32*) rend + 0x1FU) & ~((32) - 1));
++    start = (void*) MU_WIDEN64(MU_WIDEN((*(u32*) rstart) & ~((32) - 1)));
++    end = (void*) MU_WIDEN64(MU_WIDEN((*(u32*) rend + 0x1FU) & ~((32) - 1)));
+ 
+     ASSERTMSGLINE(0x1B0, HeapArray,
+                   "OSAllocFixed(): heap is not initialized.");
+@@ -349,7 +349,7 @@ void* OSAllocFixed(void* rstart, void* rend)
+     ASSERTLINE(0x227, start < end);
+     *(u32*) rstart = (u32) start;
+     *(u32*) rend = (u32) end;
+-    return (void*) *(u32*) rstart;
++    return (void*) MU_WIDEN64(MU_WIDEN(*(u32*) rstart));
+ }
+ 
+ void OSFreeToHeap(int heap, void* ptr)
+@@ -367,7 +367,7 @@ void OSFreeToHeap(int heap, void* ptr)
+                   "OSFreeToHeap(): invalid pointer.");
+     ASSERTMSGLINE(0x241, HeapArray[heap].size >= 0,
+                   "OSFreeToHeap(): invalid heap handle.");
+-    cell = (void*) ((u32) ptr - 0x20);
++    cell = (void*) MU_WIDEN64(MU_WIDEN((u32) ptr - 0x20));
+     hd = &HeapArray[heap];
+     ASSERTMSGLINE(0x246, cell->hd == hd, "OSFreeToHeap(): invalid pointer.");
+     ASSERTMSGLINE(0x247, DLLookup(hd->allocated, cell),
+@@ -423,10 +423,10 @@ void* OSInitAlloc(void* arenaStart, void* arenaEnd, int maxHeaps)
+ #endif
+     }
+     __OSCurrHeap = -1;
+-    arenaStart = (void*) ((u32) ((char*) HeapArray + arraySize));
+-    arenaStart = (void*) (((u32) arenaStart + 0x1F) & 0xFFFFFFE0);
++    arenaStart = (void*) MU_WIDEN64(MU_WIDEN((u32) ((char*) HeapArray + arraySize)));
++    arenaStart = (void*) MU_WIDEN64(MU_WIDEN(((u32) arenaStart + 0x1F) & 0xFFFFFFE0));
+     ArenaStart = arenaStart;
+-    ArenaEnd = (void*) ((u32) arenaEnd & 0xFFFFFFE0);
++    ArenaEnd = (void*) MU_WIDEN64(MU_WIDEN((u32) arenaEnd & 0xFFFFFFE0));
+     ASSERTMSGLINE(0x2A4, ((u32) ArenaEnd - (u32) ArenaStart) >= 0x40U,
+                   "OSInitAlloc(): too small range.");
+     return arenaStart;
+@@ -443,8 +443,8 @@ int OSCreateHeap(void* start, void* end)
+     ASSERTMSGLINE(0x2BE, (u32) start < (u32) end,
+                   "OSCreateHeap(): invalid range.");
+ 
+-    start = (void*) (((u32) start + 0x1FU) & ~((32) - 1));
+-    end = (void*) (((u32) end) & ~((32) - 1));
++    start = (void*) MU_WIDEN64(MU_WIDEN(((u32) start + 0x1FU) & ~((32) - 1)));
++    end = (void*) MU_WIDEN64(MU_WIDEN(((u32) end) & ~((32) - 1)));
+ 
+     ASSERTMSGLINE(0x2C1, (u32) start < (u32) end,
+                   "OSCreateHeap(): invalid range.");
+@@ -540,8 +540,8 @@ void OSAddToHeap(int heap, void* start, void* end)
+     ASSERTMSGLINE(0x33F, (u32) start < (u32) end,
+                   "OSAddToHeap(): invalid range.");
+ 
+-    start = (void*) (((u32) start + 0x1F) & ~((32) - 1));
+-    end = (void*) (((u32) end) & ~((32) - 1));
++    start = (void*) MU_WIDEN64(MU_WIDEN(((u32) start + 0x1F) & ~((32) - 1)));
++    end = (void*) MU_WIDEN64(MU_WIDEN(((u32) end) & ~((32) - 1)));
+ 
+     ASSERTMSGLINE(0x343, ((u32) end - (u32) start) >= 0x40U,
+                   "OSAddToHeap(): too small range.");
+@@ -636,7 +636,7 @@ unsigned long OSReferentSize(void* ptr)
+                   "OSReferentSize(): invalid pointer.");
+     ASSERTMSGLINE(0x3BE, !OFFSET(ptr, 32),
+                   "OSReferentSize(): invalid pointer.");
+-    cell = (void*) ((u32) ptr - HEADERSIZE);
++    cell = (void*) MU_WIDEN64(MU_WIDEN((u32) ptr - HEADERSIZE));
+     ASSERTMSGLINE(0x3C2, cell->hd, "OSReferentSize(): invalid pointer.");
+     ASSERTMSGLINE(0x3C4, !(((u32) cell->hd - (u32) HeapArray) % 24),
+                   "OSReferentSize(): invalid pointer.");
+diff --git a/libs/dolphin/src/dolphin/os/OSArena.c b/libs/dolphin/src/dolphin/os/OSArena.c
+index 7426265..a24fc6b 100644
+--- a/libs/dolphin/src/dolphin/os/OSArena.c
++++ b/libs/dolphin/src/dolphin/os/OSArena.c
+@@ -39,9 +39,9 @@ void* OSAllocFromArenaLo(u32 size, u32 align)
+     u8* arenaLo;
+ 
+     ptr = OSGetArenaLo();
+-    arenaLo = ptr = (void*) MU_Z(ROUND(ptr, align));
++    arenaLo = ptr = (void*) MU_WIDEN64(MU_Z(ROUND(ptr, align)));
+     arenaLo += size;
+-    arenaLo = (u8*) MU_Z(ROUND(arenaLo, align));
++    arenaLo = (u8*) MU_WIDEN64(MU_Z(ROUND(arenaLo, align)));
+     OSSetArenaLo(arenaLo);
+     return ptr;
+ }
+@@ -52,9 +52,9 @@ void* OSAllocFromArenaHi(u32 size, u32 align)
+     u8* arenaHi;
+ 
+     arenaHi = OSGetArenaHi();
+-    arenaHi = (u8*) MU_Z(TRUNC(arenaHi, align));
++    arenaHi = (u8*) MU_WIDEN64(MU_Z(TRUNC(arenaHi, align)));
+     arenaHi -= size;
+-    arenaHi = ptr = (void*) MU_Z(TRUNC(arenaHi, align));
++    arenaHi = ptr = (void*) MU_WIDEN64(MU_Z(TRUNC(arenaHi, align)));
+     OSSetArenaHi(arenaHi);
+     return ptr;
+ }
+diff --git a/libs/dolphin/src/dolphin/os/OSAudioSystem.c b/libs/dolphin/src/dolphin/os/OSAudioSystem.c
+index 32adee6..fe329d1 100644
+--- a/libs/dolphin/src/dolphin/os/OSAudioSystem.c
++++ b/libs/dolphin/src/dolphin/os/OSAudioSystem.c
+@@ -16,7 +16,7 @@ static u8 DSPInitCode[128] = {
+     // clang-format on
+ };
+ 
+-#define __DSPWorkBuffer (void*) 0x81000000
++#define __DSPWorkBuffer (void*) MU_WIDEN(0x81000000u)
+ 
+ void __OSInitAudioSystem(void)
+ {
+diff --git a/libs/dolphin/src/dolphin/os/OSReboot.c b/libs/dolphin/src/dolphin/os/OSReboot.c
+index 6b9e8df..889666d 100644
+--- a/libs/dolphin/src/dolphin/os/OSReboot.c
++++ b/libs/dolphin/src/dolphin/os/OSReboot.c
+@@ -15,7 +15,7 @@ extern u32 UNK_817FFFFC : 0x817FFFFC;
+ extern void* BOOT_REGION_START : (0x812FDFF0);
+ extern void* BOOT_REGION_END : (0x812FDFEC);
+ 
+-#define OS_BOOTROM_ADDR ((void*) 0x81300000)
++#define OS_BOOTROM_ADDR ((void*) MU_WIDEN(0x81300000u))
+ 
+ typedef struct _ApploaderHeader {
+     /* 0x00 */ char date[16];
+diff --git a/libs/dolphin/src/dolphin/os/OSReset.c b/libs/dolphin/src/dolphin/os/OSReset.c
+index 6010a58..663b90d 100644
+--- a/libs/dolphin/src/dolphin/os/OSReset.c
++++ b/libs/dolphin/src/dolphin/os/OSReset.c
+@@ -201,11 +201,11 @@ void OSResetSystem(int reset, unsigned long resetCode, int forceMenu)
+ 
+     CancelThreads();
+ 
+-    memset((void*) 0x80000040, 0, 0x8C);
+-    memset((void*) 0x800000D4, 0, 0x14);
+-    memset((void*) 0x800000F4, 0, 4);
+-    memset((void*) 0x80003000, 0, 0xC0);
+-    memset((void*) 0x800030C8, 0, 0xC);
++    memset((void*) MU_WIDEN(0x80000040u), 0, 0x8C);
++    memset((void*) MU_WIDEN(0x800000D4u), 0, 0x14);
++    memset((void*) MU_WIDEN(0x800000F4u), 0, 4);
++    memset((void*) MU_WIDEN(0x80003000u), 0, 0xC0);
++    memset((void*) MU_WIDEN(0x800030C8u), 0, 0xC);
+ 
+     __PADDisableRecalibration(padcal);
+ }
+diff --git a/libs/dolphin/src/dolphin/os/OSTime.c b/libs/dolphin/src/dolphin/os/OSTime.c
+index f1fcc08..e8ca139 100644
+--- a/libs/dolphin/src/dolphin/os/OSTime.c
++++ b/libs/dolphin/src/dolphin/os/OSTime.c
+@@ -57,7 +57,7 @@ void __OSSetTime(long long time)
+     int enabled;
+     long long* timeAdjustAddr;
+ 
+-    timeAdjustAddr = (long long*) 0x800030D8;
++    timeAdjustAddr = (long long*) MU_WIDEN(0x800030D8u);
+     enabled = OSDisableInterrupts();
+ 
+     *timeAdjustAddr += OSGetTime() - time;
+@@ -72,7 +72,7 @@ long long __OSGetSystemTime()
+     long long* timeAdjustAddr;
+     long long result;
+ 
+-    timeAdjustAddr = (long long*) 0x800030D8;
++    timeAdjustAddr = (long long*) MU_WIDEN(0x800030D8u);
+     enabled = OSDisableInterrupts();
+ 
+     result = OSGetTime() + *timeAdjustAddr;
+@@ -87,7 +87,7 @@ long long __OSTimeToSystemTime(s64 time)
+     long long sysTime;
+     u8 _[4];
+ 
+-    timeAdjustAddr = (long long*) 0x800030D8;
++    timeAdjustAddr = (long long*) MU_WIDEN(0x800030D8u);
+     enabled = OSDisableInterrupts();
+     sysTime = *timeAdjustAddr + time;
+     OSRestoreInterrupts(enabled);
+diff --git a/libs/dolphin/src/dolphin/thp/THPDec.c b/libs/dolphin/src/dolphin/thp/THPDec.c
+index faa9d0d..ba5981c 100644
+--- a/libs/dolphin/src/dolphin/thp/THPDec.c
++++ b/libs/dolphin/src/dolphin/thp/THPDec.c
+@@ -72,7 +72,7 @@ void __THPPrepBitStream(THPFileInfo* info)
+      * a byte offset tag, not a disc address held in a 32-bit slot: no MU_Z reconstruction needed,
+      * and masking the real pointer bits (not a 32-bit truncation of them) is correct on a 64-bit
+      * host too. */
+-    ptr = (u32*) ((uintptr_t) info->file & ~(uintptr_t) 3);
++    ptr = (u32*) MU_WIDEN64(((uintptr_t) info->file & ~(uintptr_t) 3));
+     offset = (uintptr_t) info->file & 3;
+ 
+     if (info->cnt != 33) {
+@@ -383,7 +383,7 @@ void THPDec_803300E0(THPFileInfo* info)
+     u8 i;
+ 
+ #ifdef MU_NATIVE
+-    p = (u8*) (((uintptr_t) info->scratch + 31) & ~(uintptr_t) 31);
++    p = (u8*) MU_WIDEN64((((uintptr_t) info->scratch + 31) & ~(uintptr_t) 31));
+ #else
+     p = (u8*) OSRoundUp32B(info->scratch);
+ #endif
+@@ -660,7 +660,7 @@ static u8 __THPHuffGenerateSizeTable(THPFileInfo* info, u8 tab_index,
+     s32 l;
+     s32 i;
+ 
+-    bits = (u8*) MU_Z(huffmanBits);
++    bits = (u8*) MU_WIDEN64(MU_Z(huffmanBits));
+ 
+     p = 0;
+     for (l = 1; l <= 16; l++) {
+@@ -2755,7 +2755,7 @@ static void mu_thp_decode(MuTHPDecoder* d, u8* tileY, u8* tileU, u8* tileV,
+ THPFileInfo* THPVideoDecode(void* file, void* tileY, THPFileInfo* tileU, void* tileV,
+                             THPDec_8032FD40_Data* workArea)
+ {
+-    MuTHPDecoder* d = (MuTHPDecoder*) (((mu_uptr) tileU + 31) & ~(mu_uptr) 31);
++    MuTHPDecoder* d = (MuTHPDecoder*) MU_WIDEN64((((mu_uptr) tileU + 31) & ~(mu_uptr) 31));
+     THPVideoDecodeHeader* header = file;
+     u8* statusOut = tileY;
+     const u8* p = tileV;
+@@ -2825,7 +2825,7 @@ THPFileInfo* THPVideoDecode(void* file, void* tileY, THPFileInfo* tileU, void* t
+             }
+             d->file = end;
+             *statusOut = 0;
+-            return (THPFileInfo*) (mu_uptr) mu_addr32(d);
++            return (THPFileInfo*) MU_WIDEN64((mu_uptr) mu_addr32(d));
+         } else if (marker < 0xE0 || (marker > 0xEF && marker != 0xFE)) {
+             *statusOut = 11;
+             return NULL;
+@@ -2836,12 +2836,12 @@ THPFileInfo* THPVideoDecode(void* file, void* tileY, THPFileInfo* tileU, void* t
+ 
+ void THPDec_80331340(THPFileInfo* info, void* arg1, void* arg2, void* arg3)
+ {
+-    mu_thp_decode((MuTHPDecoder*) (mu_uptr) info, arg1, arg2, arg3, 640);
++    mu_thp_decode((MuTHPDecoder*) MU_WIDEN64((mu_uptr) info), arg1, arg2, arg3, 640);
+ }
+ 
+ void THPDec_803313D0(THPFileInfo* info, void* arg1, void* arg2, void* arg3, u32 x)
+ {
+-    mu_thp_decode((MuTHPDecoder*) (mu_uptr) info, arg1, arg2, arg3, x);
++    mu_thp_decode((MuTHPDecoder*) MU_WIDEN64((mu_uptr) info), arg1, arg2, arg3, x);
+ }
+ #endif
+ 
+@@ -2913,11 +2913,11 @@ void THPInit(void)
+     struct THPInitWork* work = (struct THPInitWork*) &__THPLC;
+ 
+     if ((PPCMfhid2() & 0x10000000) == 0) {
+-        DCInvalidateRange((void*) 0xE0000000, 0x4000);
++        DCInvalidateRange((void*) MU_WIDEN(0xE0000000u), 0x4000);
+         LCEnable();
+     }
+ 
+-    base = (u8*) 0xE0000000;
++    base = (u8*) MU_WIDEN(0xE0000000u);
+     for (j = 0; j < 2; j++) {
+         for (i = 0; i < 5; i++) {
+             work->cache.offsets512[j][i] = base;
+@@ -2925,7 +2925,7 @@ void THPInit(void)
+         }
+     }
+ 
+-    base = (u8*) 0xE0000000;
++    base = (u8*) MU_WIDEN(0xE0000000u);
+     for (j = 0; j < 2; j++) {
+         for (i = 0; i < 9; i++) {
+             work->cache.offsets672[j][i] = base;
+@@ -2933,14 +2933,14 @@ void THPInit(void)
+         }
+     }
+ 
+-    base = (u8*) 0xE0000000;
++    base = (u8*) MU_WIDEN(0xE0000000u);
+     work->cache.work512[0] = base;
+     base += 0x2000;
+     work->cache.work512[1] = base;
+     base += 0x800;
+     work->cache.work512[2] = base;
+ 
+-    base             = (u8*) 0xE0000000;
++    base             = (u8*) MU_WIDEN(0xE0000000u);
+ #ifdef MU_NATIVE
+     /* The console relies on __THPLCWork672 following __THPLC; the host does not place it there. */
+ #define work672 __THPLCWork672
+diff --git a/src/melee/ft/ftcoll.c b/src/melee/ft/ftcoll.c
+index 4968ac7..ce50a8a 100644
+--- a/src/melee/ft/ftcoll.c
++++ b/src/melee/ft/ftcoll.c
+@@ -1263,7 +1263,7 @@ void ftColl_80078754(Fighter_GObj* arg0, Fighter_GObj* arg1, bool arg2)
+     fp1 = arg1->user_data;
+ 
+     ftColl_8007861C(arg0, arg1, 1, fp0->kind, fp0->x2070.x2070_int,
+-                    &fp0->x2074, fp0->x2074.x2088, (void*) MU_Z(arg2), 0);
++                    &fp0->x2074, fp0->x2074.x2088, (void*) MU_WIDEN64(MU_Z(arg2)), 0);
+ 
+     fp1->dmg.x18c4_source_ply = 6;
+     fp1->dmg.x18C8 = -1;
+@@ -3227,7 +3227,7 @@ void ftColl_8007BE3C(Fighter_GObj* gobj)
+     Fighter* fp = GET_FIGHTER(gobj);
+     if (ftColl_80076640(fp, &fp->dmg.x1898)) {
+ #ifdef MU_NATIVE
+-        HSD_GObj* source = (HSD_GObj*) MU_Z(fp->dmg.x1894);
++        HSD_GObj* source = (HSD_GObj*) MU_WIDEN64(MU_Z(fp->dmg.x1894));
+ #else
+         HSD_GObj* source = fp->dmg.x1894;
+ #endif
+diff --git a/src/melee/ft/ftcpuattack.c b/src/melee/ft/ftcpuattack.c
+index 4c6798b..41ecacb 100644
+--- a/src/melee/ft/ftcpuattack.c
++++ b/src/melee/ft/ftcpuattack.c
+@@ -1923,7 +1923,7 @@ bool ftCo_800B8A9C(Fighter* fp)
+         return true;
+     }
+     if (cpu->x50 != 0) {
+-        result = ftCo_800B5AB0(fp, (void*) MU_Z(cpu->x50),
++        result = ftCo_800B5AB0(fp, (void*) MU_WIDEN64(MU_Z(cpu->x50)),
+                                MU_AK_CPU_LIST(Fighter_804D64FC->x14, fp->kind));
+         if (result != 0) {
+             cpu->xA4 = result;
+diff --git a/src/melee/ft/ftdata.c b/src/melee/ft/ftdata.c
+index 88ec7eb..bbe8718 100644
+--- a/src/melee/ft/ftdata.c
++++ b/src/melee/ft/ftdata.c
+@@ -1826,7 +1826,7 @@ void ftData_80085CD8(Fighter* fp, Fighter* arg1, int msid)
+                         lbArq_80014BD0(temp_r4_2, fp->x59C,
+                                        OSRoundUp32B(temp_r3->x8), 0, 0);
+                     } else {
+-                        memcpy(fp->x59C, (void*) MU_Z(temp_r4_2), temp_r3->x8);
++                        memcpy(fp->x59C, (void*) MU_WIDEN64(MU_Z(temp_r4_2)), temp_r3->x8);
+                     }
+                     temp_ret_2 =
+                         HSD_ArchiveParse(&sp14, fp->x59C->x0, temp_r3->x8);
+@@ -1877,7 +1877,7 @@ FigaTree* ftData_80085E50(Fighter* arg0, int msid)
+                         lbArq_80014BD0(temp_r4_2, arg0->x5A0,
+                                        OSRoundUp32B(temp_r3->x8), 0, 0);
+                     } else {
+-                        memcpy(arg0->x5A0, (void*) MU_Z(temp_r4_2), temp_r3->x8);
++                        memcpy(arg0->x5A0, (void*) MU_WIDEN64(MU_Z(temp_r4_2)), temp_r3->x8);
+                     }
+                     temp_ret_2 =
+                         HSD_ArchiveParse(&sp10, arg0->x5A0->x0, temp_r3->x8);
+diff --git a/src/melee/ft/ftdrawcommon.c b/src/melee/ft/ftdrawcommon.c
+index b2eabf6..588ec3d 100644
+--- a/src/melee/ft/ftdrawcommon.c
++++ b/src/melee/ft/ftdrawcommon.c
+@@ -123,7 +123,7 @@ void ftDrawCommon_800805C8(HSD_GObj* gobj, s32 arg1, bool arg2)
+     /* Arcade look "Show attack hitboxes" (the always-display hitbox code's first two lines): the
+      * attack bubbles of every fighter; the hurtbox, reflect, absorb and shield bubbles below keep
+      * their own flag. The flag byte is match state and stays as it is. */
+-    if ((fighter->x21FC_flag.b6 != 0 || *(volatile u32*) 0x800805FC == 0x60000000 || mu_arcade_hitboxes()) &&
++    if ((fighter->x21FC_flag.b6 != 0 || *(volatile u32*) MU_WIDEN(0x800805FCu) == 0x60000000 || mu_arcade_hitboxes()) &&
+         Bam_DrawHitboxes()) {
+ #elif defined(MU_NATIVE)
+     /* Arcade look "Show attack hitboxes": as in the branch above. */
+@@ -160,7 +160,7 @@ void ftDrawCommon_800805C8(HSD_GObj* gobj, s32 arg1, bool arg2)
+ #endif
+ #if MU_ROGUE  /* rogueMelee + Melee Maker */
+     }
+-    if ((fighter->x21FC_flag.b6 != 0 || *(volatile u32*) 0x800805FC == 0x60000000) && Bam_DrawHurtboxes()) {
++    if ((fighter->x21FC_flag.b6 != 0 || *(volatile u32*) MU_WIDEN(0x800805FCu) == 0x60000000) && Bam_DrawHurtboxes()) {
+ #elif defined(MU_NATIVE)
+     }
+     if (fighter->x21FC_flag.b6 != 0) {
+diff --git a/src/melee/ft/kinds/ftCommon/ftCo_Thrown.c b/src/melee/ft/kinds/ftCommon/ftCo_Thrown.c
+index 231047f..5c9b472 100644
+--- a/src/melee/ft/kinds/ftCommon/ftCo_Thrown.c
++++ b/src/melee/ft/kinds/ftCommon/ftCo_Thrown.c
+@@ -161,7 +161,7 @@ void fn_800DE798(Fighter_GObj* gobj)
+ {
+     Fighter* fp = GET_FIGHTER(gobj);
+ #ifdef MU_NATIVE
+-    ftColl_8007B8CC(fp, (HSD_GObj*) (uintptr_t) fp->mv.co.fighterthrow.victim);
++    ftColl_8007B8CC(fp, (HSD_GObj*) MU_WIDEN64(MU_WIDEN(fp->mv.co.fighterthrow.victim)));
+ #else
+     ftColl_8007B8CC(fp, fp->mv.co.fighterthrow.victim);
+ #endif
+diff --git a/src/melee/ft/kinds/ftKirby/ftkirbyspecialyoshi.c b/src/melee/ft/kinds/ftKirby/ftkirbyspecialyoshi.c
+index cbebaa1..30d4b42 100644
+--- a/src/melee/ft/kinds/ftKirby/ftkirbyspecialyoshi.c
++++ b/src/melee/ft/kinds/ftKirby/ftkirbyspecialyoshi.c
+@@ -271,7 +271,7 @@ static void fn_801097B8(HSD_GObj* gobj)
+     new_var2 = ftKb_MS_YsSpecialAirNCapture1_0;
+     new_var = 0;
+     Fighter_ChangeMotionState(gobj, new_var2, 0x81092, fp->cur_anim_frame,
+-                              1.0f, 0.0f, (void*) MU_Z(new_var));
++                              1.0f, 0.0f, (void*) MU_WIDEN64(MU_Z(new_var)));
+     fp->x2222_b2 = true;
+     ftCommon_8007E2F4(fp, 0x1FF);
+     ftCommon_8007E2FC(gobj);
+diff --git a/src/melee/ft/kinds/ftPikachu/ftpikachuspeciallw.c b/src/melee/ft/kinds/ftPikachu/ftpikachuspeciallw.c
+index ad82fc0..f41cf2d 100644
+--- a/src/melee/ft/kinds/ftPikachu/ftpikachuspeciallw.c
++++ b/src/melee/ft/kinds/ftPikachu/ftpikachuspeciallw.c
+@@ -22,7 +22,7 @@
+ #include <melee/it/kinds/itpikachuthunder.h>
+ 
+ #ifdef MU_NATIVE
+-#define PK_THUNDER(fp) ((Item_GObj*) (uintptr_t) (fp)->mv.pk.speciallw.x0)
++#define PK_THUNDER(fp) ((Item_GObj*) MU_WIDEN((fp)->mv.pk.speciallw.x0))
+ #define PK_SET_THUNDER(fp, gobj) ((fp)->mv.pk.speciallw.x0 = (u32) (uintptr_t) (gobj))
+ #else
+ #define PK_THUNDER(fp) ((fp)->mv.pk.speciallw.x0)
+diff --git a/src/melee/gm/gm_17E4.c b/src/melee/gm/gm_17E4.c
+index 282c110..663c9a8 100644
+--- a/src/melee/gm/gm_17E4.c
++++ b/src/melee/gm/gm_17E4.c
+@@ -313,7 +313,7 @@ typedef struct {
+ 
+ void fn_8017E8A4(int arg0_int)
+ {
+-    MatchEnd* arg0 = (MatchEnd*) MU_Z(arg0_int);
++    MatchEnd* arg0 = (MatchEnd*) MU_WIDEN64(MU_Z(arg0_int));
+     VsSceneController* gm = gmVs_GetSceneController();
+     struct gm_803DE650_t* stage = getCurrentStage();
+     UnkAdventureData* adv = &lbl_80472C30;
+diff --git a/src/melee/gm/gm_17EB.c b/src/melee/gm/gm_17EB.c
+index c13e337..c4ab5a7 100644
+--- a/src/melee/gm/gm_17EB.c
++++ b/src/melee/gm/gm_17EB.c
+@@ -160,7 +160,7 @@ bool fn_8017EDDC(void)
+ 
+ void fn_8017EE40(int arg0_int)
+ {
+-    MatchEnd* arg0 = (MatchEnd*) MU_Z(arg0_int);
++    MatchEnd* arg0 = (MatchEnd*) MU_WIDEN64(MU_Z(arg0_int));
+     struct StartMeleeRules* rules;
+     UnkAllstarData* allstar;
+     gmm_x0_528_t* main_data;
+diff --git a/src/melee/gm/gm_18A1.c b/src/melee/gm/gm_18A1.c
+index e5b06c3..a9b6406 100644
+--- a/src/melee/gm/gm_18A1.c
++++ b/src/melee/gm/gm_18A1.c
+@@ -145,7 +145,7 @@ f32 gm_8018A314(u8 difficulty, u8 stage_slot)
+ 
+ void fn_8018A364(int arg0_int)
+ {
+-    MatchEnd* arg0 = (MatchEnd*) MU_Z(arg0_int);
++    MatchEnd* arg0 = (MatchEnd*) MU_WIDEN64(MU_Z(arg0_int));
+     struct StartMeleeRules* rules;
+     gmm_x0_528_t* main_data;
+     UnkAllstarData* data;
+diff --git a/src/melee/gm/gm_1A3F.c b/src/melee/gm/gm_1A3F.c
+index 19c2003..d6a9469 100644
+--- a/src/melee/gm/gm_1A3F.c
++++ b/src/melee/gm/gm_1A3F.c
+@@ -225,7 +225,7 @@ void gm_801A4014(GameMode* mode)
+      * move, and C has no bitwise operator on pointers, hence the round trip.
+      */
+     scene =
+-        (GameScene*) ((uintptr_t) gm_FindGameSceneHandler(kind) | (zero = 0));
++        (GameScene*) MU_WIDEN64(((uintptr_t) gm_FindGameSceneHandler(kind) | (zero = 0)));
+     gm_801A4BD4();
+     gm_801A4B88(info);
+ #if MU_ROGUE  /* rogueMelee */
+diff --git a/src/melee/gm/gmregenddisp.c b/src/melee/gm/gmregenddisp.c
+index 7a4c8de..5f4c357 100644
+--- a/src/melee/gm/gmregenddisp.c
++++ b/src/melee/gm/gmregenddisp.c
+@@ -297,7 +297,7 @@ void gm_801A9094(void)
+             dsp = tyDisplay_8031B9DC(
+                 gm_801A659C(gm_801A9094_get_entry(sp8C, i)));
+             joint = HSD_ArchiveGetPublicAddress(
+-                gm_804D679C, (const char*) MU_Z(tyDisplay_8031BB34((s8) dsp->x04)));
++                gm_804D679C, (const char*) MU_WIDEN64(MU_Z(tyDisplay_8031BB34((s8) dsp->x04))));
+             matanim = HSD_ArchiveGetPublicAddress(
+                 gm_804D679C, tyDisplay_8031BB94((s8) dsp->x04));
+             bg_joint = gm_801A9094_get_bg();
+diff --git a/src/melee/gm/gmtoulib.c b/src/melee/gm/gmtoulib.c
+index 3106b9a..f0335d8 100644
+--- a/src/melee/gm/gmtoulib.c
++++ b/src/melee/gm/gmtoulib.c
+@@ -2319,7 +2319,7 @@ void fn_8018FA24(void)
+ 
+ void fn_8018FBD8(void* arg0, s32 arg1)
+ {
+-    ((HSD_GObj*) arg0)->user_data = (void*) MU_Z(arg1);
++    ((HSD_GObj*) arg0)->user_data = (void*) MU_WIDEN64(MU_Z(arg1));
+ }
+ 
+ void fn_8018FBE0(s32 arg0, s32 arg1, s32 arg2, s32 arg3, s32 arg4, s32 arg5,
+@@ -2411,7 +2411,7 @@ void fn_801902F0(intptr_t sis_param)
+         value = 0;
+     }
+     lbl_804D663C =
+-        HSD_SisLib_803A611C(0, (HSD_GObj*) value, 9, 0x12, 0, 3, 0, 0x13);
++        HSD_SisLib_803A611C(0, (HSD_GObj*) MU_WIDEN64(value), 9, 0x12, 0, 3, 0, 0x13);
+ }
+ 
+ HSD_GObj* fn_8019035C(bool arg0, DynamicModelDesc* model, int arg2, int arg3,
+diff --git a/src/melee/gr/grcastle.c b/src/melee/gr/grcastle.c
+index 6699b0e..b4fb030 100644
+--- a/src/melee/gr/grcastle.c
++++ b/src/melee/gr/grcastle.c
+@@ -814,7 +814,7 @@ void grCastle_801CE260(Ground_GObj* gobj)
+ 
+     gp2 = GET_GROUND(gobj);
+     *(u32*) &gp2->u.arwing.xD8 = (u32) Camera_80029044(2);
+-    subject = (CmSubject*) MU_Z(*(u32*) &gp2->u.arwing.xD8);
++    subject = (CmSubject*) MU_WIDEN64(MU_Z(*(u32*) &gp2->u.arwing.xD8));
+     if (subject != NULL) {
+         subject->target_ext.h.x = yakumono_param->x118;
+         subject->target_ext.h.y = yakumono_param->x11C;
+@@ -826,7 +826,7 @@ void grCastle_801CE260(Ground_GObj* gobj)
+     gp->u.arwing.xD0 = (u32) grMaterial_801C8CFC(
+         0, 3, gp, Ground_801C3FA4((HSD_GObj*) gobj, 0),
+         (void (*)(Item_GObj*, Ground*)) fn_801CE3A0, NULL, NULL);
+-    it_80275414((Item_GObj*) MU_Z(gp->u.arwing.xD0));
++    it_80275414((Item_GObj*) MU_WIDEN64(MU_Z(gp->u.arwing.xD0)));
+     Ground_801C5440(gp, 0, 0x53025U);
+ }
+ 
+@@ -848,12 +848,12 @@ void grCastle_801CE3AC(Ground_GObj* gobj)
+     HSD_JObj* jobj;
+     Ground* gp = GET_GROUND(gobj);
+ 
+-    if ((HSD_GObj*) MU_Z(gp->u.castle5.xCC) != NULL) {
++    if ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle5.xCC)) != NULL) {
+         Quaternion rot;
+         Vec3 pos;
+         Vec3 offset;
+ 
+-        jobj = HSD_GObjGetHSDObj((HSD_GObj*) MU_Z(gp->u.castle5.xCC));
++        jobj = HSD_GObjGetHSDObj((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle5.xCC)));
+         rot = grCs_803B7EB8;
+ 
+         offset.z = 0.0f;
+@@ -889,7 +889,7 @@ void grCastle_801CE578(Ground_GObj* gobj)
+     } while (new_var4);
+ 
+     {
+-        CmSubject* cam = (CmSubject*) MU_Z(gp->u.castle11.xD8);
++        CmSubject* cam = (CmSubject*) MU_WIDEN64(MU_Z(gp->u.castle11.xD8));
+         if (cam != NULL) {
+             lb_8000B1CC(Ground_801C3FA4(gobj, 0), NULL, &pos);
+             cam->pos = pos;
+@@ -917,7 +917,7 @@ void grCastle_801CE578(Ground_GObj* gobj)
+             gp->u.castle11.xC4.b0 = 1;
+             grMaterial_801C9604(gobj, DP(yakumono_param->x114), 0);
+             if (gp->u.castle11.xCC != 0) {
+-                Ground_801C4A08((HSD_GObj*) MU_Z(gp->u.castle11.xCC));
++                Ground_801C4A08((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xCC)));
+             }
+             Ground_801C5544(gp, 0);
+         }
+@@ -929,7 +929,7 @@ void grCastle_801CE578(Ground_GObj* gobj)
+             gp->u.castle11.xC8 = timer - 1;
+             if (timer < 0) {
+                 if (gp->u.castle11.xD0 != 0) {
+-                    grMaterial_801C8CDC((HSD_GObj*) MU_Z(gp->u.castle11.xD0));
++                    grMaterial_801C8CDC((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xD0)));
+                 }
+                 gp->u.castle11.xD0 = 0;
+ 
+@@ -945,7 +945,7 @@ void grCastle_801CE578(Ground_GObj* gobj)
+ 
+                 {
+                     Ground* sat =
+-                        (Ground*) (new_var = ((HSD_GObj*) MU_Z(gp->u.castle11.xD4))
++                        (Ground*) (new_var = ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xD4)))
+                                                  ->user_data);
+                     s32 rand;
+                     s32 range;
+@@ -963,7 +963,7 @@ void grCastle_801CE578(Ground_GObj* gobj)
+ 
+                 gp = (new_var3 = (Ground*) gobj->user_data);
+                 if (gp->u.castle11.xD8 != 0) {
+-                    Camera_800290D4((CmSubject*) MU_Z(gp->u.castle11.xD8));
++                    Camera_800290D4((CmSubject*) MU_WIDEN64(MU_Z(gp->u.castle11.xD8)));
+                     gp->u.castle11.xD8 = 0;
+                 }
+                 Ground_801C4A08(gobj);
+@@ -1019,7 +1019,7 @@ void grCastle_801CE8E8(Ground_GObj* gobj)
+ 
+     gp2 = GET_GROUND(gobj);
+     gp2->u.arwing.xC8 = (u32) Camera_80029044(2);
+-    subject = (CmSubject*) MU_Z(gp2->u.arwing.xC8);
++    subject = (CmSubject*) MU_WIDEN64(MU_Z(gp2->u.arwing.xC8));
+     if (subject != NULL) {
+         subject->target_ext.h.x = yakumono_param->x134;
+         subject->target_ext.h.y = yakumono_param->x138;
+@@ -1029,7 +1029,7 @@ void grCastle_801CE8E8(Ground_GObj* gobj)
+     gp->u.arwing.xC4 = (u32) grMaterial_801C8CFC(
+         0, 4, gp, Ground_801C3FA4((HSD_GObj*) gobj, 0),
+         (void (*)(Item_GObj*, Ground*)) fn_801CE9DC, NULL, NULL);
+-    it_80275414((Item_GObj*) MU_Z(gp->u.arwing.xC4));
++    it_80275414((Item_GObj*) MU_WIDEN64(MU_Z(gp->u.arwing.xC4)));
+     Ground_801C5440(gp, 0, 0x53024U);
+ }
+ 
+@@ -1045,7 +1045,7 @@ void grCastle_801CE9E8(Ground_GObj* gobj)
+     Vec3 pos;
+     Ground* tmp;
+     Ground* gp = GET_GROUND(gobj);
+-    CmSubject* subject = (CmSubject*) MU_Z(gp->u.arwing.xC8);
++    CmSubject* subject = (CmSubject*) MU_WIDEN64(MU_Z(gp->u.arwing.xC8));
+     PAD_STACK(8);
+     if (subject != NULL) {
+         lb_8000B1CC(Ground_801C3FA4(gobj, 0), NULL, &pos);
+@@ -1053,14 +1053,14 @@ void grCastle_801CE9E8(Ground_GObj* gobj)
+         subject->bone_pos = pos;
+     }
+     if (grAnime_801C83D0(gobj, 0, 1)) {
+-        HSD_GObj* mat = (HSD_GObj*) MU_Z((tmp = gp)->u.arwing.xC4);
++        HSD_GObj* mat = (HSD_GObj*) MU_WIDEN64(MU_Z((tmp = gp)->u.arwing.xC4));
+         if (mat != NULL) {
+             grMaterial_801C8CDC(mat);
+         }
+         gp->u.arwing.xC4 = 0;
+         {
+             Ground* gp2 = gobj->user_data;
+-            CmSubject* subj2 = (CmSubject*) MU_Z((tmp = gp2)->u.arwing.xC8);
++            CmSubject* subj2 = (CmSubject*) MU_WIDEN64(MU_Z((tmp = gp2)->u.arwing.xC8));
+             if (subj2 != NULL) {
+                 Camera_800290D4(subj2);
+                 gp2->u.arwing.xC8 = 0;
+@@ -1245,7 +1245,7 @@ void grCastle_801CEF04(Ground_GObj* gobj)
+             gp->u.castle6.xCC = 0;
+             for (i = 0; i < 5; i++) {
+                 if (gp->u.castle10.x10C[i] != 0) {
+-                    grMaterial_801C8CDC((HSD_GObj*) MU_Z(gp->u.castle10.x10C[i]));
++                    grMaterial_801C8CDC((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle10.x10C[i])));
+                     gp->u.castle10.x10C[i] = 0;
+                 }
+             }
+@@ -1369,9 +1369,9 @@ void grCastle_801CF308(Ground_GObj* gobj)
+                         Event) fn_801CFAFC,
+                     (void (*)(Item_GObj*, Ground*, HSD_GObj*))(
+                         Event) fn_801CFB68);
+-                grMaterial_801C8DE0((Item_GObj*) MU_Z(gp->u.castle11.xD8), 0.0f,
++                grMaterial_801C8DE0((Item_GObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xD8)), 0.0f,
+                                     -1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 4.0f);
+-                grMaterial_801C8E08((Item_GObj*) MU_Z(gp->u.castle11.xD8));
++                grMaterial_801C8E08((Item_GObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xD8)));
+                 gp->u.castle8.plat[0].state = yakumono_param->x54;
+             }
+         }
+@@ -1383,7 +1383,7 @@ void grCastle_801CF308(Ground_GObj* gobj)
+         break;
+     case 4: {
+         if (gp->u.castle11.xD8 != 0) {
+-            grMaterial_801C8CDC((HSD_GObj*) MU_Z(gp->u.castle11.xD8));
++            grMaterial_801C8CDC((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xD8)));
+             gp->u.castle11.xD8 = 0;
+         }
+         ((Ground*) (gp->u.castle7.xD0)->user_data)->u.castle5.xC4 = 1;
+@@ -1411,10 +1411,10 @@ void grCastle_801CF308(Ground_GObj* gobj)
+     }
+ 
+     if (var_r6 != 0) {
+-        lb_8000B1CC((HSD_JObj*) MU_Z(gp->u.castle11.xD4), NULL, &pos);
++        lb_8000B1CC((HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xD4)), NULL, &pos);
+         HSD_JObjSetTranslate(jobj, &pos);
+ 
+-        HSD_JObjGetRotation((HSD_JObj*) MU_Z(gp->u.castle11.xD4), &quat);
++        HSD_JObjGetRotation((HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.castle11.xD4)), &quat);
+         HSD_JObjSetRotation(jobj, &quat);
+     }
+ }
+@@ -1510,7 +1510,7 @@ static inline void grCastle_PickSatellite(Ground* gp, s32* wp)
+     }
+     gp->u.castle3.xD0 = slot;
+ 
+-    sat_gp = (Ground*) ((HSD_GObj*) MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0]))
++    sat_gp = (Ground*) ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0])))
+                  ->user_data;
+ 
+     {
+@@ -1547,10 +1547,10 @@ void grCastle_801CF868(Ground_GObj* gobj)
+     if ((gp->u.castle3.xC4[0] != 0 || gp->u.castle3.xC4[1] != 0 ||
+          gp->u.castle3.xC4[2] != 0) &&
+         (gp->u.castle3.xD0 == -1 ||
+-         (((HSD_GObj*) MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0])) != NULL &&
+-          ((Ground*) ((HSD_GObj*) MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0]))
++         (((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0]))) != NULL &&
++          ((Ground*) ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0])))
+                ->user_data) != NULL &&
+-          ((Ground*) ((HSD_GObj*) MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0]))
++          ((Ground*) ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.castle3.xC4[gp->u.castle3.xD0])))
+                ->user_data)
+                   ->u.castle7.xC4 == 0)))
+     {
+@@ -1675,10 +1675,10 @@ MU_NO_CONTRACT s32 grCastle_801CFBD4(Ground_GObj* gobj, s32 arg1)
+                                                   HSD_GObj*))(
+                                             Event) cb2.callbacks[i]);
+                                 grMaterial_801C8DE0(
+-                                    (Item_GObj*) MU_Z(gp->u.castle10.x10C[i]), 0.0f,
++                                    (Item_GObj*) MU_WIDEN64(MU_Z(gp->u.castle10.x10C[i])), 0.0f,
+                                     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 8.0f);
+                                 grMaterial_801C8E08(
+-                                    (Item_GObj*) MU_Z(gp->u.castle10.x10C[i]));
++                                    (Item_GObj*) MU_WIDEN64(MU_Z(gp->u.castle10.x10C[i])));
+                             }
+                         }
+                         HSD_JObjSetScaleY(target, newScale);
+@@ -1787,7 +1787,7 @@ static inline void grCastle_801D0550_sub(unkCastle* arg0, s32 i)
+     Ground* gp = (Ground*) arg0;
+     gp->u.castle10.state[i] = 1;
+     if (gp->u.castle10.x10C[i] != 0) {
+-        grMaterial_801C8CDC((Item_GObj*) MU_Z(gp->u.castle10.x10C[i]));
++        grMaterial_801C8CDC((Item_GObj*) MU_WIDEN64(MU_Z(gp->u.castle10.x10C[i])));
+     }
+     gp->u.castle10.x10C[i] = 0;
+ #else
+@@ -1835,7 +1835,7 @@ static void grCastle_801D06CC_sub(unkCastle* arg0, Ground_GObj* gobj, s32 i)
+         Ground* gp = (Ground*) arg0;   /* see grCastle_801D0550_sub */
+         gp->u.castle10.state[i] = 1;
+         if (gp->u.castle10.x10C[i] != 0) {
+-            grMaterial_801C8CDC((Item_GObj*) MU_Z(gp->u.castle10.x10C[i]));
++            grMaterial_801C8CDC((Item_GObj*) MU_WIDEN64(MU_Z(gp->u.castle10.x10C[i])));
+         }
+         gp->u.castle10.x10C[i] = 0;
+ #else
+diff --git a/src/melee/gr/grfzerocar.c b/src/melee/gr/grfzerocar.c
+index d7ab11e..9096160 100644
+--- a/src/melee/gr/grfzerocar.c
++++ b/src/melee/gr/grfzerocar.c
+@@ -67,7 +67,7 @@ static inline void setup_car_child(HSD_JObj* parent, s16 ext_count, s32 offset,
+     jobj = Ground_801C13D0(ext_count, 0);
+     if (jobj != NULL) {
+         DynamicModelDesc* entry =
+-            (DynamicModelDesc*) ((u8*) MU_Z(offset) +
++            (DynamicModelDesc*) ((u8*) MU_WIDEN64(MU_Z(offset)) +
+                                  (uintptr_t) DP(archive->unk4->unk8));
+         if (!DISC_NULL(entry->anims)) {
+             if (!DISC_NULL(entry->matanims)) {
+diff --git a/src/melee/gr/grhomerun.c b/src/melee/gr/grhomerun.c
+index 5651556..d72a3d7 100644
+--- a/src/melee/gr/grhomerun.c
++++ b/src/melee/gr/grhomerun.c
+@@ -372,7 +372,7 @@ void grHomeRun_8021D680(Ground_GObj* gobj)
+     gp->u.homerun.xE8_flags.b0 = 0;
+     if ((u32) gp->u.unk.xD0 != 0 && (u32) gp->u.unk.xCC == 0) {
+         gp->u.unk.xCC = (intptr_t) grHomeRun_8021EC58(0);
+-        jobj2 = (HSD_JObj*) MU_Z(gp->u.unk.xD0);
++        jobj2 = (HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.unk.xD0));
+         lb_8000B1CC(jobj2, NULL, &pos2);
+ 
+         scale = Ground_801C0498();
+@@ -382,7 +382,7 @@ void grHomeRun_8021D680(Ground_GObj* gobj)
+         y = -pos2.y + 0.0F * (grHr_804D6AE4 * scale);
+ 
+         scale = Ground_801C0498();
+-        text = (HSD_Text*) (intptr_t) gp->u.unk.xCC;
++        text = (HSD_Text*) MU_WIDEN64((intptr_t) gp->u.unk.xCC);
+         text->pos_x = pos2.x + (-1.0F) * (grHr_804D6AE4 * scale);
+         text->pos_y = y;
+         text->pos_z = z;
+@@ -508,7 +508,7 @@ void grHomeRun_8021DF50(Ground_GObj* gobj)
+             HSD_Text* text;
+ 
+             gp->u.unk.xC8 = (int) grHomeRun_8021EC58(gp->u.homerun2.xC6);
+-            lb_8000B1CC((HSD_JObj*) MU_Z(gp->u.unk.xCC), NULL, &pos);
++            lb_8000B1CC((HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.unk.xCC)), NULL, &pos);
+ 
+             scale = Ground_801C0498();
+             z = pos.z + 0.0F * (grHr_804D6AE4 * scale);
+@@ -517,7 +517,7 @@ void grHomeRun_8021DF50(Ground_GObj* gobj)
+             y = -pos.y + 0.0F * (grHr_804D6AE4 * scale);
+ 
+             scale = Ground_801C0498();
+-            text = (HSD_Text*) MU_Z(gp->u.unk.xC8);
++            text = (HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8));
+             text->pos_x = pos.x + (-1.0F) * (grHr_804D6AE4 * scale);
+             text->pos_y = y;
+             text->pos_z = z;
+@@ -529,7 +529,7 @@ void grHomeRun_8021E008(Ground_GObj* gobj)
+ {
+     Ground* gp = GET_GROUND(gobj);
+     if ((u32) gp->u.unk.xC8 != 0) {
+-        HSD_SisLib_803A5CC4((HSD_Text*) MU_Z(gp->u.unk.xC8));
++        HSD_SisLib_803A5CC4((HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8)));
+     }
+ }
+ 
+@@ -572,7 +572,7 @@ void grHomeRun_8021E0D4(Ground_GObj* gobj)
+             HSD_Text* text;
+ 
+             gp->u.unk.xC8 = (int) grHomeRun_8021EC58(gp->u.homerun2.xC6);
+-            lb_8000B1CC((HSD_JObj*) MU_Z(gp->u.unk.xCC), NULL, &pos);
++            lb_8000B1CC((HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.unk.xCC)), NULL, &pos);
+ 
+             scale = Ground_801C0498();
+             z = pos.z + 0.0F * (grHr_804D6AE4 * scale);
+@@ -581,7 +581,7 @@ void grHomeRun_8021E0D4(Ground_GObj* gobj)
+             y = -pos.y + 0.0F * (grHr_804D6AE4 * scale);
+ 
+             scale = Ground_801C0498();
+-            text = (HSD_Text*) MU_Z(gp->u.unk.xC8);
++            text = (HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8));
+             text->pos_x = pos.x + (-1.0F) * (grHr_804D6AE4 * scale);
+             text->pos_y = y;
+             text->pos_z = z;
+@@ -593,7 +593,7 @@ void grHomeRun_8021E18C(Ground_GObj* gobj)
+ {
+     Ground* gp = GET_GROUND(gobj);
+     if ((u32) gp->u.unk.xC8 != 0) {
+-        HSD_SisLib_803A5CC4((HSD_Text*) MU_Z(gp->u.unk.xC8));
++        HSD_SisLib_803A5CC4((HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8)));
+     }
+ }
+ 
+@@ -636,7 +636,7 @@ void grHomeRun_8021E258(Ground_GObj* gobj)
+             HSD_Text* text;
+ 
+             gp->u.unk.xC8 = (int) grHomeRun_8021EC58(gp->u.homerun2.xC6);
+-            lb_8000B1CC((HSD_JObj*) MU_Z(gp->u.unk.xCC), NULL, &pos);
++            lb_8000B1CC((HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.unk.xCC)), NULL, &pos);
+ 
+             scale = Ground_801C0498();
+             z = pos.z + 0.0F * (grHr_804D6AE4 * scale);
+@@ -645,7 +645,7 @@ void grHomeRun_8021E258(Ground_GObj* gobj)
+             y = -pos.y + 0.0F * (grHr_804D6AE4 * scale);
+ 
+             scale = Ground_801C0498();
+-            text = (HSD_Text*) MU_Z(gp->u.unk.xC8);
++            text = (HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8));
+             text->pos_x = pos.x + (-1.0F) * (grHr_804D6AE4 * scale);
+             text->pos_y = y;
+             text->pos_z = z;
+@@ -657,7 +657,7 @@ void grHomeRun_8021E310(Ground_GObj* gobj)
+ {
+     Ground* gp = GET_GROUND(gobj);
+     if ((u32) gp->u.unk.xC8 != 0) {
+-        HSD_SisLib_803A5CC4((HSD_Text*) MU_Z(gp->u.unk.xC8));
++        HSD_SisLib_803A5CC4((HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8)));
+     }
+ }
+ 
+@@ -700,7 +700,7 @@ void grHomeRun_8021E3DC(Ground_GObj* gobj)
+             HSD_Text* text;
+ 
+             gp->u.unk.xC8 = (int) grHomeRun_8021EC58(gp->u.homerun2.xC6);
+-            lb_8000B1CC((HSD_JObj*) MU_Z(gp->u.unk.xCC), NULL, &pos);
++            lb_8000B1CC((HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.unk.xCC)), NULL, &pos);
+ 
+             scale = Ground_801C0498();
+             z = pos.z + 0.0F * (grHr_804D6AE4 * scale);
+@@ -709,7 +709,7 @@ void grHomeRun_8021E3DC(Ground_GObj* gobj)
+             y = -pos.y + 0.0F * (grHr_804D6AE4 * scale);
+ 
+             scale = Ground_801C0498();
+-            text = (HSD_Text*) MU_Z(gp->u.unk.xC8);
++            text = (HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8));
+             text->pos_x = pos.x + (-1.0F) * (grHr_804D6AE4 * scale);
+             text->pos_y = y;
+             text->pos_z = z;
+@@ -721,7 +721,7 @@ void grHomeRun_8021E494(Ground_GObj* gobj)
+ {
+     Ground* gp = GET_GROUND(gobj);
+     if ((u32) gp->u.unk.xC8 != 0) {
+-        HSD_SisLib_803A5CC4((HSD_Text*) MU_Z(gp->u.unk.xC8));
++        HSD_SisLib_803A5CC4((HSD_Text*) MU_WIDEN64(MU_Z(gp->u.unk.xC8)));
+     }
+ }
+ 
+diff --git a/src/melee/gr/gricemt.c b/src/melee/gr/gricemt.c
+index 3dc527f..0138951 100644
+--- a/src/melee/gr/gricemt.c
++++ b/src/melee/gr/gricemt.c
+@@ -204,7 +204,7 @@ static struct grIceMt_YakumonoParam* yakumono_param;
+ static HSD_JObj* grIceMt_GetMapJObj(Ground* gp, int index)
+ {
+ #ifdef MU_NATIVE
+-    return (HSD_JObj*) MU_Z(gp->u.icemt1.x4_slots[index]);
++    return (HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.icemt1.x4_slots[index]));
+ #else
+     return gp->u.icemt1.x4_slots[index];
+ #endif
+@@ -222,7 +222,7 @@ static void grIceMt_SetMapJObj(Ground* gp, int index, HSD_JObj* jobj)
+ static HSD_GObj* grIceMt_GetMaterialGObj(Ground* gp, int index)
+ {
+ #ifdef MU_NATIVE
+-    return (HSD_GObj*) MU_Z(gp->u.icemt1.x34[index]);
++    return (HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.icemt1.x34[index]));
+ #else
+     return gp->u.icemt1.x34[index];
+ #endif
+diff --git a/src/melee/gr/ground.c b/src/melee/gr/ground.c
+index 2085293..cd7f9ce 100644
+--- a/src/melee/gr/ground.c
++++ b/src/melee/gr/ground.c
+@@ -764,8 +764,8 @@ void Ground_801C0FB8(StageIdPair* pair)
+ {
+     struct {
+         void* unk0;
+-        s32 unk4;
+-        void (*unk8)(s32);
++        HSD_GObj* unk4;   /* mumac: the pointer Ground_801C10B8 stores, not 32 bits of it */
++        HSD_GObjEvent unk8;
+     }* cur;
+     void* next;
+     GR_STAGE(pair->grkind)->on_start();
+diff --git a/src/melee/gr/grshrineroute.c b/src/melee/gr/grshrineroute.c
+index 224ce52..c6e161e 100644
+--- a/src/melee/gr/grshrineroute.c
++++ b/src/melee/gr/grshrineroute.c
+@@ -466,7 +466,7 @@ void grShrineRoute_80208F70(Ground_GObj* gobj)
+                         gp->u.shrineroute.xD4 = (u32) temp;
+                         if (temp != NULL) {
+                             ejobj =
+-                                ((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4))->hsd_obj;
++                                ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)))->hsd_obj;
+                             HSD_JObjSetFlagsAll(ejobj, JOBJ_HIDDEN);
+                             Ground_801C2D24(result, &sp88);
+                             HSD_JObjSetTranslate(ejobj, &sp88);
+@@ -560,7 +560,7 @@ void grShrineRoute_80208F70(Ground_GObj* gobj)
+             grAnime_801C7A04((HSD_GObj*) gobj, 0, 7U, 0.0f);
+             grLib_801C9908(gobj->hsd_obj);
+             if (gp->u.shrineroute.xD4 != 0) {
+-                grMaterial_801C9604((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4),
++                grMaterial_801C9604((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)),
+                                     DP(yakumono_param->x4), 0);
+             }
+         }
+@@ -569,17 +569,17 @@ void grShrineRoute_80208F70(Ground_GObj* gobj)
+     case 2: {
+         track_plat = 1;
+         if (gp->u.shrineroute.xD4 != 0) {
+-            HSD_JObj* ejobj = ((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4))->hsd_obj;
++            HSD_JObj* ejobj = ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)))->hsd_obj;
+             if (HSD_JObjGetFlags(ejobj) & 0x10) {
+-                void* anim = ((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4))->user_data;
++                void* anim = ((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)))->user_data;
+                 HSD_JObjClearFlagsAll(ejobj, JOBJ_HIDDEN);
+-                grAnime_801C8138((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4),
++                grAnime_801C8138((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)),
+                                  ((Ground*) anim)->map_id, 0);
+             }
+         }
+         {
+             if (((gp->u.shrineroute.xD4 != 0) &&
+-                 (grLib_801C96E8((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4)) != 0)) ||
++                 (grLib_801C96E8((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4))) != 0)) ||
+                 (gp->u.shrineroute.xD4 == 0))
+             {
+                 gp->u.shrineroute.xC4 = 3;
+@@ -614,7 +614,7 @@ void grShrineRoute_80208F70(Ground_GObj* gobj)
+             mpJointListAdd(7);
+             grShrineRoute_8020B0AC();
+             if (gp->u.shrineroute.xD4 != 0) {
+-                grMaterial_801C9604((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4),
++                grMaterial_801C9604((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)),
+                                     DP(yakumono_param->x8), 0);
+             }
+             stage_info.x6DC = 0;
+@@ -625,13 +625,13 @@ void grShrineRoute_80208F70(Ground_GObj* gobj)
+     case 4: {
+         track_plat = 0;
+         if (((gp->u.shrineroute.xD4 != 0) &&
+-             (grLib_801C96E8((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4)) != 0)) ||
++             (grLib_801C96E8((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4))) != 0)) ||
+             (gp->u.shrineroute.xD4 == 0))
+         {
+             gp->u.shrineroute.xC4 = 5;
+-            grLib_801C9908(((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4))->hsd_obj);
++            grLib_801C9908(((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)))->hsd_obj);
+             if (gp->u.shrineroute.xD4 != 0) {
+-                Ground_801C4A08((HSD_GObj*) MU_Z(gp->u.shrineroute.xD4));
++                Ground_801C4A08((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.shrineroute.xD4)));
+                 gp->u.shrineroute.xD4 = 0;
+             }
+             grMaterial_801C9604((HSD_GObj*) gobj, DP(yakumono_param->xC), 0);
+diff --git a/src/melee/gr/grvenom.c b/src/melee/gr/grvenom.c
+index 0b9ceef..454ca12 100644
+--- a/src/melee/gr/grvenom.c
++++ b/src/melee/gr/grvenom.c
+@@ -814,7 +814,7 @@ void grVenom_8020454C(Ground_GObj* gobj)
+         {
+             u32* slots = &gp->u.venom2.xC4;
+             for (i = 0; i < 7; i++) {
+-                HSD_JObj* jobj = (HSD_JObj*) MU_Z(slots[i]);
++                HSD_JObj* jobj = (HSD_JObj*) MU_WIDEN64(MU_Z(slots[i]));
+                 if (jobj == NULL) {
+                     continue;
+                 }
+@@ -1552,7 +1552,7 @@ void grVenom_80205F30(Ground_GObj* gobj)
+             venom_80205F30_anim_done:;
+             }
+ 
+-            if ((other = (HSD_GObj*) MU_Z(base[gp->u.venom.xC8 + 8])) != NULL) {
++            if ((other = (HSD_GObj*) MU_WIDEN64(MU_Z(base[gp->u.venom.xC8 + 8]))) != NULL) {
+                 other_gp = other->user_data;
+                 Ground_GetMapGObj(5);
+                 lb_8000B1CC(Ground_801C3FA4(other, 5), NULL, &sp64);
+@@ -1634,7 +1634,7 @@ void grVenom_80205F30(Ground_GObj* gobj)
+                 HSD_GObj* far_other;
+                 Ground* far_other_gp;
+ 
+-                if ((far_other = (HSD_GObj*) MU_Z(base[gp->u.venom.xC8 + 8])) !=
++                if ((far_other = (HSD_GObj*) MU_WIDEN64(MU_Z(base[gp->u.venom.xC8 + 8]))) !=
+                     NULL)
+                 {
+                     far_other_gp = far_other->user_data;
+diff --git a/src/melee/gr/gryorster.c b/src/melee/gr/gryorster.c
+index 5d9fb37..75a3cd2 100644
+--- a/src/melee/gr/gryorster.c
++++ b/src/melee/gr/gryorster.c
+@@ -215,7 +215,7 @@ void grYorster_802022A4(HSD_GObj* gobj)
+ void grYorster_80202428(HSD_GObj* item_gobj, Ground* gp, Vec3* pos,
+                         HSD_GObj* fighter_gobj, f32 value)
+ {
+-    Ground* gp2 = (Ground*) MU_Z(((s32) gp + 0));
++    Ground* gp2 = (Ground*) MU_WIDEN64(MU_Z(((s32) gp + 0)));
+     int i;
+ 
+     if (ftLib_80086960(fighter_gobj)) {
+diff --git a/src/melee/gr/grzebes.c b/src/melee/gr/grzebes.c
+index d5042e4..03637df 100644
+--- a/src/melee/gr/grzebes.c
++++ b/src/melee/gr/grzebes.c
+@@ -457,7 +457,7 @@ void grZebes_801D881C(HSD_GObj* gobj)
+     HSD_JObj* sima_jobj;
+     s32 result;
+     int vertex_idx;
+-    sima_gobj = (HSD_GObj*) MU_Z(gp->u.zebes5.xF0);
++    sima_gobj = (HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.zebes5.xF0));
+     result = grZebes_801DA528(gobj, &gp->u.zebes5.xC8, 1, 2);
+     PAD_STACK(0x8);
+ 
+@@ -489,7 +489,7 @@ void grZebes_801D881C(HSD_GObj* gobj)
+     {
+         result = grZebes_801DB3CC(gobj);
+         grZebes_801DC260();
+-        grZebes_801DBB60((HSD_GObj*) MU_Z(gp->u.zebes5.x100));
++        grZebes_801DBB60((HSD_GObj*) MU_WIDEN64(MU_Z(gp->u.zebes5.x100)));
+         grZebes_801DC408(gobj);
+ 
+         switch (gp->u.zebes5.xC4) {
+@@ -664,7 +664,7 @@ void grZebes_801D881C(HSD_GObj* gobj)
+         f32 slope;
+         f32 intercept;
+         Ground_801C4368(&slope, &intercept);
+-        grZakoGenerator_801CA43C((grZakoGenerator_Config*) MU_Z(gp->u.zebes5.xFC),
++        grZakoGenerator_801CA43C((grZakoGenerator_Config*) MU_WIDEN64(MU_Z(gp->u.zebes5.xFC)),
+                                  Ground_801C3FA4(gobj, 0xE), slope);
+     }
+     Ground_UpdateMapColl((Ground_GObj*) gobj);
+@@ -750,7 +750,7 @@ void grZebes_801D925C(HSD_GObj* gobj)
+     {
+         f32 slope, intercept;
+         Ground_801C4368(&slope, &intercept);
+-        grZakoGenerator_801CA43C((void*) MU_Z(gp->u.zebes4.xEC),
++        grZakoGenerator_801CA43C((void*) MU_WIDEN64(MU_Z(gp->u.zebes4.xEC)),
+                                  Ground_801C3FA4(gobj, 1), slope);
+         Ground_UpdateMapColl((Ground_GObj*) gobj);
+     }
+@@ -809,7 +809,7 @@ void grZebes_801D95B8(Ground_GObj* gobj)
+ {
+     Ground* gp = GET_GROUND(gobj);
+     HSD_JObj* jobj = GET_JOBJ(gobj);
+-    HSD_JObj* stored_jobj = (HSD_JObj*) MU_Z(gp->u.zebes.stored_jobj);
++    HSD_JObj* stored_jobj = (HSD_JObj*) MU_WIDEN64(MU_Z(gp->u.zebes.stored_jobj));
+ 
+     if (stored_jobj != NULL) {
+         Vec3 pos;
+@@ -1211,7 +1211,7 @@ static inline void grZebes_801DA254_inline2(HSD_LObj* lobj, GXColor* color)
+ void grZebes_801DA254(Ground_GObj* gobj, f32 level)
+ {
+     Ground* gp = GET_GROUND(gobj);
+-    HSD_LObj* lobj = (HSD_LObj*) MU_Z(gp->u.zebes4.xDC);
++    HSD_LObj* lobj = (HSD_LObj*) MU_WIDEN64(MU_Z(gp->u.zebes4.xDC));
+     gp->u.zebes4.xDC = (u32) lobj;
+     if (lobj == NULL) {
+         HSD_GObj* lgobj = HSD_GObjGXLinkHead[4];
+@@ -1282,14 +1282,14 @@ s32 grZebes_801DA528(HSD_GObj* arg0, void* arg1, s32 arg2, s32 arg3)
+         switch (st->x00_state) {
+         case 0:
+             grAnime_801C7FF8(arg0, st->x20_anim_idx, 1, arg2, 0.0f, 1.0f);
+-            grMaterial_801C8E08((Item_GObj*) MU_Z(st->x1C_mat));
++            grMaterial_801C8E08((Item_GObj*) MU_WIDEN64(MU_Z(st->x1C_mat)));
+             st->x02_timer = 0;
+             st->x08_offset = 0.0f;
+             st->x0C_velocity = 0.0f;
+             break;
+         case 1:
+             grAnime_801C78FC(arg0, st->x20_anim_idx, 1);
+-            grMaterial_801C8E28((HSD_GObj*) MU_Z(st->x1C_mat));
++            grMaterial_801C8E28((HSD_GObj*) MU_WIDEN64(MU_Z(st->x1C_mat)));
+             break;
+         case 2: {
+             f1 = HSD_Randf();
+@@ -1356,9 +1356,9 @@ s32 grZebes_801DA528(HSD_GObj* arg0, void* arg1, s32 arg2, s32 arg3)
+             }
+         }
+ 
+-        HSD_JObjSetTranslateX((HSD_JObj*) MU_Z(st->x14_jobj1),
++        HSD_JObjSetTranslateX((HSD_JObj*) MU_WIDEN64(MU_Z(st->x14_jobj1)),
+                               st->x04_base_x + st->x08_offset);
+-        HSD_JObjSetTranslateX((HSD_JObj*) MU_Z(st->x18_jobj2),
++        HSD_JObjSetTranslateX((HSD_JObj*) MU_WIDEN64(MU_Z(st->x18_jobj2)),
+                               st->x04_base_x + st->x08_offset);
+         {
+             f32 dmg = st->x10_damage;
+@@ -2377,7 +2377,7 @@ void grZebes_801DC9DC(s32 arg0)
+     grZebes_801DC744(3, 1);
+ 
+     for (i = 0; i < 100; i++) {
+-        grZebes_801DB3CC((HSD_GObj*) MU_Z(arg0));
++        grZebes_801DB3CC((HSD_GObj*) MU_WIDEN64(MU_Z(arg0)));
+     }
+ }
+ 
+@@ -2416,7 +2416,7 @@ bool grZebes_801DCBFC(Ground_GObj* gobj, HSD_GObj* fobj, void* arg)
+     if (pos.y < slope) {
+ #ifdef MU_NATIVE
+         /* the word at +0x2C of the stage's parameters: a disc address of the lava's hit data */
+-        *(void**) arg = (void*) MU_Z(BEV(*(be_u32*) ((u8*) yakumono_param + 0x2C)));
++        *(void**) arg = (void*) MU_WIDEN64(MU_Z(BEV(*(be_u32*) ((u8*) yakumono_param + 0x2C))));
+ #else
+         *(void**) arg = ((HSD_GObj*) yakumono_param)->user_data;
+ #endif
+diff --git a/src/melee/lb/lbarq.c b/src/melee/lb/lbarq.c
+index 790ef73..eaf48e3 100644
+--- a/src/melee/lb/lbarq.c
++++ b/src/melee/lb/lbarq.c
+@@ -44,7 +44,7 @@ static lbArqState lbArq_80014ABC(lbArqNode* arg0)
+ static void lbArq_80014AC4(ARQRequest* request)
+ {
+     /* The request's owner word holds the node as a 32-bit address. */
+-    lbArqNode* node = (lbArqNode*) (uintptr_t) request->owner;
++    lbArqNode* node = (lbArqNode*) MU_WIDEN64(MU_WIDEN(request->owner));
+     lbArqNode** prev;
+     lbArqNode** tail;
+     BOOL intr;
+diff --git a/src/melee/lb/lbaudio_ax.c b/src/melee/lb/lbaudio_ax.c
+index e9a6e69..403544b 100644
+--- a/src/melee/lb/lbaudio_ax.c
++++ b/src/melee/lb/lbaudio_ax.c
+@@ -334,7 +334,7 @@ static inline be_s32* getAudioLoadData(int arg0)
+             table = DP(lbl_804D6454->x0);
+         }
+     }
+-    return (be_s32*) MU_Z(BEV(table[arg0]));
++    return (be_s32*) MU_WIDEN64(MU_Z(BEV(table[arg0])));
+ }
+ 
+ int lbAudioAx_80023968(int arg0)
+diff --git a/src/melee/lb/lbcardgame.c b/src/melee/lb/lbcardgame.c
+index ec086c3..1ae7d25 100644
+--- a/src/melee/lb/lbcardgame.c
++++ b/src/melee/lb/lbcardgame.c
+@@ -146,7 +146,7 @@ static void* getIconData(size_t idx)
+ #ifdef MU_NATIVE
+     /* MemCardIconData is an archive array of relocated 32-bit pointer slots.
+      * Reading it as void** widens two adjacent slots into one invalid host pointer. */
+-    return (void*) MU_Z(BEV(((be_u32*) _p(icon_data))[idx]));
++    return (void*) MU_WIDEN64(MU_Z(BEV(((be_u32*) _p(icon_data))[idx])));
+ #else
+     return _p(icon_data)[idx];
+ #endif
+diff --git a/src/melee/lb/lbcommand.c b/src/melee/lb/lbcommand.c
+index 1e01ce5..6627a9c 100644
+--- a/src/melee/lb/lbcommand.c
++++ b/src/melee/lb/lbcommand.c
+@@ -35,7 +35,7 @@ void Command_03(CommandInfo* info)
+ {
+     info->event_return[info->loop_count++] = info->u + 1;
+     info->event_return[info->loop_count++] =
+-        (union CmdUnion*) MU_Z(info->u->Command_03.value);
++        (union CmdUnion*) MU_WIDEN64(MU_Z(info->u->Command_03.value));
+     NEXT_CMD(info);
+ }
+ 
+@@ -46,7 +46,7 @@ void Command_04(CommandInfo* info)
+     /* The stack stores a command address followed by a loop counter. Offsets
+      * into the console's CommandInfo no longer address those host slots. */
+     u32 count = (u32) (uintptr_t) info->event_return[info->loop_count - 1] - 1;
+-    info->event_return[info->loop_count - 1] = (CmdUnion*) MU_Z(count);
++    info->event_return[info->loop_count - 1] = (CmdUnion*) MU_WIDEN64(MU_Z(count));
+     if (count != 0) {
+         info->u = info->event_return[info->loop_count - 2];
+         return;
+diff --git a/src/melee/lb/lbheap.c b/src/melee/lb/lbheap.c
+index 2211848..be07f3d 100644
+--- a/src/melee/lb/lbheap.c
++++ b/src/melee/lb/lbheap.c
+@@ -59,11 +59,11 @@ static inline void createHeap(LbHeapKind kind)
+     struct Heap* heap = &lbHeap_80431FA0.heap_array[kind];
+     if (heap->status == LbHeapStatus_Destroy) {
+         if (heap->type == 0) {
+-            heap->id = OSCreateHeap((void*) heap->start,
+-                                    (void*) (heap->start + heap->size));
++            heap->id = OSCreateHeap((void*) MU_WIDEN64(heap->start),
++                                    (void*) MU_WIDEN64((heap->start + heap->size)));
+         } else {
+             heap->handle = lbMemory_80014E24(
+-                (void*) heap->start, (void*) (heap->start + heap->size));
++                (void*) MU_WIDEN64(heap->start), (void*) MU_WIDEN64((heap->start + heap->size)));
+         }
+         heap->status = LbHeapStatus_Create;
+     }
+@@ -150,7 +150,7 @@ void lbHeap_80015900(void)
+     }
+ #endif
+     main_heap = &lbHeap_80431FA0.heap_array[LbHeapKind_Hsd];
+-    main_heap->id = HSD_CreateMainHeap((void*) arena_lo, (void*) arena_hi);
++    main_heap->id = HSD_CreateMainHeap((void*) MU_WIDEN64(arena_lo), (void*) MU_WIDEN64(arena_hi));
+     main_heap->start = arena_lo;
+     aram_heap = &lbHeap_80431FA0.heap_array[LbHeapKind_ARAM];
+     main_heap->size = arena_hi - arena_lo;
+@@ -159,7 +159,7 @@ void lbHeap_80015900(void)
+ 
+     lbMemory_800155A4();
+ 
+-    aram_heap->handle = lbMemory_800154D4((void*) aram_lo, (void*) aram_hi);
++    aram_heap->handle = lbMemory_800154D4((void*) MU_WIDEN64(aram_lo), (void*) MU_WIDEN64(aram_hi));
+     aram_heap->start = aram_lo;
+     aram_heap->size = aram_hi - aram_lo;
+     aram_heap->status = LbHeapStatus_Create;
+diff --git a/src/melee/lb/lbmemory.c b/src/melee/lb/lbmemory.c
+index 4ea4b23..00dd049 100644
+--- a/src/melee/lb/lbmemory.c
++++ b/src/melee/lb/lbmemory.c
+@@ -171,7 +171,7 @@ HSD_AllocEntry* lbMemory_80014FC8(Handle* h, size_t size)
+         _p(free_mem) = result->next;
+ 
+         result->size = size;
+-        result->addr = (void*) lo;
++        result->addr = (void*) MU_WIDEN64(lo);
+         result->next = *memp_kouho;
+         *memp_kouho = result;
+ 
+@@ -283,8 +283,8 @@ static void start_ram_copy(const void* src, void* dst, u32 size,
+ static void lbMemory_80015320(int arg0, uintptr_t arg1, void* arg2,
+                               bool cancelflag)
+ {
+-    HSD_AllocEntry* block = (HSD_AllocEntry*) arg1;
+-    void* current = (void*) _p(compact_cursor);
++    HSD_AllocEntry* block = (HSD_AllocEntry*) MU_WIDEN64(arg1);
++    void* current = (void*) MU_WIDEN64(_p(compact_cursor));
+     void* src;
+ 
+     HSD_ASSERT(0x188, !cancelflag);
+@@ -367,6 +367,6 @@ void lbMemory_8001564C(void)
+     }
+     _p(heap)[i].next = NULL;
+     _p(aram_heap) = NULL;
+-    lbMemory_800154D4((void*) _p(a_arenaLo), (void*) _p(a_arenaHi));
++    lbMemory_800154D4((void*) MU_WIDEN64(_p(a_arenaLo)), (void*) MU_WIDEN64(_p(a_arenaHi)));
+     _p(mgr).size = 0;
+ }
+diff --git a/src/melee/lb/lbshadow.c b/src/melee/lb/lbshadow.c
+index d776438..e08a224 100644
+--- a/src/melee/lb/lbshadow.c
++++ b/src/melee/lb/lbshadow.c
+@@ -336,7 +336,7 @@ void lbShadow_8000F38C(s32 arg0)
+     PAD_STACK(0x10);
+ 
+     noLight = 0;
+-    nextGx = (HSD_GObj*) MU_Z((arg0 - arg0));
++    nextGx = (HSD_GObj*) MU_WIDEN64(MU_Z((arg0 - arg0)));
+ 
+     for (
+ #ifdef MUST_MATCH
+@@ -352,7 +352,7 @@ void lbShadow_8000F38C(s32 arg0)
+     }
+ 
+     {
+-        HSD_LObj* lobj = lobj = (HSD_LObj*) MU_Z((arg0 - arg0));
++        HSD_LObj* lobj = lobj = (HSD_LObj*) MU_WIDEN64(MU_Z((arg0 - arg0)));
+         HSD_LObj* fallback = fallback = lobj;
+         {
+             HSD_GObj* lgobj;
+diff --git a/src/melee/mn/mndatadel.c b/src/melee/mn/mndatadel.c
+index dfc71ee..d532224 100644
+--- a/src/melee/mn/mndatadel.c
++++ b/src/melee/mn/mndatadel.c
+@@ -72,7 +72,7 @@ void mnDataDel_8024E940(void)
+     temp_r31 = mnDataDel_804D6C68->user_data;
+     temp_ret = mn_80231634(
+         (struct mn_80231634_t*) temp_r31->x10[mnDataDel_803EF8AC[1]]);
+-    lb_80011E24((HSD_JObj*) MU_Z(temp_ret), &sp18, 1, -1);
++    lb_80011E24((HSD_JObj*) MU_WIDEN64(MU_Z(temp_ret)), &sp18, 1, -1);
+     temp_f31 = mnDataDel_8024E940_inline(sp18);
+     HSD_JObjReqAnimAll(sp18, (0, 1.0f));
+     mn_8022F3D8(sp18, 0xFFU, MOBJ_MASK);
+@@ -134,7 +134,7 @@ void mnDataDel_8024EA6C(void)
+             (struct mn_80231634_t*) ((struct MnDataDelGObjUserData*)
+                                          mnDataDel_804D6C68->user_data)
+                 ->x10[*data]);
+-        lb_80011E24((HSD_JObj*) MU_Z(temp_ret), &sp18, 1, -1);
++        lb_80011E24((HSD_JObj*) MU_WIDEN64(MU_Z(temp_ret)), &sp18, 1, -1);
+         mnDataDel_8024EA6C_inline(&sp18, mn_8022F298(sp18), temp_f30);
+         temp_r31->x3[i] = 1;
+         data++;
+@@ -447,7 +447,7 @@ void fn_8024F318(HSD_GObj* gobj)
+                 case_user_data = mnDataDel_804D6C68->user_data;
+                 temp_ret =
+                     mn_80231634(mnDataDel_GetMenuJObj(case_user_data, 0));
+-                lb_80011E24((HSD_JObj*) MU_Z(temp_ret), &sp68, 1, -1);
++                lb_80011E24((HSD_JObj*) MU_WIDEN64(MU_Z(temp_ret)), &sp68, 1, -1);
+                 frame = mnDataDel_8024E940_inline(sp68);
+                 HSD_JObjReqAnimAll(sp68, (0, 1.0f));
+                 mn_8022F3D8(sp68, 0xFFU, MOBJ_MASK);
+@@ -471,7 +471,7 @@ void fn_8024F318(HSD_GObj* gobj)
+                 case_user_data = mnDataDel_804D6C68->user_data;
+                 temp_ret =
+                     mn_80231634(mnDataDel_GetMenuJObj(case_user_data, 2));
+-                lb_80011E24((HSD_JObj*) MU_Z(temp_ret), &sp60, 1, -1);
++                lb_80011E24((HSD_JObj*) MU_WIDEN64(MU_Z(temp_ret)), &sp60, 1, -1);
+                 frame = mnDataDel_8024E940_inline(sp60);
+                 HSD_JObjReqAnimAll(sp60, (0, 1.0f));
+                 mn_8022F3D8(sp60, 0xFFU, MOBJ_MASK);
+@@ -490,7 +490,7 @@ void fn_8024F318(HSD_GObj* gobj)
+                 case_user_data = mnDataDel_804D6C68->user_data;
+                 temp_ret =
+                     mn_80231634(mnDataDel_GetMenuJObj(case_user_data, 3));
+-                lb_80011E24((HSD_JObj*) MU_Z(temp_ret), &sp58, 1, -1);
++                lb_80011E24((HSD_JObj*) MU_WIDEN64(MU_Z(temp_ret)), &sp58, 1, -1);
+                 frame = mnDataDel_8024E940_inline(sp58);
+                 HSD_JObjReqAnimAll(sp58, (0, 1.0f));
+                 mn_8022F3D8(sp58, 0xFFU, MOBJ_MASK);
+@@ -510,7 +510,7 @@ void fn_8024F318(HSD_GObj* gobj)
+                 case_user_data = mnDataDel_804D6C68->user_data;
+                 temp_ret =
+                     mn_80231634(mnDataDel_GetMenuJObj(case_user_data, 4));
+-                lb_80011E24((HSD_JObj*) MU_Z(temp_ret), &sp50, 1, -1);
++                lb_80011E24((HSD_JObj*) MU_WIDEN64(MU_Z(temp_ret)), &sp50, 1, -1);
+                 frame = mnDataDel_8024E940_inline(sp50);
+                 HSD_JObjReqAnimAll(sp50, (0, 1.0f));
+                 mn_8022F3D8(sp50, 0xFFU, MOBJ_MASK);
+@@ -702,7 +702,7 @@ void fn_8024FBA4(HSD_GObj* gobj)
+ static inline HSD_JObj* fn_8024FC48_inline(int arg0);
+ static inline HSD_JObj* fn_8024FC48_inline(int arg0)
+ {
+-    return (HSD_JObj*) MU_Z(arg0);
++    return (HSD_JObj*) MU_WIDEN64(MU_Z(arg0));
+ }
+ 
+ void fn_8024FC48(HSD_GObj* gobj)
+diff --git a/src/melee/mn/mnname.c b/src/melee/mn/mnname.c
+index c5f8463..1080b91 100644
+--- a/src/melee/mn/mnname.c
++++ b/src/melee/mn/mnname.c
+@@ -618,7 +618,7 @@ void mnName_MainInput(HSD_GObj* arg0)
+                 gobj2->text2 = NULL;
+ #endif
+                 count = mnName_CountValid();
+-                mnNameNew_EnterFromMnName((void*) MU_Z((s32) count));
++                mnNameNew_EnterFromMnName((void*) MU_WIDEN64(MU_Z((s32) count)));
+                 return;
+             }
+             lbAudioAx_80024030(3);
+@@ -1624,7 +1624,7 @@ HSD_GObj* mnName_8023A59C(u8 arg0)
+         if (p == NULL) {
+             j = NULL;
+         } else {
+-            j = (HSD_JObj*) MU_Z(p->x10);
++            j = (HSD_JObj*) MU_WIDEN64(MU_Z(p->x10));
+         }
+         HSD_JObjRemoveAll(j);
+         if (user_data->text != NULL) {
+@@ -1697,7 +1697,7 @@ void mnName_8023A9B4(u8 arg0)
+         if (p == NULL) {
+             jobj = NULL;
+         } else {
+-            jobj = (HSD_JObj*) MU_Z(p->x10);
++            jobj = (HSD_JObj*) MU_WIDEN64(MU_Z(p->x10));
+         }
+         HSD_JObjRemoveAll(jobj);
+         if (gobj2->text != NULL) {
+@@ -1753,7 +1753,7 @@ static bool mnName_ConvertAutoNames(be_u32* source)
+             mnName_NativeAutoNames[i] = (u8*) "";
+             return true;
+         }
+-        name = (u8*) MU_Z(address);
++        name = (u8*) MU_WIDEN64(MU_Z(address));
+         mnName_NativeAutoNames[i] = name;
+         if (name[0] == '\0') {
+             return true;
+@@ -1779,7 +1779,7 @@ static bool mnName_ConvertNotAllowedNames(be_u32* source)
+             mnName_NativeNotAllowedNames[i] = "";
+             return true;
+         }
+-        name = (char*) MU_Z(address);
++        name = (char*) MU_WIDEN64(MU_Z(address));
+         mnName_NativeNotAllowedNames[i] = name;
+         if (name[0] == '\0') {
+             return true;
+diff --git a/src/melee/mn/mnnamenew.c b/src/melee/mn/mnnamenew.c
+index d68454d..2a5a2c9 100644
+--- a/src/melee/mn/mnnamenew.c
++++ b/src/melee/mn/mnnamenew.c
+@@ -439,7 +439,7 @@ static void mnNameNew_InitCodeEntry(void)
+         u32 desc = (u32) root[0xC] << 24 | (u32) root[0xD] << 16 |
+                    (u32) root[0xE] << 8 | root[0xF];
+         HSD_GObj* gobj = GObj_Create(4, 5, 0x80);
+-        HSD_JObj* jobj = HSD_JObjLoadJoint((HSD_Joint*) (uintptr_t) desc);
++        HSD_JObj* jobj = HSD_JObjLoadJoint((HSD_Joint*) MU_WIDEN64(MU_WIDEN(desc)));
+         HSD_GObjObject_80390A70(gobj, HSD_GObj_JObjKind, jobj);
+         GObj_SetupGXLink(gobj, HSD_GObj_JObjCallback, 4, 0x80);
+     }
+diff --git a/src/melee/mn/mnsoundtest.c b/src/melee/mn/mnsoundtest.c
+index 488225f..025828f 100644
+--- a/src/melee/mn/mnsoundtest.c
++++ b/src/melee/mn/mnsoundtest.c
+@@ -486,7 +486,7 @@ static inline void mnSoundTest_ToggleView(soundtest_user_data* ud)
+ 
+     state = (ud->unk0 == 0) ? 1 : 0;
+     ud->unk0 = state;
+-    ud = (soundtest_user_data*) MU_Z((u32) ud->unk0);
++    ud = (soundtest_user_data*) MU_WIDEN64(MU_Z((u32) ud->unk0));
+     gobj = mnSoundTest_804D6C40;
+     mnSoundTest_8024ABF8(gobj, (u32) ud == 0);
+     mnSoundTest_8024AD58(gobj, (u8) (u32) ud);
+diff --git a/src/melee/mp/mplib.c b/src/melee/mp/mplib.c
+index c7215e1..c50c180 100644
+--- a/src/melee/mp/mplib.c
++++ b/src/melee/mp/mplib.c
+@@ -4321,7 +4321,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v1_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+@@ -4358,7 +4358,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v0_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+@@ -4398,7 +4398,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v0_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+@@ -4438,7 +4438,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v1_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+@@ -4478,7 +4478,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v1_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+@@ -4518,7 +4518,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v0_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+@@ -4558,7 +4558,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v0_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+@@ -4598,7 +4598,7 @@ again: {
+     }
+ done: {
+     CollVtx* vtx =
+-        &groundCollVtx[((CollLine*) MU_Z(((int) groundCollLine + line_offset)))
++        &groundCollVtx[((CollLine*) MU_WIDEN64(MU_Z(((int) groundCollLine + line_offset))))
+                            ->x0->v1_idx];
+     pos_out->x = vtx->pos.x;
+     pos_out->y = vtx->pos.y;
+diff --git a/src/melee/ty/toy.c b/src/melee/ty/toy.c
+index db0904b..93a2168 100644
+--- a/src/melee/ty/toy.c
++++ b/src/melee/ty/toy.c
+@@ -1780,7 +1780,7 @@ void Toy_803067BC(s32 arg0, s32 arg1)
+     keys = (uintptr_t) _Toy_sbss_804D6E64->key;
+ 
+     if (arg1 == 0) {
+-        src = (s16*) ((arg0 << 1) + keys);
++        src = (s16*) MU_WIDEN64(((arg0 << 1) + keys));
+         for (i = 0; i < *gmMainLib_GetTrophyCount(); i++) {
+             Toy_sbss_804D6EDC[i] = src[i * TY_SORT_KEY_COUNT];
+         }
+@@ -1788,7 +1788,7 @@ void Toy_803067BC(s32 arg0, s32 arg1)
+     }
+ 
+     count = *gmMainLib_GetTrophyCount();
+-    src = (s16*) ((arg0 << 1) + keys);
++    src = (s16*) MU_WIDEN64(((arg0 << 1) + keys));
+     dest = (s16*) ((u8*) Toy_sbss_804D6EDC + (offset = count << 1));
+     while (count-- != 0) {
+         *dest-- = *src;
+@@ -3701,7 +3701,7 @@ void _Toy_80309404(HSD_GObj* gobj)
+                                 entry = entry->prev;
+                                 {
+                                     s32 idx = list_idx - 1;
+-                                    s16 tid = ((s16*) keys)[idx];
++                                    s16 tid = ((s16*) MU_WIDEN64(keys))[idx];
+                                     (void) keys;
+                                     setupTrophyEntry(entry, tid);
+                                     entry->archive = lbArchive_LoadSymbols(
+@@ -4406,7 +4406,7 @@ void _Toy_8030B530(HSD_GObj* arg0)
+                             entry = entry->prev;
+                             {
+                                 s32 idx = lk - 1;
+-                                s16 tid = ((s16*) keys)[idx];
++                                s16 tid = ((s16*) MU_WIDEN64(keys))[idx];
+                                 (void) keys;
+                                 setupTrophyEntry(entry, tid);
+                                 entry->archive = lbArchive_LoadSymbols(
+@@ -4929,7 +4929,7 @@ void _Toy_8030E110(HSD_GObj* arg0)
+                                     list_entry = list_entry->prev;
+                                     {
+                                         s32 idx = list_idx - 1;
+-                                        s16 trophy_id = ((s16*) keys)[idx];
++                                        s16 trophy_id = ((s16*) MU_WIDEN64(keys))[idx];
+                                         (void) keys;
+                                         setupTrophyEntry(list_entry,
+                                                          trophy_id);
+@@ -5301,7 +5301,7 @@ static inline void _Toy_8030FE48_init_sort_key(s16** ptr)
+     s32 sort_mode = ((Toy26B8*) &_Toy_804A26B8)->x195;
+ 
+     // Integer-domain on purpose: a pointer sum emits the base register first.
+-    *ptr = (s16*) ((sort_mode << 1) + (uintptr_t) keys);
++    *ptr = (s16*) MU_WIDEN64(((sort_mode << 1) + (uintptr_t) keys));
+     (void) keys;
+     (void) sort_mode;
+ }
+@@ -5730,7 +5730,7 @@ void Toy_80310660(s32 arg0)
+             {
+                 if (loopPtr->x14 != NULL) {
+                     lbArchive_80016EFC(loopPtr->x14);
+-                    loopPtr->x14 = (void*) MU_Z(arg);
++                    loopPtr->x14 = (void*) MU_WIDEN64(MU_Z(arg));
+                 }
+             }
+         }
+@@ -5748,10 +5748,10 @@ void Toy_80310660(s32 arg0)
+         if (ty30->x58 != NULL) {
+             lbArchive_80016EFC(ty30->x58);
+             arg = 0;
+-            ty30->x58 = (void*) MU_Z(arg);
++            ty30->x58 = (void*) MU_WIDEN64(MU_Z(arg));
+             if (ty30->x0C != NULL) {
+                 HSD_GObjFree(ty30->x0C);
+-                ty30->x0C = (void*) MU_Z(arg);
++                ty30->x0C = (void*) MU_WIDEN64(MU_Z(arg));
+             }
+         }
+ 
+diff --git a/src/melee/ty/tydisplay.c b/src/melee/ty/tydisplay.c
+index ba95a72..bf4702d 100644
+--- a/src/melee/ty/tydisplay.c
++++ b/src/melee/ty/tydisplay.c
+@@ -1876,7 +1876,7 @@ MU_NO_CONTRACT void tyDisplay_Scene_OnEnter(void* arg0)
+ 
+     for (i = 0; i < 0x2B; i++) {
+         s32 ret = _tyDisplay_8031BBF4((s8) i);
+-        data->archives[i] = lbArchive_LoadSymbols((char*) MU_Z(ret), 0L);
++        data->archives[i] = lbArchive_LoadSymbols((char*) MU_WIDEN64(MU_Z(ret)), 0L);
+     }
+ 
+     data->x104 = 0;
+diff --git a/src/melee/ty/tyfigupon.c b/src/melee/ty/tyfigupon.c
+index a0914d2..a443373 100644
+--- a/src/melee/ty/tyfigupon.c
++++ b/src/melee/ty/tyfigupon.c
+@@ -447,7 +447,7 @@ void _tyFigupon_803155C8(void)
+     ToyAnimState* aa8 = &Toy_804A2AA8;
+     struct un_804D6EF4_t* ef4 = _tyFigupon_804D6EF4;
+     TyFiguponData* data = _tyFigupon_804D6EF0;
+-    HSD_JObj* jobj = GET_JOBJ((HSD_GObj*) MU_Z(ef4->x08));
++    HSD_JObj* jobj = GET_JOBJ((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x08)));
+     s32 sc;
+     f32 fval;
+     f32 pct;
+@@ -1060,12 +1060,12 @@ void _tyFigupon_80316C24(HSD_GObj* arg0)
+             if ((s8) temp != 0) {
+                 ef4->x5D = temp;
+                 ef4->x56 = 0x1E;
+-                HSD_GObj_SetupProc((HSD_GObj*) MU_Z(ef4->x00), _tyFigupon_80315C44,
++                HSD_GObj_SetupProc((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x00)), _tyFigupon_80315C44,
+                                    0);
+-                HSD_GObj_80390CD4((HSD_GObj*) MU_Z(ef4->x00));
+-                HSD_GObj_SetupProc((HSD_GObj*) MU_Z(ef4->x0C), _tyFigupon_803152BC,
++                HSD_GObj_80390CD4((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x00)));
++                HSD_GObj_SetupProc((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x0C)), _tyFigupon_803152BC,
+                                    0);
+-                HSD_GObj_80390CD4((HSD_GObj*) MU_Z(ef4->x0C));
++                HSD_GObj_80390CD4((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x0C)));
+                 ef4->x5C = 1;
+                 HSD_GObj_SetupProc(
+                     arg0, (void (*)(HSD_GObj*)) _tyFigupon_803155C8, 0);
+@@ -1168,7 +1168,7 @@ void _tyFigupon_8031753C(void)
+         OSPanic(__FILE__, 1372, "");
+     }
+     if (ef4->x00 != 0) {
+-        HSD_GObjFree((HSD_GObj*) MU_Z(ef4->x00));
++        HSD_GObjFree((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x00)));
+         ef4->x00 = 0;
+     }
+     panel.joint = HSD_ArchiveGetPublicAddress(ef4->archive,
+@@ -1178,10 +1178,10 @@ void _tyFigupon_8031753C(void)
+         s32 total;
+         ef4->x00 = (u32) GObj_Create(9, 9, 0);
+         jobj = HSD_JObjLoadJoint(panel.joint);
+-        HSD_GObjObject_80390A70((HSD_GObj*) MU_Z(ef4->x00), temp = HSD_GObj_JObjKind,
++        HSD_GObjObject_80390A70((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x00)), temp = HSD_GObj_JObjKind,
+                                 jobj);
+         panel.render_cb = HSD_GObj_JObjCallback;
+-        GObj_SetupGXLink((HSD_GObj*) MU_Z(ef4->x00), panel.render_cb, 0x3C, 1);
++        GObj_SetupGXLink((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x00)), panel.render_cb, 0x3C, 1);
+         lb_8001204C(jobj, ef4->jobjs, _tyFigupon_803FEB88, 0xD);
+         _tyFigupon_80314AA8(ef4->jobjs[0xC], NULL,
+                             "ToyFigurePonPanel_zsmash_matanim_joint", NULL);
+@@ -1249,9 +1249,9 @@ void _tyFigupon_8031753C(void)
+                                             "ToyFigurePonLever_Top_joint");
+         ef4->x08 = (u32) GObj_Create(9, 9, 0);
+         jobj = HSD_JObjLoadJoint(joint);
+-        HSD_GObjObject_80390A70((HSD_GObj*) MU_Z(ef4->x08), temp = HSD_GObj_JObjKind,
++        HSD_GObjObject_80390A70((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x08)), temp = HSD_GObj_JObjKind,
+                                 jobj);
+-        GObj_SetupGXLink((HSD_GObj*) MU_Z(ef4->x08), HSD_GObj_JObjCallback, 0x3C, 0);
++        GObj_SetupGXLink((HSD_GObj*) MU_WIDEN64(MU_Z(ef4->x08)), HSD_GObj_JObjCallback, 0x3C, 0);
+         _tyFigupon_80314AA8(jobj, "ToyFigurePonLever_Top_animjoint",
+                             "ToyFigurePonLever_Top_matanim_joint",
+                             "ToyFigurePonLever_Top_shapeanim_joint");
+@@ -1471,10 +1471,10 @@ void tyFigupon_Scene_OnEnter(void* arg0)
+             HSD_LObj* lobj;
+             ed4->x0 = (u32) GObj_Create(2, 3, 0);
+             lobj = Toy_LoadLObjList(temp, 0);
+-            HSD_GObjObject_80390A70((HSD_GObj*) MU_Z(ed4->x0),
++            HSD_GObjObject_80390A70((HSD_GObj*) MU_WIDEN64(MU_Z(ed4->x0)),
+                                     kind = HSD_GObj_LightKind, lobj);
+             {
+-                HSD_GObj* gobj = (HSD_GObj*) MU_Z(ed4->x0);
++                HSD_GObj* gobj = (HSD_GObj*) MU_WIDEN64(MU_Z(ed4->x0));
+                 GObj_SetupGXLink(gobj, HSD_GObj_LObjCallback, 0x34, 0);
+             }
+         }
+diff --git a/src/melee/vi/vi0501.c b/src/melee/vi/vi0501.c
+index f6922bd..bc4153f 100644
+--- a/src/melee/vi/vi0501.c
++++ b/src/melee/vi/vi0501.c
+@@ -93,7 +93,7 @@ void un_8031D9F8(CharacterKind char_kind, int costume, int spawn_mode,
+     Player_80032768(0, &initial_pos);
+     Player_80036F34(0, 8);
+ 
+-    counts = (u8*) MU_Z(spawn_count);
++    counts = (u8*) MU_WIDEN64(MU_Z(spawn_count));
+     pos = grLib_801C9A10();
+     for (i = 1; i < 4; i++) {
+         Player_80036E20(CKind_Kirby, un_804D6F74, 6);
+diff --git a/src/sysdolphin/baselib/aobj.c b/src/sysdolphin/baselib/aobj.c
+index 983d2af..8b25e6a 100644
+--- a/src/sysdolphin/baselib/aobj.c
++++ b/src/sysdolphin/baselib/aobj.c
+@@ -223,7 +223,7 @@ HSD_AObj* HSD_AObjLoadDesc(HSD_AObjDesc* aobjdesc)
+                  * here the read faulted (Final Destination's background, 0.9.204). Outside the
+                  * game's memory the animation gets no joint, as when it names none. */
+                 phi_r30 = mu_game_memory_has(id)
+-                              ? (HSD_Obj*) HSD_JObjLoadJoint((void*) MU_Z(aobjdesc->obj_id))
++                              ? (HSD_Obj*) HSD_JObjLoadJoint((void*) MU_WIDEN64(MU_Z(aobjdesc->obj_id)))
+                               : NULL;
+ #else
+                 phi_r30 =
+diff --git a/src/sysdolphin/baselib/archive.c b/src/sysdolphin/baselib/archive.c
+index 66effba..55d1e1c 100644
+--- a/src/sysdolphin/baselib/archive.c
++++ b/src/sysdolphin/baselib/archive.c
+@@ -119,7 +119,7 @@ void HSD_ArchiveLocateExtern(HSD_Archive* archive, const char* symbols,
+ 
+     while (offset != -1U && offset < archive->header.data_size) {
+ #ifdef MU_NATIVE
+-        be_u32* slot = (be_u32*) ((uintptr_t) archive->data + offset);
++        be_u32* slot = (be_u32*) MU_WIDEN64(((uintptr_t) archive->data + offset));
+         u32 next = slot->v;
+         slot->v = mu_addr32(addr);
+ #else
+diff --git a/src/sysdolphin/baselib/bytecode.c b/src/sysdolphin/baselib/bytecode.c
+index bface79..8227e6f 100644
+--- a/src/sysdolphin/baselib/bytecode.c
++++ b/src/sysdolphin/baselib/bytecode.c
+@@ -48,7 +48,7 @@ float HSD_ByteCodeEval(u8* bytecode, const f32* args, s32 nb_args)
+             case 2:
+                 HSD_ASSERT(281, operand < nb_args);
+                 stack = HSD_SListAllocAndPrepend(
+-                    stack, (void*) MU_Z(((ByteCodeVal*) &args[operand])->i));
++                    stack, (void*) MU_WIDEN64(MU_Z(((ByteCodeVal*) &args[operand])->i)));
+                 break;
+             case 5:
+                 for (i = 0; i < operand; i++) {
+@@ -81,7 +81,7 @@ float HSD_ByteCodeEval(u8* bytecode, const f32* args, s32 nb_args)
+                 bytecode += operand;
+                 break;
+             case 6:
+-                stack = HSD_SListAllocAndPrepend(stack, (void*) MU_Z(operand));
++                stack = HSD_SListAllocAndPrepend(stack, (void*) MU_WIDEN64(MU_Z(operand)));
+                 break;
+             case 0xFF:
+                 HSD_Panic(__FILE__, 323, "not yet implemented.\n");
+@@ -219,7 +219,7 @@ float HSD_ByteCodeEval(u8* bytecode, const f32* args, s32 nb_args)
+             break;
+         case 0x31:
+             HSD_ASSERT(480, stack);
+-            stack->data = (void*) MU_Z(!(s32) stack->data);
++            stack->data = (void*) MU_WIDEN64(MU_Z(!(s32) stack->data));
+             break;
+         case 0x17:
+             HSD_ASSERT(501, stack);
+@@ -501,21 +501,21 @@ float HSD_ByteCodeEval(u8* bytecode, const f32* args, s32 nb_args)
+             HSD_ASSERT(678, stack->next);
+             d1 = ((ByteCodeVal*) &stack->data)->i;
+             stack = HSD_SListRemove(stack);
+-            stack->data = (void*) MU_Z((((ByteCodeVal*) &stack->data)->i & d1));
++            stack->data = (void*) MU_WIDEN64(MU_Z((((ByteCodeVal*) &stack->data)->i & d1)));
+             break;
+         case 0x3A:
+             HSD_ASSERT(683, stack);
+             HSD_ASSERT(683, stack->next);
+             d1 = ((ByteCodeVal*) &stack->data)->i;
+             stack = HSD_SListRemove(stack);
+-            stack->data = (void*) MU_Z((((ByteCodeVal*) &stack->data)->i | d1));
++            stack->data = (void*) MU_WIDEN64(MU_Z((((ByteCodeVal*) &stack->data)->i | d1)));
+             break;
+         case 0x3B:
+             HSD_ASSERT(688, stack);
+             HSD_ASSERT(688, stack->next);
+             d1 = ((ByteCodeVal*) &stack->data)->i;
+             stack = HSD_SListRemove(stack);
+-            stack->data = (void*) MU_Z((((ByteCodeVal*) &stack->data)->i ^ d1));
++            stack->data = (void*) MU_WIDEN64(MU_Z((((ByteCodeVal*) &stack->data)->i ^ d1)));
+             break;
+         case 0x27:
+             HSD_ASSERT(694, stack);
+diff --git a/src/sysdolphin/baselib/card.c b/src/sysdolphin/baselib/card.c
+index ee2176f..3c9814b 100644
+--- a/src/sysdolphin/baselib/card.c
++++ b/src/sysdolphin/baselib/card.c
+@@ -194,7 +194,7 @@ void hsd_803A949C(s32 chan, s32 card_result)
+                 }
+                 if (commands[curr_head].read.data != NULL) {
+                     CardBlockHeader* src =
+-                        (CardBlockHeader*) (hdr_offset +
++                        (CardBlockHeader*) MU_WIDEN(hdr_offset +
+                                             (u32) state->sector_buf);
+                     memcpy(commands[curr_head].read.data, src->data,
+                            commands[curr_head].read.size);
+@@ -640,7 +640,7 @@ void hsd_803A949C(s32 chan, s32 card_result)
+                     state->sector_buf[hdr_offset13 + 0x12];
+                 {
+                     CardBlockHeader* src13 =
+-                        (CardBlockHeader*) (hdr_offset13 +
++                        (CardBlockHeader*) MU_WIDEN(hdr_offset13 +
+                                             (u32) state->sector_buf);
+                     hsd_803AC558(state, src13->file_table);
+                 }
+@@ -2145,7 +2145,7 @@ s32 fn_803ACF30(CardState* state, void* comment, void* banner, void* icons)
+ 
+ static inline u8* fn_803ACFC0_header(CardState* state, s32 hdr_offset)
+ {
+-    return (u8*) (hdr_offset + (s32) state->sector_buf);
++    return (u8*) MU_WIDEN64(MU_WIDEN(hdr_offset + (s32) state->sector_buf));
+ }
+ 
+ static inline u8* fn_803ACFC0_checksum_start(s32 hdr_offset, CardState* state)
+@@ -2204,7 +2204,7 @@ s32 fn_803ACFC0(CardState* state, s32 block_idx, s32 block_id, s32 seq_num,
+         if (remaining != 0) {
+             s32 off = payload_size + 0x20;
+             s32 addr = (s32) state->sector_buf;
+-            memset((u8*) (hdr_offset + off + addr), 0, remaining);
++            memset((u8*) MU_WIDEN64(MU_WIDEN(hdr_offset + off + addr)), 0, remaining);
+         }
+     }
+ 
+@@ -3329,7 +3329,7 @@ after_verify:
+                                 init_cmd.state = state;
+                                 init_cmd.read.phys = zero;
+                                 init_cmd.read.xC = zero;
+-                                init_cmd.read.data = (void*) zero;
++                                init_cmd.read.data = (void*) MU_WIDEN64(zero);
+                                 init_cmd.read.size = zero;
+                                 init_cmd.read.offset = ofs;
+                                 fn_803AC168(&init_cmd);
+@@ -3387,7 +3387,7 @@ after_verify:
+                                 init_cmd.state = state;
+                                 init_cmd.read.phys = zero;
+                                 init_cmd.read.xC = zero;
+-                                init_cmd.read.data = (void*) zero;
++                                init_cmd.read.data = (void*) MU_WIDEN64(zero);
+                                 init_cmd.read.size = zero;
+                                 init_cmd.read.offset = ofs;
+                                 fn_803AC168(&init_cmd);
+@@ -3522,7 +3522,7 @@ static inline s32 fn_803AF3F0_queue_write_first(CardState* state, s32 phys,
+         init_cmd.state = state;
+         init_cmd.read.phys = zero;
+         init_cmd.read.xC = zero;
+-        init_cmd.read.data = (void*) zero;
++        init_cmd.read.data = (void*) MU_WIDEN64(zero);
+         init_cmd.read.size = zero;
+         init_cmd.read.offset = ofs;
+         fn_803AC168(&init_cmd);
+@@ -3559,7 +3559,7 @@ static inline s32 fn_803AF3F0_queue_write_final(CardState* state, s32 phys,
+         init_cmd.state = state;
+         init_cmd.read.phys = zero;
+         init_cmd.read.xC = zero;
+-        init_cmd.read.data = (void*) zero;
++        init_cmd.read.data = (void*) MU_WIDEN64(zero);
+         init_cmd.read.size = zero;
+         init_cmd.read.offset = ofs;
+         fn_803AC168(&init_cmd);
+@@ -4083,7 +4083,7 @@ static inline s32 fn_803B0120_queue_write(CardState* state, s32 phys,
+         init_cmd.state = state;
+         init_cmd.read.phys = zero;
+         init_cmd.read.xC = zero;
+-        init_cmd.read.data = (void*) zero;
++        init_cmd.read.data = (void*) MU_WIDEN64(zero);
+         init_cmd.read.size = zero;
+         init_cmd.read.offset = ofs;
+         fn_803AC168(&init_cmd);
+diff --git a/src/sysdolphin/baselib/debugconsole_main.c b/src/sysdolphin/baselib/debugconsole_main.c
+index d09639c..f3097b0 100644
+--- a/src/sysdolphin/baselib/debugconsole_main.c
++++ b/src/sysdolphin/baselib/debugconsole_main.c
+@@ -674,11 +674,11 @@ void hsd_80394544(s32 col, s32 row, u32 num_cols, u32 num_rows, s32 x, s32 y,
+                 break;
+             }
+             if (mode != 0) {
+-                hsd_803922FC(&((DebugFontGlyph*) MU_Z(font_data))[ch & 0x7F],
++                hsd_803922FC(&((DebugFontGlyph*) MU_WIDEN64(MU_Z(font_data)))[ch & 0x7F],
+                              x + c * 11, y, interlace, xfb_buf, xfb_w, xfb_h,
+                              xfb_stride, color_data);
+             } else {
+-                hsd_803921B8(&((DebugFontGlyph*) MU_Z(font_data))[ch & 0x7F],
++                hsd_803921B8(&((DebugFontGlyph*) MU_WIDEN64(MU_Z(font_data)))[ch & 0x7F],
+                              x + c * 11, y, xfb_buf, xfb_w, xfb_h, xfb_stride,
+                              color_data);
+             }
+@@ -699,7 +699,7 @@ void hsd_80394668(void)
+         u32 size;
+         struct ParticleScreenBuffer* src;
+ 
+-        if ((u32) (src = (struct ParticleScreenBuffer*) sp->x2C) != 0) {
++        if ((u32) (src = (struct ParticleScreenBuffer*) MU_WIDEN64(sp->x2C)) != 0) {
+             /* Copy XFB data with brightness adjustment */
+             dst = (struct ParticleScreenBuffer*) (dst_base =
+                                                       (s32*) sp + sp->x34)[9];
+@@ -827,7 +827,7 @@ void Exception_ReportStackTrace(OSContext* ctx, int max_depth)
+     OSReport("- STACK ---------------------------------------------\n");
+     OSReport(" Address:  Back Chain  LR Save\n");
+ 
+-    frame = (StackFrame*) ctx->gpr[1];
++    frame = (StackFrame*) MU_WIDEN64(ctx->gpr[1]);
+     for (i = 0;
+          frame != NULL && (u32) frame != 0xFFFFFFFF && i < (u32) max_depth;
+          i++)
+@@ -1696,7 +1696,7 @@ void hsd_80396188(void)
+     void* saved;
+     PAD_STACK(12);
+ 
+-    addr = (u32*) MU_Z(lbl_8040BAF0.x10);
++    addr = (u32*) MU_WIDEN64(MU_Z(lbl_8040BAF0.x10));
+     saved = hsd_80396188_get_x50();
+     i = hsd_804CF810.x20 - 0x2E;
+     hsd_804CF810.x50 = &lbl_8040AB00;
+@@ -1771,7 +1771,7 @@ s32 hsd_803962A8(void* data)
+         }
+         case 0x400:
+             hsd_80393D2C(1);
+-            addr = (u8*) MU_Z(lbl_8040BAF0.x10);
++            addr = (u8*) MU_WIDEN64(MU_Z(lbl_8040BAF0.x10));
+             if (hsd_80394128(0, 0)) {
+                 OSReport(lbl_804D62D8);
+             }
+@@ -2692,9 +2692,9 @@ void* fn_80397814(void* arg)
+         /* Flush and display first frame */
+         size_ptr = &sp->x48;
+         fb_idx = hsd_804CF810.x34;
+-        DCFlushRange((void*) MU_Z((&hsd_804CF810.x24)[fb_idx]), *size_ptr);
++        DCFlushRange((void*) MU_WIDEN64(MU_Z((&hsd_804CF810.x24)[fb_idx])), *size_ptr);
+         fb_idx = hsd_804CF810.x34;
+-        VISetNextFrameBuffer((void*) MU_Z((&hsd_804CF810.x24)[fb_idx]));
++        VISetNextFrameBuffer((void*) MU_WIDEN64(MU_Z((&hsd_804CF810.x24)[fb_idx])));
+         VIFlush();
+ 
+         retrace2 = VIGetRetraceCount();
+@@ -2766,9 +2766,9 @@ void* fn_80397814(void* arg)
+ 
+                 /* Flush and display */
+                 fb_idx = hsd_804CF810.x34;
+-                DCFlushRange((void*) MU_Z((&sp->x24)[fb_idx]), *size_ptr);
++                DCFlushRange((void*) MU_WIDEN64(MU_Z((&sp->x24)[fb_idx])), *size_ptr);
+                 fb_idx = hsd_804CF810.x34;
+-                VISetNextFrameBuffer((void*) MU_Z((&sp->x24)[fb_idx]));
++                VISetNextFrameBuffer((void*) MU_WIDEN64(MU_Z((&sp->x24)[fb_idx])));
+                 VIFlush();
+             }
+ 
+diff --git a/src/sysdolphin/baselib/devcom.c b/src/sysdolphin/baselib/devcom.c
+index 6c10f0f..e1e565c 100644
+--- a/src/sysdolphin/baselib/devcom.c
++++ b/src/sysdolphin/baselib/devcom.c
+@@ -152,13 +152,13 @@ void HSD_DevComARAMWakeUp(void)
+                 aramDC->size -= xfer_size;
+                 aramstate = 1;
+             } else if (aramDC->type == 0xB) {
+-                DCStoreRange((void*) aramDC->src, aramDC->size);
++                DCStoreRange((void*) MU_WIDEN64(aramDC->src), aramDC->size);
+                 ARQPostRequest(devComARQR[req_idx], 0, 0, 1, aramDC->src,
+                                aramDC->dest, aramDC->size,
+                                HSD_DevComARAMCallback);
+                 aramstate = 1;
+             } else if (aramDC->type == 0x19) {
+-                DCInvalidateRange((void*) aramDC->dest, aramDC->size);
++                DCInvalidateRange((void*) MU_WIDEN64(aramDC->dest), aramDC->size);
+                 ARQPostRequest(devComARQR[req_idx], 0, 1, 1, aramDC->src,
+                                aramDC->dest, aramDC->size,
+                                HSD_DevComARAMCallback);
+@@ -339,7 +339,7 @@ void HSD_DevComDVDWakeUp(void)
+             }
+             DVDFastOpen(dvdDC->file, &fileinfo);
+             if (dvdDC->type == 0x21) {
+-                DVDReadAsyncPrio(&fileinfo, (void*) dvdDC->dest,
++                DVDReadAsyncPrio(&fileinfo, (void*) MU_WIDEN64(dvdDC->dest),
+                                  MIN(dvdDC->size, 0x80000), (s32) dvdDC->src,
+                                  HSD_DevComDVDMemCallback, 2);
+                 HSD_DevCom_804D77F5 = 1;
+diff --git a/src/sysdolphin/baselib/hsd_3915.c b/src/sysdolphin/baselib/hsd_3915.c
+index 8f72740..5107de0 100644
+--- a/src/sysdolphin/baselib/hsd_3915.c
++++ b/src/sysdolphin/baselib/hsd_3915.c
+@@ -473,7 +473,7 @@ void hsd_803921B8(void* bitmap, s32 x, s32 y, s32 dst, s32 w, s32 h,
+             while (bit_off < 16 && (u32) col < max_x) {
+                 val = (word >> ((15 - bit_off) * 2)) & 3;
+                 entry = &table[val];
+-                entry->callback((u8*) MU_Z(shift), col, y, val, (const u8*) entry);
++                entry->callback((u8*) MU_WIDEN64(MU_Z(shift)), col, y, val, (const u8*) entry);
+                 bit_off++;
+                 bit_x++;
+                 shift += 2;
+@@ -540,7 +540,7 @@ void hsd_803922FC(void* bitmap, s32 x, s32 y, s32 parity, s32 dst, s32 w,
+             while (bit_off < 16 && (u32) col < max_x) {
+                 val = (word >> ((15 - bit_off) * 2)) & 3;
+                 entry = &((GlyphEntry*) tbl)[val];
+-                entry->callback((u8*) MU_Z(shift), col, y, val, (const u8*) entry);
++                entry->callback((u8*) MU_WIDEN64(MU_Z(shift)), col, y, val, (const u8*) entry);
+                 bit_off++;
+                 bit_x++;
+                 shift += 2;
+diff --git a/src/sysdolphin/baselib/hsd_3933.c b/src/sysdolphin/baselib/hsd_3933.c
+index 5968f28..66f2e12 100644
+--- a/src/sysdolphin/baselib/hsd_3933.c
++++ b/src/sysdolphin/baselib/hsd_3933.c
+@@ -345,7 +345,7 @@ int hsd_80393A5C(char* filename, int data, int size)
+     }
+ 
+     fd_arg = fd;
+-    data_p = (u32*) MU_Z(data);
++    data_p = (u32*) MU_WIDEN64(MU_Z(data));
+     written_f = (f32) FIOFwrite(fd_arg, data_p, size);
+ 
+     if ((f32) (s32) size != written_f) {
+diff --git a/src/sysdolphin/baselib/hsd_3A76.c b/src/sysdolphin/baselib/hsd_3A76.c
+index 495e766..2f8911a 100644
+--- a/src/sysdolphin/baselib/hsd_3A76.c
++++ b/src/sysdolphin/baselib/hsd_3A76.c
+@@ -45,7 +45,7 @@ static inline u8* sisGetSavedCursor(const u8* p)
+     for (i = 0; i < SIS_SAVED_CURSOR_SIZE; i++) {
+         value = (value << 8) | p[i];
+     }
+-    return (u8*) value;
++    return (u8*) MU_WIDEN64(value);
+ }
+ 
+ /// Jump operands are unaligned within the stream.
+@@ -54,7 +54,7 @@ static inline u8* sisGetJumpTarget(const u8* p)
+ #ifdef MU_NATIVE
+     /* The native archive loader relocates pointer slots as big-endian 32-bit
+      * console addresses (mu_disc.h), so the operand is four bytes. */
+-    return (u8*) (uintptr_t) (((u32) p[0] << 24) | ((u32) p[1] << 16) |
++    return (u8*) MU_WIDEN(((u32) p[0] << 24) | ((u32) p[1] << 16) |
+                               ((u32) p[2] << 8) | (u32) p[3]);
+ #else
+     u8* target;
+@@ -549,7 +549,7 @@ void HSD_SisLib_803A84BC(HSD_GObj* gobj, intptr_t pass)
+         }
+         text = HSD_GObjGetUserData(gobj);
+     } else {
+-        text = (HSD_Text*) (uintptr_t) (u32) pass;
++        text = (HSD_Text*) MU_WIDEN64(MU_WIDEN(pass));
+     }
+     if (text->hidden == 0 && text->sis_buffer != NULL) {
+         u8 *sis_cursor = text->sis_buffer;
+diff --git a/src/sysdolphin/baselib/hsd_3B34.c b/src/sysdolphin/baselib/hsd_3B34.c
+index 15c38a5..a769572 100644
+--- a/src/sysdolphin/baselib/hsd_3B34.c
++++ b/src/sysdolphin/baselib/hsd_3B34.c
+@@ -815,7 +815,7 @@ hsd_803B51C8_inline(s32 image, s32 image_height, s32 image_width,
+ 
+     state.base = HSD_804D2648_BUF;
+     state.work = (JpegWork*) state.base;
+-    src = ((JpegByteBuffer*) MU_Z(image))->data;
++    src = ((JpegByteBuffer*) MU_WIDEN64(MU_Z(image)))->data;
+     width = image_width;
+     height = image_height;
+     hsd_804D79A8 = output_capacity;
+diff --git a/src/sysdolphin/baselib/id.c b/src/sysdolphin/baselib/id.c
+index 96bff5c..eaa3d30 100644
+--- a/src/sysdolphin/baselib/id.c
++++ b/src/sysdolphin/baselib/id.c
+@@ -41,6 +41,9 @@ static inline IDEntry* IDEntryAlloc(void)
+ 
+ void HSD_IDInsertToTable(HSD_IDTable* table, HSD_IDKey id, void* data)
+ {
++#if defined(MU_HIGH_BASE)
++    id = (u32) id; /* mumac: keys are console addresses; the file holds 4 bytes, a pointer has MU_HIGH_BASE on top */
++#endif
+     IDEntry* entry;
+ 
+     if (table == NULL) {
+@@ -74,6 +77,9 @@ static inline void IDEntryFree(IDEntry* entry)
+ 
+ void HSD_IDRemoveByIDFromTable(HSD_IDTable* table, HSD_IDKey id)
+ {
++#if defined(MU_HIGH_BASE)
++    id = (u32) id; /* mumac: keys are console addresses; the file holds 4 bytes, a pointer has MU_HIGH_BASE on top */
++#endif
+     IDEntry* entry;
+     IDEntry* prev;
+ 
+@@ -98,6 +104,9 @@ void HSD_IDRemoveByIDFromTable(HSD_IDTable* table, HSD_IDKey id)
+ 
+ void* HSD_IDGetDataFromTable(HSD_IDTable* table, HSD_IDKey id, s32* success)
+ {
++#if defined(MU_HIGH_BASE)
++    id = (u32) id; /* mumac: keys are console addresses; the file holds 4 bytes, a pointer has MU_HIGH_BASE on top */
++#endif
+     IDEntry* entry;
+ 
+     if (table == NULL) {
+diff --git a/src/sysdolphin/baselib/initialize.c b/src/sysdolphin/baselib/initialize.c
+index 45a2768..6abdc88 100644
+--- a/src/sysdolphin/baselib/initialize.c
++++ b/src/sysdolphin/baselib/initialize.c
+@@ -104,13 +104,13 @@ void** HSD_AllocateXFB(s32 nbuffer, GXRenderModeObj* rm)
+         }
+     } else {
+         for (i = 0; i < nbuffer; i++) {
+-            FrameBuffer[i] = (void*) arena_lo;
++            FrameBuffer[i] = (void*) MU_WIDEN64(arena_lo);
+             arena_lo = OSRoundUp32B(arena_lo + fb_size);
+         }
+         if (arena_lo > arena_hi) {
+             HSD_Panic(__FILE__, 265, "No memory space remains for XFB.\n");
+         }
+-        OSSetArenaLo((void*) arena_lo);
++        OSSetArenaLo((void*) MU_WIDEN64(arena_lo));
+     }
+     for (i = nbuffer; i < HSD_VI_XFB_MAX; i++) {
+         FrameBuffer[i] = NULL;
+@@ -132,12 +132,12 @@ GXFifoObj* HSD_AllocateFifo(u32 size)
+             HSD_Panic(__FILE__, 295, "cannot allocate memory for gx fifo.\n");
+         }
+     } else {
+-        fifo = (void*) arena_lo;
++        fifo = (void*) MU_WIDEN64(arena_lo);
+         arena_lo += size;
+         if (arena_lo > (uintptr_t) OSGetArenaHi()) {
+             HSD_Panic(__FILE__, 302, "no space remains for gx fifo.\n");
+         }
+-        OSSetArenaLo((void*) arena_lo);
++        OSSetArenaLo((void*) MU_WIDEN64(arena_lo));
+     }
+     return fifo;
+ }
+@@ -169,21 +169,21 @@ void HSD_OSInit(void)
+                        (uintptr_t) OSGetArenaLo() - memReport.xfb -
+                        memReport.gxfifo;
+     old_arena_lo = (uintptr_t) OSInitAlloc(
+-        (void*) old_arena_lo, (void*) old_arena_hi, iparam_heap_max_num);
+-    OSSetArenaLo((void*) old_arena_lo);
++        (void*) MU_WIDEN64(old_arena_lo), (void*) MU_WIDEN64(old_arena_hi), iparam_heap_max_num);
++    OSSetArenaLo((void*) MU_WIDEN64(old_arena_lo));
+ 
+     new_arena_lo = OSRoundUp32B(old_arena_lo);
+     new_arena_hi = OSRoundDown32B(old_arena_hi);
+     HSD_Synth_804D6018 = OSCreateHeap(
+-        (void*) new_arena_lo, (void*) (new_arena_lo + iparam_audio_heap_size));
++        (void*) MU_WIDEN64(new_arena_lo), (void*) MU_WIDEN64((new_arena_lo + iparam_audio_heap_size)));
+     new_arena_lo += iparam_audio_heap_size;
+-    hsd_heap_next_arena_lo = (void*) new_arena_lo;
+-    hsd_heap_next_arena_hi = (void*) new_arena_hi;
+-    current_heap = OSCreateHeap((void*) new_arena_lo, (void*) new_arena_hi);
++    hsd_heap_next_arena_lo = (void*) MU_WIDEN64(new_arena_lo);
++    hsd_heap_next_arena_hi = (void*) MU_WIDEN64(new_arena_hi);
++    current_heap = OSCreateHeap((void*) MU_WIDEN64(new_arena_lo), (void*) MU_WIDEN64(new_arena_hi));
+     OSSetCurrentHeap(current_heap);
+     memReport.heap = new_arena_hi - new_arena_lo;
+     HSD_ObjSetHeap(new_arena_hi - new_arena_lo, NULL);
+-    OSSetArenaLo((void*) new_arena_hi);
++    OSSetArenaLo((void*) MU_WIDEN64(new_arena_hi));
+ }
+ 
+ OSHeapHandle HSD_GetHeap(void)
+diff --git a/src/sysdolphin/baselib/leak.c b/src/sysdolphin/baselib/leak.c
+index cd2231b..09363f8 100644
+--- a/src/sysdolphin/baselib/leak.c
++++ b/src/sysdolphin/baselib/leak.c
+@@ -65,7 +65,7 @@ int HSD_Leak_80387DF8(int indent)
+     scan = (u32*) lbCommand_803B9840;
+     lc = &HSD_Leak_80407B58;
+ 
+-    heap_start_phys = (u32*) MU_Z((OSGetConsoleSimulatedMemSize() + 0x80000000));
++    heap_start_phys = (u32*) MU_WIDEN64(MU_Z((OSGetConsoleSimulatedMemSize() + 0x80000000)));
+     heap_start_align = ((u32) scan + 32) & 0x0FFFFFE0;
+     val = OSGetPhysicalMemSize();
+ 
+@@ -97,14 +97,14 @@ int HSD_Leak_80387DF8(int indent)
+                     if (word >= heap_start_align && val > word) {
+                         u32* hdr;
+                         word |= 0x80000000;
+-                        hdr = (u32*) MU_Z(word) - 8;
++                        hdr = (u32*) MU_WIDEN64(MU_Z(word)) - 8;
+                         if (*hdr == HEAP_MAGIC) {
+                             u32 reg_idx = hdr[1];
+                             if ((u32) (reg_idx + 0x10000) != 0xFFFF &&
+                                 reg_idx < *cap_ptr)
+                             {
+                                 u32 entry = lc->table[reg_idx];
+-                                if (hdr == (u32*) MU_Z((entry & ~1u))) {
++                                if (hdr == (u32*) MU_WIDEN64(MU_Z((entry & ~1u)))) {
+                                     lc->table[reg_idx] = entry | 1;
+                                 }
+                             }
+@@ -122,10 +122,10 @@ int HSD_Leak_80387DF8(int indent)
+     val = (u32) (scan + *cap_ptr);
+     for (ofs = 0; ofs < *cap_ptr; ofs++) {
+         u32* ep = &lc->table[ofs];
+-        heap_start_phys = (u32*) MU_Z(*ep);
++        heap_start_phys = (u32*) MU_WIDEN64(MU_Z(*ep));
+         if ((u32) heap_start_phys & 1) {
+             *ep = (u32) heap_start_phys & ~1u;
+-        } else if (scan <= heap_start_phys && heap_start_phys < (u32*) MU_Z(val)) {
++        } else if (scan <= heap_start_phys && heap_start_phys < (u32*) MU_WIDEN64(MU_Z(val))) {
+         } else if (heap_start_phys != NULL) {
+             u32* block = heap_start_phys;
+             if (block[0] == HEAP_MAGIC) {
+@@ -133,12 +133,12 @@ int HSD_Leak_80387DF8(int indent)
+                 if ((u32) (reg_idx + 0x10000) != 0xFFFF && reg_idx < *cap_ptr)
+                 {
+                     if ((u32) heap_start_phys ==
+-                        *(u32*) MU_Z(((u32) lc->table + (reg_idx << 2))))
++                        *(u32*) MU_WIDEN64(MU_Z(((u32) lc->table + (reg_idx << 2)))))
+                     {
+                         HSD_LeakReportSpaces(i);
+                         OSReport(
+                             "leak detected (%p) nb_reg (%d) mark (%08x)\n",
+-                            (u32*) MU_Z(((u32) heap_start_phys + 0x20)), block[2],
++                            (u32*) MU_WIDEN64(MU_Z(((u32) heap_start_phys + 0x20))), block[2],
+                             block[3]);
+                         goto next_leak;
+                     }
+@@ -148,7 +148,7 @@ int HSD_Leak_80387DF8(int indent)
+                 OSReport(" ");
+             }
+             OSReport("leak detected (%p) [destroyed header]\n",
+-                     (u32*) MU_Z(((u32) heap_start_phys + 0x20)));
++                     (u32*) MU_WIDEN64(MU_Z(((u32) heap_start_phys + 0x20))));
+         next_leak:
+             leak_count++;
+         }
+diff --git a/src/sysdolphin/baselib/objalloc.c b/src/sysdolphin/baselib/objalloc.c
+index 327e9c7..14addc0 100644
+--- a/src/sysdolphin/baselib/objalloc.c
++++ b/src/sysdolphin/baselib/objalloc.c
+@@ -55,15 +55,15 @@ s32 HSD_ObjAllocAddFree(HSD_ObjAllocData* data, u32 num)
+         int i;
+         HSD_ObjAllocLink* link;
+         for (i = 0; (unsigned) i < num - 1; i++) {
+-            link = (HSD_ObjAllocLink*) (pool_start + data->size * i);
++            link = (HSD_ObjAllocLink*) MU_WIDEN64((pool_start + data->size * i));
+             link->next =
+-                (HSD_ObjAllocLink*) (pool_start + data->size * (i + 1));
++                (HSD_ObjAllocLink*) MU_WIDEN64((pool_start + data->size * (i + 1)));
+         }
+-        link = (HSD_ObjAllocLink*) (pool_start + data->size * i);
++        link = (HSD_ObjAllocLink*) MU_WIDEN64((pool_start + data->size * i));
+         link->next = data->freehead;
+     }
+ 
+-    data->freehead = (HSD_ObjAllocLink*) pool_start;
++    data->freehead = (HSD_ObjAllocLink*) MU_WIDEN64(pool_start);
+     data->free += num;
+     return num;
+ }
+diff --git a/src/sysdolphin/baselib/particle.c b/src/sysdolphin/baselib/particle.c
+index 9f5982e..0249e1e 100644
+--- a/src/sysdolphin/baselib/particle.c
++++ b/src/sysdolphin/baselib/particle.c
+@@ -215,7 +215,7 @@ void psInitDataBankLocate(HSD_Archive* cmdBank, HSD_Archive* texBank,
+     for (i = 0; i < count; i++) {
+         const u32 cmd = ps_word(list, i);
+         if (cmd != 0) {
+-            void* cl = (void*) (mu_uptr) cmd;
++            void* cl = (void*) MU_WIDEN64((mu_uptr) cmd);
+             ps_set_word(cl, 2, (ps_word(cl, 2) & 0xF1FFFFFF) | 0x08000000);
+         }
+     }
+@@ -225,7 +225,7 @@ void psInitDataBankLocate(HSD_Archive* cmdBank, HSD_Archive* texBank,
+         ps_relocate(texBank, i, texBank);
+     }
+     for (i = 1; i <= num_groups; i++) {
+-        HSD_PSTexGroup* tg = (HSD_PSTexGroup*) (mu_uptr) ps_word(texBank, i);
++        HSD_PSTexGroup* tg = (HSD_PSTexGroup*) MU_WIDEN64((mu_uptr) ps_word(texBank, i));
+         u32 first, end, ti;
+         if (tg == NULL) {
+             continue;
+@@ -256,7 +256,7 @@ void psInitDataBankLocate(HSD_Archive* cmdBank, HSD_Archive* texBank,
+         HSD_PSFormGroup* fg;
+         u32 fi;
+         ps_relocate(formBank, i, formBank);
+-        fg = (HSD_PSFormGroup*) (mu_uptr) ps_word(formBank, i);
++        fg = (HSD_PSFormGroup*) MU_WIDEN64((mu_uptr) ps_word(formBank, i));
+         if (fg == NULL) {
+             continue;
+         }
+diff --git a/src/sysdolphin/baselib/video.c b/src/sysdolphin/baselib/video.c
+index 05fd020..64ab7d2 100644
+--- a/src/sysdolphin/baselib/video.c
++++ b/src/sysdolphin/baselib/video.c
+@@ -251,7 +251,7 @@ void HSD_VICopyEFB2XFBPtr(HSD_VIStatus* vi, void* buffer, HSD_RenderPass rpass)
+         GXSetDispCopySrc(0, HSD_ANTIALIAS_OVERLAP, rmode->fbWidth, lines);
+         offset = (VIPadFrameBufferWidth(rmode->fbWidth) * lines *
+                   (u32) VI_DISPLAY_PIX_SZ);
+-        GXCopyDisp((void*) MU_Z(((u32) buffer + offset)), GX_TRUE);
++        GXCopyDisp((void*) MU_WIDEN64(MU_Z(((u32) buffer + offset))), GX_TRUE);
+         GXSetDispCopySrc(0, 0, rmode->fbWidth, HSD_ANTIALIAS_OVERLAP);
+         GXSetCopyClamp((GXFBClamp) (GX_CLAMP_TOP | GX_CLAMP_BOTTOM));
+         GXCopyDisp((void*) garbage, GX_TRUE);
