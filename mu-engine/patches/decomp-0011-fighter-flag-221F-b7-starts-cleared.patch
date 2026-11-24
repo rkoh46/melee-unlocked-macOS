@@ -1,0 +1,12 @@
+A fighter's flag fp+221F bit 7 starts cleared: the game never writes it, and replays record it (Slippi post-frame state flags 5, bit 0).
+
+--- a/src/melee/ft/fighter.c
++++ b/src/melee/ft/fighter.c
+@@ -857,6 +857,7 @@
+     fp->x209A = 0;
+     fp->x221E_b5 = 0;
+     fp->x221F_b0 = 0;
++    fp->x221F_b7 = 0; /* mumac: never written by the game, so it held whatever the heap had; replays record it (Slippi post-frame flags 5, bit 0) */
+     fp->x21EC = 0;
+ 
+     fp->has_prev_input = 0;
