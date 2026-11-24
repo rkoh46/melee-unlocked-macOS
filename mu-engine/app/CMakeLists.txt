@@ -54,13 +54,15 @@ target_compile_options(mu_host_mac PRIVATE -O2 -fno-strict-aliasing)
 
 set(_dd_objc "${DD}/gx/gx_metal.mm" "${DD}/host/controller_rate.mm")
 add_executable(melee_unlocked_mac
-  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${DD}/host/vcdiff.cpp" "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
+  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${MU_APPSRC}/replays.cpp" "${DD}/host/vcdiff.cpp"
+  "${MU_TREE}/port/runtime/hle/native_replay_stream.cpp" "${MU_TREE}/port/third_party/slippilib/SlippiGame.cpp" "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
   "${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp" "${DD}/gx/gx_texture.cpp" "${DD}/gx/gx_shader.cpp" "${DD}/gx/gx_msl.cpp" "${DD}/gx/render_observer.cpp" "${DD}/gx/authored_pose.cpp" "${DD}/gx/subframe.cpp"
   "${DD}/host/window_sdl.cpp" "${DD}/host/input_config.cpp" "${DD}/host/input_script.cpp" "${DD}/host/game_menu.cpp"
   "${DD}/host/audio_sdl.cpp" "${DD}/host/gc_adapter_iokit.cpp" ${_dd_objc})
 set_source_files_properties(${_dd_objc} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+set_source_files_properties("${MU_TREE}/port/runtime/hle/native_replay_stream.cpp" PROPERTIES COMPILE_OPTIONS "-include;${MU_APPSRC}/gmtime_s.h")
 target_include_directories(melee_unlocked_mac PRIVATE "${MU_RUN}" "${MU_RUN}/macos" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
-  "${DD}/host" "${DD}/gx" "${DD}/ppc" "${DD}/hle" "${MU_REPO}/native" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/hle")
+  "${DD}/host" "${DD}/gx" "${DD}/ppc" "${DD}/hle" "${MU_REPO}/native" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/third_party/slippilib" "${MU_REPO}/build/mu-engine/gen")
 target_compile_definitions(melee_unlocked_mac PRIVATE MU_HIGH_BASE=${MU_HIGH_BASE} MELEE_PORT_VERSION="${MELEE_PORT_VERSION}"
   MELEE_SOURCE_ART_DIR="${MU_REPO}/port/app/art/controller")
 target_compile_features(melee_unlocked_mac PRIVATE cxx_std_17)

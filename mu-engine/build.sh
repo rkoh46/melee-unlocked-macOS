@@ -32,7 +32,9 @@ build_game() {
       "-DCMAKE_C_FLAGS='"$GAME_FLAGS"'" "-DCMAKE_CXX_FLAGS='"$GAME_FLAGS"'" >/dev/null
     cmake --build $b --target melee_game -j "$(nproc)" | tail -2
     cp $b/melee_game.so build/mu-engine/out/melee_game.so
-    cp $b/melee_game.snapexcl build/mu-engine/out/melee_game.snapexcl'
+    cp $b/melee_game.snapexcl build/mu-engine/out/melee_game.snapexcl
+    # The Gecko lists recordings carry (melee-unlocked'"'"'s own generator; replay metadata only).
+    python3 build/mu-engine/mu/tools/native_recording_codes.py build/mu-engine/gen/native_recording_codes.h'
   echo "built $out/melee_game.so"
 }
 

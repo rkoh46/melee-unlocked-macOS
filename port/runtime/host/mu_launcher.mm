@@ -376,7 +376,8 @@ NSImage* art(NSString* name) {
   const std::vector<host::GameRow> rows = self.dashboard.rows();
   CGFloat y = 58;
   NSString* playback = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/DashdancePlayback"];
-  const BOOL can_watch = [NSFileManager.defaultManager isExecutableFileAtPath:playback];
+  NSString* mu = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/MeleeUnlockedEngine"];
+  const BOOL can_watch = [NSFileManager.defaultManager isExecutableFileAtPath:mu] || [NSFileManager.defaultManager isExecutableFileAtPath:playback];
   if (rows.empty()) text(@"No replays yet. Every game you play is saved here as a .slp file.", LR(CX, y, CW, 20), f_body(), C_DIM);
   for (size_t i = 0; i < rows.size() && i < 8; ++i) {
     const host::GameRow& r = rows[i];
@@ -391,7 +392,7 @@ NSImage* art(NSString* name) {
     y += 44;
   }
   [self button:@"replaysfolder" rect:LR(CX, WIN_H - 50, 170, 32) title:@"Open Replays folder" primary:NO enabled:YES];
-  if (!can_watch) text(@"Watching a replay needs the classic engine's playback build.", LR(CX + 180, WIN_H - 50, CW - 180, 32), f_small(), C_FAINT, LEFT, 0, true);
+  if (!can_watch) text(@"Watching a replay needs the melee-unlocked engine in this build.", LR(CX + 180, WIN_H - 50, CW - 180, 32), f_small(), C_FAINT, LEFT, 0, true);
 }
 // ---- Mods ------------------------------------------------------------------------------------------------------------
 - (void)paintMods {
@@ -465,8 +466,20 @@ NSImage* art(NSString* name) {
   else if ([key isEqualToString:@"delay"]) s.online_delay = index + 1;
   [self setNeedsDisplay:YES];
 }
-// Replays play in the classic engine's playback build, beside the launcher (as the earlier dashboard did).
+// Replays play in the melee-unlocked engine (MeleeUnlockedEngine --replay), beside the launcher; a bundle without it falls
+// back to the classic engine's playback build.
 - (void)watch:(NSString*)replay {
+  NSString* mu = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/MeleeUnlockedEngine"];
+  if ([NSFileManager.defaultManager isExecutableFileAtPath:mu] && !self.settings->iso.empty()) {
+    NSTask* task = [[NSTask alloc] init];
+    task.executableURL = [NSURL fileURLWithPath:mu];
+    NSString* support = [ns(self.settings->replay_dir) stringByDeletingLastPathComponent];
+    task.arguments = @[@"--iso", ns(self.settings->iso), @"--replay", replay, @"--profile-dir", support,
+                       @"--volume", [NSString stringWithFormat:@"%d", self.settings->volume]];
+    NSError* error = nil;
+    if (![task launchAndReturnError:&error]) host::mac_show_error("The replay could not start", error.localizedDescription.UTF8String);
+    return;
+  }
   NSString* exe = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/DashdancePlayback"];
   NSString* sys = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"slippi_sys_playback"];
   if (self.settings->iso.empty()) { host::mac_show_error("Choose your disc first", "Watching a replay needs the same disc image as playing."); return; }

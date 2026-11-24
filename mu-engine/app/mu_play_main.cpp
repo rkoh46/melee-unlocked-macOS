@@ -12,6 +12,7 @@
 #include "abi_macos.h"
 #include "net_host.h"
 #include "slippi_menus.h"
+#include "replays.h"
 
 #include "audio.h"
 #include "game_menu.h"
@@ -92,6 +93,7 @@ void on_frame(const MuStatePod& state, const linux_host::Counters& counters, voi
 // ---- the host services' frontend hooks (patches/0011) ----
 // The first option word: Vanilla, and Slippi's menus once their files are served.
 extern "C" int mu_frontend_option(int which, uint32_t* value) {
+  if (value && replays::word(which, value)) return 1;   // a replay plays with the option words it was recorded with
   if (which != 0 || !value) return 0;
   *value = (g_vanilla ? MU_GAME_OPTION_VANILLA : 0u) | (slippi_menus::active() && !g_vanilla ? MU_GAME_OPT_SLIPPI_MENUS : 0u);
   return 1;
@@ -119,7 +121,8 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
 
 int main(int argc, char** argv) {
   mu_abi_install_crash_report();
-  std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir;
+  std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir;
+  bool record = true, script_codes = false;
   net_host::Options net;
   bool offline = false;
   int volume = 70, scale = 0;
@@ -141,6 +144,10 @@ int main(int argc, char** argv) {
     else if (a == "--script") script = next();
     else if (a == "--sys-dir") sys_dir = next();
     else if (a == "--offline") offline = true;
+    else if (a == "--replay") replay = next();
+    else if (a == "--replay-dir") replay_dir = next();
+    else if (a == "--no-record") record = false;
+    else if (a == "--script-codes") script_codes = true;   // tests: a scripted match with melee-unlocked's codes on (not the retail game)
     else if (net_host::parse_option(a, next, &net)) {}
     else if (a == "--digest") g_digest = std::fopen(next().c_str(), "w");
     else if (a == "--frames") g_frames_limit = uint32_t(std::strtoul(next().c_str(), nullptr, 0));
@@ -148,7 +155,8 @@ int main(int argc, char** argv) {
     else if (a == "--help") {
       std::printf("MeleeUnlockedEngine --iso PATH [--profile-dir DIR] [--log-file F] [--cache-dir DIR] [--volume 0..100]\n"
                   "  [--scale auto|1..8] [--fullscreen] [--no-vsync] [--frames N] [--capture FILE.ppm FRAME] [--script FILE]\n"
-                  "  [--sys-dir DIR] [--offline] [--online unranked|direct:CODE|teams|party] [--user-dir DIR] [--net-delay N]\n");
+                  "  [--sys-dir DIR] [--offline] [--online unranked|direct:CODE|teams|party] [--user-dir DIR] [--net-delay N]\n"
+                  "  [--replay FILE.slp] [--replay-dir DIR] [--no-record]\n");
       return 0;
     } else if (!a.empty() && a[0] != '-' && iso.empty()) iso = a;
   }
@@ -161,7 +169,13 @@ int main(int argc, char** argv) {
   if (log_file.empty()) log_file = (mu_dir / "engine.log").string();
   host::mu_shim_open_log(log_file);
   if (cache_dir.empty()) { cache_dir = (mu_dir / "shaders").string(); fs::create_directories(cache_dir, ec); }
-  g_vanilla = vanilla || !script.empty();   // a scripted match plays the retail game, as the parity runner does
+  // Replays: every match is recorded to the replay folder the app shares with the classic engine; --replay plays one.
+  replays::configure(replay_dir.empty() ? (support / "Replays").string() : replay_dir, record);
+  if (!replay.empty()) {
+    if (!replays::start_playback(replay)) { std::fprintf(stderr, "cannot play the replay %s\n", replay.c_str()); return 1; }
+    offline = true; script.clear();
+  }
+  g_vanilla = vanilla || (!script.empty() && !script_codes);   // a scripted match plays the retail game, as the parity runner does
   // Slippi's files: the bundle's slippi_sys (Contents/Resources next to Contents/MacOS), or --sys-dir.
   if (sys_dir.empty()) {
     char exe[4096]; uint32_t size = sizeof exe;
@@ -170,7 +184,7 @@ int main(int argc, char** argv) {
       if (fs::is_directory(bundled, ec)) sys_dir = bundled.string();
     }
   }
-  if (!script.empty()) sys_dir.clear();   // scripted runs are the retail game, as the parity runner plays it
+  if (!script.empty() || replays::active()) sys_dir.clear();   // scripted runs and replays: no Slippi menus
   slippi_menus::set_sys_dir(sys_dir);
   // Online: the player's own Slippi sign-in (support/Slippi/user.json, as the classic engine) unless the launcher said
   // offline; a search starts from the game's Online Play page. --online without menus (tests) asks for a match at boot.
@@ -220,7 +234,7 @@ int main(int argc, char** argv) {
   config.no_gc_adapter = true;
   config.vanilla_game = vanilla;   // Vanilla: melee-unlocked as the disc plays (MU_GAME_OPTION_VANILLA)
   if (!script.empty()) {        // a scripted match (tests): the same pads, seed and clock as the parity runner
-    config.input_script = script; config.vanilla_game = true;
+    config.input_script = script; config.vanilla_game = !script_codes;
     config.has_rng_seed = true; config.rng_seed = 0x12345678; config.has_time_base = true; config.time_base = 0;
   }
   mac_elf::set_embedded_image(mu_embedded_game, size_t(mu_embedded_game_end - mu_embedded_game));
@@ -236,7 +250,7 @@ int main(int argc, char** argv) {
       host::log("online: on (user folder %s)%s", net.user_dir.c_str(), menus_online ? "; a search starts from the game's Online Play page" : "");
     }
   } else if (menus_online) host::log("online: no Slippi sign-in in %s: the Online Play page will ask to log in", net.user_dir.c_str());
-  linux_host::set_tables_hook([](MuHostApi* host, MuGameApi*) { if (host) { net_host::install(host); mu_abi_adapt_host_table(host); } });
+  linux_host::set_tables_hook([](MuHostApi* host, MuGameApi*) { if (host) { replays::install(host); net_host::install(host); mu_abi_adapt_host_table(host); } });
   linux_host::set_video_sinks(on_fifo, on_retrace, nullptr);
   int code = 0;
   std::string error;
@@ -248,6 +262,7 @@ int main(int argc, char** argv) {
     linux_host::set_frame_observer(on_frame, nullptr);
     code = linux_host::run();
     linux_host::set_frame_observer(nullptr, nullptr);
+    replays::finish();
     const auto& c = linux_host::counters();
     host::log("melee-unlocked engine: stopped with code %d after %u retraces, %llu FIFO bytes, %llu audio blocks", code, c.retraces,
               (unsigned long long)c.fifo_bytes, (unsigned long long)c.audio_blocks);
