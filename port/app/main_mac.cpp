@@ -155,7 +155,7 @@ static void save_launcher_ini(const fs::path& path, const host::LauncherSettings
       << "\nsharpness=" << settings.sharpness << "\noverlay=" << settings.overlay_opacity << "\noverlay_scale=" << settings.overlay_scale
       << "\nscale=" << settings.scale << "\nanisotropy=" << settings.anisotropy << "\nupscaler=" << settings.upscaler << "\nvsync=" << (settings.vsync ? 1 : 0)
       << "\nfullscreen=" << (settings.fullscreen ? 1 : 0) << "\nvolume=" << settings.volume << "\nhud=" << (settings.hud ? 1 : 0)
-      << "\nonline_delay=" << settings.online_delay << "\ndiscord=" << (settings.discord_enabled ? 1 : 0) << "\ndiscord_rank=" << (settings.discord_show_rank ? 1 : 0) << "\nengine=" << settings.engine << "\n";
+      << "\nonline_delay=" << settings.online_delay << "\ndiscord=" << (settings.discord_enabled ? 1 : 0) << "\ndiscord_rank=" << (settings.discord_show_rank ? 1 : 0) << "\nengine=" << settings.engine << "\naccent=" << settings.accent << "\n";
   for (const host::ControllerConfig& c : host::controller_configs()) out << "controller." << c.guid << "=" << c.port << "|" << c.map.serialize() << "\n";
   out << "keyboard=" << host::keyboard_map().serialize() << "\n";
 }
@@ -288,7 +288,8 @@ int main(int argc, char** argv) {
       else if (const char* v = value("fullscreen=")) settings.fullscreen = *v == '1';
       else if (const char* v = value("volume=")) settings.volume = std::clamp(std::atoi(v), 0, 100);
       else if (const char* v = value("hud=")) settings.hud = *v == '1';
-      else if (const char* v = value("engine=")) settings.engine = std::clamp(std::atoi(v), 0, 1);
+      else if (const char* v = value("engine=")) settings.engine = std::clamp(std::atoi(v), 0, 2);
+      else if (const char* v = value("accent=")) settings.accent = uint32_t(std::strtoul(v, nullptr, 10)) & 0xFFFFFFu;
       else if (const char* v = value("discord=")) settings.discord_enabled = *v == '1';
       else if (const char* v = value("discord_rank=")) settings.discord_show_rank = *v == '1';
       else if (const char* v = value("keyboard=")) host::set_keyboard_map(host::KeyboardMap::parse(v));
@@ -331,17 +332,18 @@ int main(int argc, char** argv) {
     }
     host::window_input_init();   // controllers are listed and remapped in the launcher
     settings.replay_dir = replay_dir.empty() ? (support / "Replays").string() : replay_dir;
-    if (!host::launcher_run(settings, previous_error) || settings.iso.empty()) return 0;
+    if (!host::mu_launcher_run(settings, previous_error) || settings.iso.empty()) return 0;
     iso_arg = settings.iso;
     if (!settings.online) offline = true;
     if (ensure_dir(support.string(), "support")) save_launcher_ini(remembered, settings);
     // The melee-unlocked engine is its own executable in the bundle: it replaces this process, with the dashboard's
     // choices, and reads the controller settings from the same launcher.ini.
-    if (settings.engine == 0 && settings.engine_available) {
+    if (settings.engine != 1 && settings.engine_available) {
       const std::string volume_text = std::to_string(settings.volume), scale_text = settings.scale > 0 ? std::to_string(settings.scale) : "auto";
       std::vector<std::string> args = {mu_engine, "--iso", settings.iso, "--profile-dir", support.string(), "--volume", volume_text, "--scale", scale_text};
       if (settings.fullscreen) args.push_back("--fullscreen");
       if (!settings.vsync) args.push_back("--no-vsync");
+      if (settings.engine == 2) args.push_back("--vanilla");
       std::vector<char*> argv_mu;
       for (std::string& a : args) argv_mu.push_back(a.data());
       argv_mu.push_back(nullptr);

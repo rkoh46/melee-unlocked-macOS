@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
   std::string iso, profile_dir, log_file, cache_dir, capture_path, script;
   int volume = 70, scale = 0;
   uint32_t capture_frame = 0;
-  bool fullscreen = false, hidden = false, vsync = true;
+  bool fullscreen = false, hidden = false, vsync = true, vanilla = false;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
@@ -111,6 +111,7 @@ int main(int argc, char** argv) {
     else if (a == "--volume") volume = std::clamp(std::atoi(next().c_str()), 0, 100);
     else if (a == "--scale") { const std::string v = next(); scale = v == "auto" ? 0 : std::clamp(std::atoi(v.c_str()), 0, 8); }
     else if (a == "--fullscreen") fullscreen = true;
+    else if (a == "--vanilla") vanilla = true;
     else if (a == "--hidden") hidden = true;
     else if (a == "--no-vsync") vsync = false;
     else if (a == "--script") script = next();
@@ -174,6 +175,7 @@ int main(int argc, char** argv) {
   config.pace = true;
   config.headless = true;          // the host's own SDL window, pads and sound are not built: this program brings them
   config.no_gc_adapter = true;
+  config.vanilla_game = vanilla;   // Vanilla: melee-unlocked as the disc plays (MU_GAME_OPTION_VANILLA)
   if (!script.empty()) {        // a scripted match (tests): the same pads, seed and clock as the parity runner
     config.input_script = script; config.vanilla_game = true;
     config.has_rng_seed = true; config.rng_seed = 0x12345678; config.has_time_base = true; config.time_base = 0;

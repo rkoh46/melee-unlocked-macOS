@@ -42,6 +42,8 @@ MU_EXE="$BUILD/mu-engine/app/MeleeUnlockedEngine"
 if [[ -x "$MU_EXE" ]]; then
   cp "$MU_EXE" "$APP/Contents/MacOS/MeleeUnlockedEngine"
   echo "melee-unlocked engine: bundled $MU_EXE"
+  # melee-unlocked's launcher artwork (the MU mark, Bailey), converted from the fetched tree; never committed.
+  python3 -I "$ROOT/tools/mu_launcher_art.py" "$ROOT/build/mu-engine/mu/port/app" "$APP/Contents/Resources/mu-art" >/dev/null
 else
   echo "melee-unlocked engine: no $MU_EXE, this bundle plays the classic engine only"
 fi
@@ -58,6 +60,19 @@ if [[ "$APP_NAME" != "Dashdance" ]]; then
   cp -R "$ROOT/port/app/icons/AppIcon.icon" "$ICON_SRC"
   sed -i '' 's/"linear-gradient": \[[^]]*\]/"linear-gradient": ["srgb:1.00000,0.62000,0.10000,1.00000", "srgb:0.80000,0.27000,0.00000,1.00000"]/' "$ICON_SRC/icon.json"
 fi
+# With the melee-unlocked engine the app wears melee-unlocked's own icon (melee_unlocked.ico from the fetched tree,
+# converted above), not Dashdance's.
+MU_ICON="$APP/Contents/Resources/mu-art/melee_unlocked.png"
+if [[ -f "$MU_ICON" ]]; then
+  ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
+  for size in 16 32 128 256 512; do
+    sips -z $size $size "$MU_ICON" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+    sips -z $((size*2)) $((size*2)) "$MU_ICON" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+  /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$APP/Contents/Info.plist" 2>/dev/null || true
+  echo "icon: melee-unlocked's icon from the fetched tree"
+elif true; then
 ACTOOL_DEV="${DEVELOPER_DIR:-}"; [[ -z "$ACTOOL_DEV" && -d /Applications/Xcode.app/Contents/Developer ]] && ACTOOL_DEV=/Applications/Xcode.app/Contents/Developer
 if [[ -n "$ACTOOL_DEV" ]] && DEVELOPER_DIR="$ACTOOL_DEV" xcrun --find actool >/dev/null 2>&1 && DEVELOPER_DIR="$ACTOOL_DEV" xcrun actool "$ICON_SRC" --compile "$APP/Contents/Resources" \
      --output-format human-readable-text --warnings --errors --output-partial-info-plist "$(mktemp)" --app-icon AppIcon \
@@ -75,6 +90,7 @@ else
     sips -z $((size*2)) $((size*2)) "$MASTER" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
   done
   iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+fi
 fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - --deep "$APP"

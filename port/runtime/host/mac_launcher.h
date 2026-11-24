@@ -27,11 +27,14 @@ struct LauncherSettings {
   std::string slippi_dir;      // where this app keeps its own user.json (native sign-in)
   std::string account_name, account_code;   // current login, if any
   bool account_from_launcher = false;       // login comes from the Slippi Launcher's file (macOS)
-  int engine = 0;              // 0 the melee-unlocked engine (MeleeUnlockedEngine in the bundle), 1 the classic recompiled engine
+  int engine = 0;              // 0 the melee-unlocked engine (MeleeUnlockedEngine in the bundle), 1 the classic recompiled engine, 2 melee-unlocked as the disc plays (Vanilla)
+  uint32_t accent = 0;         // the launcher colour (0xRRGGBB; 0 is melee-unlocked's purple)
   bool engine_available = false;            // the bundle has the melee-unlocked engine (set by main_mac.cpp)
 };
 // Shows the launcher and blocks until Play (true) or quit (false). `error` explains why the
 // remembered disc could not be used, if that happened.
 bool launcher_run(LauncherSettings& settings, const std::string& error);
+// melee-unlocked's launcher (mu_launcher.mm): the same contract.
+bool mu_launcher_run(LauncherSettings& settings, const std::string& error);
 void mac_show_error(const std::string& title, const std::string& detail);
 }  // namespace host
