@@ -84,13 +84,23 @@ JOBS="${DASHDANCE_JOBS:-$(sysctl -n hw.ncpu)}"
 case "$TARGET" in
   mac)
     BUILD="$ROOT/build/mac"
+    # The melee-unlocked engine (mu-engine/): melee-unlocked v1.0.5 is fetched and its game is built from source with
+    # GCC 15 in a Docker container (OrbStack or Docker Desktop). Without Docker the app plays the classic engine only.
+    MU=OFF
+    if [[ -z "${DASHDANCE_NO_MU:-}" ]] && command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+      step "melee-unlocked engine: fetching melee-unlocked and building its game (Docker, a few minutes the first time)"
+      bash "$ROOT/mu-engine/fetch.sh" && bash "$ROOT/mu-engine/build.sh" game && MU=ON || echo "melee-unlocked engine: build failed; continuing with the classic engine only"
+    else
+      echo "melee-unlocked engine: skipped (needs Docker: OrbStack or Docker Desktop). The app will play the classic engine."
+    fi
     step "Generating the port (this translates the game once; a few minutes)"
     python3 "$ROOT/tools/bootstrap_port.py" --decomp-root "$DECOMP" --dol "$DOL" --build-dir "$BUILD" --gct-base 0x8065CC80 --macos-arch arm64 --stage generate
     step "Building the macOS app"
     cmake -S "$ROOT" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
       -DMELEE_DECOMP_ROOT="$DECOMP" -DMELEE_DOL_PATH="$DOL" -DMELEE_PORT_GENERATED_DIR="$BUILD/generated/guest" \
-      -DMELEE_BUILD_PORT_TESTS=OFF -DMELEE_BUILD_PORT_HEADLESS=OFF -DMELEE_BUILD_PORT_METAL=ON >/dev/null
+      -DMELEE_BUILD_PORT_TESTS=OFF -DMELEE_BUILD_PORT_HEADLESS=OFF -DMELEE_BUILD_PORT_METAL=ON -DMELEE_BUILD_MU_ENGINE="$MU" >/dev/null
     cmake --build "$BUILD" --target melee_port_mac --parallel "$JOBS"
+    [[ "$MU" == ON ]] && cmake --build "$BUILD" --target melee_unlocked_mac --parallel "$JOBS"
     # Replay playback ("Watch" on Recent games): the same game translated with Slippi's playback codes, bundled
     # as the app's second executable. Same steps as tools/mac/rebuild.sh.
     PBUILD="$ROOT/build/mac-playback"
@@ -100,12 +110,12 @@ case "$TARGET" in
       -DMELEE_DECOMP_ROOT="$DECOMP" -DMELEE_DOL_PATH="$DOL" -DMELEE_PORT_GENERATED_DIR="$PBUILD/generated/guest" \
       -DMELEE_BUILD_PORT_TESTS=OFF -DMELEE_BUILD_PORT_HEADLESS=OFF -DMELEE_BUILD_PORT_METAL=ON >/dev/null
     cmake --build "$PBUILD" --target melee_port_mac --parallel "$JOBS"
-    # This fork installs as DashDance2 (orange icon, own bundle id) so it sits next to the original Dashdance.
-    export APP_NAME="${DASHDANCE_APP_NAME:-DashDance2}"
+    # This branch installs as melee-unlocked-macOS (melee-unlocked's icon with the engine, its own bundle id).
+    export APP_NAME="${DASHDANCE_APP_NAME:-melee-unlocked-macOS}"
     step "Packaging $APP_NAME.app"
     "$ROOT/tools/package_macos_app.sh" "$BUILD" "$ROOT/dist"
     echo
-    echo "Done. Opening dist/$APP_NAME.app — choose your disc in the dashboard the first time (it is remembered)."
+    echo "Done. Opening dist/$APP_NAME.app — choose your disc in the launcher the first time (it is remembered)."
     [[ -n "${DASHDANCE_NO_OPEN:-}" ]] || open "$ROOT/dist/$APP_NAME.app" --args --iso "$ISO" --choose-disc   # install.sh opens the Applications copy instead
     ;;
   device)

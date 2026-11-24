@@ -32,6 +32,35 @@ Games &nbsp;·&nbsp; Free &nbsp;·&nbsp; Open source &nbsp;·&nbsp; For Slippi O
 |:---:|:---:|:---:|:---:|
 | Mac · iPhone · iPad · Vision Pro | Free | 73 MB on Mac | Games |
 
+## melee-unlocked-macOS (this branch)
+
+This branch turns the app into **melee-unlocked-macOS**: [melee-unlocked](https://github.com/Hero88go/melee-unlocked)'s
+Source Port (Melee rebuilt from the decompilation's source code, with melee-unlocked's modes and features) running natively
+on Apple silicon, in melee-unlocked's own launcher and with its icon.
+
+**Install.** Paste this into Terminal. It needs [OrbStack](https://orbstack.dev) or Docker Desktop running, because
+melee-unlocked's game is compiled from source in a container on your Mac (nothing from the game is downloaded):
+
+```
+curl -fsSL https://raw.githubusercontent.com/rkoh46/dashdance/melee-unlocked-macos/install.sh | zsh
+```
+
+It builds from your own Melee NTSC 1.02 disc image, replaces DashDance2 in Applications with melee-unlocked-macOS, and keeps
+your settings, Slippi sign-in, replays and memory card where they were.
+
+**In the launcher**, the Game Build row picks what PLAY starts:
+
+| Game Build | What it is |
+|---|---|
+| Source Port | melee-unlocked's engine (the default). |
+| Static Recomp (Legacy) | The recompiled game this app started with. It stays until the Source Port has online play and replays. |
+| Vanilla | melee-unlocked's engine playing the game as the disc does: no codes, nothing unlocked. |
+
+**What works with the Source Port today:** offline play with picture, sound and controllers (keyboard, controllers macOS
+sees, the GameCube adapter), memory card saves, the in-game menu (F1 or Esc). **Not yet:** Slippi online and watching
+replays in the Source Port (use Static Recomp for both for now), melee-unlocked's own in-game settings panel, and mod
+packs. The full list, row by row, is in [docs/FEATURES.md](docs/FEATURES.md).
+
 ## About this fork
 
 This is [rkoh46's](https://github.com/rkoh46/dashdance) playtest fork of [TheAndersMadsen/dashdance](https://github.com/TheAndersMadsen/dashdance). Everything here is the original Dashdance plus fixes found by playing it on a Mac, kept on the `dashdance2` branch until they go upstream. What is different from the original:

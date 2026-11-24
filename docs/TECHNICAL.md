@@ -260,6 +260,41 @@ This is an alpha. Expect rough edges, and please report them.
 <br><sub>Left: two instances of the app in an online match against each other on one Mac. Right: Corneria at 4× resolution.</sub>
 </div>
 
+## The melee-unlocked engine on the Mac (`mu-engine/`)
+
+melee-unlocked 1.0.5 (commit `67868aa`) is fetched at build time (`mu-engine/fetch.sh`) and changed only by the patches in
+`mu-engine/patches`; nothing from it or from the game is committed. `mu-engine/build.sh game` builds its game image (the
+decompilation's C) as an AArch64 Linux ELF with GCC 15.2 in a container with no network (image `mu-arm-gcc15`, from
+`mu-engine/linux-gcc15.Dockerfile`).
+
+**Addresses.** On Linux and the Switch the game sits at its console addresses: main memory at `0x80000000`, the image at
+`0x82800000`, the locked cache at `0xE0000000`, because disc data keeps 32-bit pointer slots. macOS will not start an arm64
+binary whose `__PAGEZERO` is smaller than 4 GB (tested: the kernel kills it), so nothing can live below 4 GB. Here the three
+ranges sit at `0x100000000000` plus the console address (`MU_HIGH_BASE`, a multiple of 4 GB, so narrowing a pointer to 32
+bits still gives the console address). Patches `0010` and `decomp-0010` make every place that turns a 32-bit console address
+into a pointer widen it (`MU_WIDEN`, `MU_WIDEN64` in `mu_disc.h`): the sites were found with a cast audit build (address-
+sized integers made 32-bit so every such cast warns) and with runtime fault reports (`MU_FIXUP=1`/`2` in the runner logs any
+load or store through a bare console address, with the call chain).
+
+**ABI.** The image is a Linux ELF loaded by `mu-engine/runner/mu_elf.cpp` with macOS back ends in `mu-engine/runner/macos`:
+`-ffixed-x18` keeps it off the platform register; the printf family goes through AAPCS64 variadic entry points
+(`mu_linux_varargs.S`), since Apple passes variadic arguments on the stack; the two host functions with 8-bit arguments get
+adapters (`abi_macos.cpp`); pages are 16 KiB.
+
+**Exactness.** `mu-engine/build.sh runner` builds `build/mu-engine/out/mu-runner`; run it with `--iso PATH --script NAME`
+for each of `parity_vs_onett vs4_busy parity_vs_items_off parity_lcancel native_vs_ko`. All five print `digest vs x86-64
+AVX2 reference: IDENTICAL for all 9000 rows compared`. The app's engine with picture and sound gives the same digest:
+`MeleeUnlockedEngine --iso PATH --profile-dir EMPTY_DIR --script build/mu-engine/gen/scripts/parity_vs_onett.txt --digest
+out.csv --frames 9000 --hidden`, then compare with `gunzip -c mu-engine/reference/parity_vs_onett.csv.gz`.
+
+**The app.** `MeleeUnlockedEngine` (`mu-engine/app`, built by the top-level CMake with `-DMELEE_BUILD_MU_ENGINE=ON`) runs
+melee-unlocked's host services on the main thread and hands the GX stream to this repository's decoder (a build-time copy
+of `port/runtime/gx/gx_core.cpp` that reaches 64 MiB of console addresses), Metal renderer, SDL3 window, controllers,
+in-game menu and audio output, through the host's frontend hooks (`patches/0011`, from Melee-NX-NetPlay's frontend). The
+launcher (`port/runtime/host/mu_launcher.mm`) is melee-unlocked's Win32 launcher rebuilt in AppKit; PLAY with Source Port or
+Vanilla `execv`s the engine with the launcher's choices. Its artwork and the app icon are converted from the fetched tree
+when the app is packaged (`tools/mu_launcher_art.py`).
+
 ## How it works
 
 1. **Translate.** `port/recomp` reads your disc's executable and Slippi's Gecko code tables and writes one C++ function per game function. Apple Clang compiles them into a static library. This step runs on your machine; nothing from the game is ever committed here.
