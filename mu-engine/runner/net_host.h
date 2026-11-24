@@ -47,7 +47,8 @@ struct Options {
   uint32_t shield_online = 0;       // --net-shield RRGGBB
   std::string skip[3];              // --net-skip CODE (up to three)
   bool as_slippi = false;           // --net-as-slippi: tests: no build message, as Slippi Dolphin
-  double clock_skew = 0;            // --net-clock-skew PERCENT: tests: this instance's frame clock runs that much fast (negative: slow)
+  double clock_skew = 0;
+  bool from_menus = false;          // the game's own Online Play page starts searches (Slippi's menus): no match is asked for at boot            // --net-clock-skew PERCENT: tests: this instance's frame clock runs that much fast (negative: slow)
   // Filled in by the caller, not by arguments:
   std::string out_dir;              // where the made-up user of --net and digest-net-confirmed.csv go
   std::string iso_path;             // the disc image (services: the game report's disc hash)

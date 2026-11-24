@@ -10,6 +10,8 @@
 #include "mu_elf_bridge.h"
 #include "fixedmap.h"
 #include "abi_macos.h"
+#include "net_host.h"
+#include "slippi_menus.h"
 
 #include "audio.h"
 #include "game_menu.h"
@@ -19,6 +21,7 @@
 #include "input_config.h"
 #include "window.h"
 
+#include <mach-o/dyld.h>
 #include <algorithm>
 #include <atomic>
 #include <cstdarg>
@@ -31,7 +34,6 @@
 #include <vector>
 
 extern "C" const uint8_t mu_embedded_game[], mu_embedded_game_end[];
-extern "C" void mu_host_prewrite(void*, size_t) {}   // no write tracking without online play (rollback.cpp has the real one)
 
 namespace fs = std::filesystem;
 
@@ -43,9 +45,16 @@ void mu_shim_open_log(const std::string& path);
 
 namespace {
 std::atomic<bool> g_quit{false};
+bool g_vanilla = false;
+uint32_t g_last_match_frame = 0;
+double g_last_frame_time = -1;
 uint32_t g_frames_limit = 0;
 FILE* g_digest = nullptr;   // --digest: the parity runner's per-retrace state rows (tests)
 
+void net_say(const char* format, ...) {
+  char line[1024]; va_list args; va_start(args, format); std::vsnprintf(line, sizeof line, format, args); va_end(args);
+  host::log("%s", line);
+}
 std::string home_dir() { const char* h = std::getenv("HOME"); return h ? h : "."; }
 
 void on_fifo(const uint8_t* data, uint32_t size, void*) {
@@ -64,18 +73,31 @@ void on_retrace(void*) {
 
 void on_frame(const MuStatePod& state, const linux_host::Counters& counters, void*) {
   host::mu_shim_set_scene(uint8_t(state.scene_major), uint8_t(state.scene));
-  if (g_digest) {
-    std::fprintf(g_digest, "%u,%u,%u,%u,%u", counters.retraces, state.scene_major, state.scene, state.match_frame, state.rng);
-    for (const auto& f : state.player)
-      std::fprintf(g_digest, ",%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u", f.present, f.stocks, f.action, f.anim_frame, f.pos_x, f.pos_y, f.pos_z,
-                   f.vel_x, f.vel_y, f.vel_z, f.percent, f.facing);
-    std::fputc('\n', g_digest);
-  }
+  // The parity runner's per-retrace state row: the digest (--digest) and the netplay host's record of shown states.
+  char row[1400]; int n = std::snprintf(row, sizeof row, "%u,%u,%u,%u,%u", counters.retraces, state.scene_major, state.scene, state.match_frame, state.rng);
+  for (const auto& f : state.player)
+    n += std::snprintf(row + n, sizeof row - size_t(n), ",%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u", f.present, f.stocks, f.action, f.anim_frame, f.pos_x,
+                       f.pos_y, f.pos_z, f.vel_x, f.vel_y, f.vel_z, f.percent, f.facing);
+  row[n++] = '\n';
+  if (g_digest) std::fwrite(row, 1, size_t(n), g_digest);
+  const bool fighting = state.match_frame && state.match_frame != g_last_match_frame;
+  g_last_match_frame = state.match_frame;
+  const double now = host::now_seconds();
+  net_host::on_retrace(row, size_t(n), fighting, g_last_frame_time < 0 ? -1.0 : (now - g_last_frame_time) * 1000.0);
+  g_last_frame_time = now;
   if (g_frames_limit && counters.retraces >= g_frames_limit) linux_host::request_stop(0);
 }
 } // namespace
 
 // ---- the host services' frontend hooks (patches/0011) ----
+// The first option word: Vanilla, and Slippi's menus once their files are served.
+extern "C" int mu_frontend_option(int which, uint32_t* value) {
+  if (which != 0 || !value) return 0;
+  *value = (g_vanilla ? MU_GAME_OPTION_VANILLA : 0u) | (slippi_menus::active() && !g_vanilla ? MU_GAME_OPT_SLIPPI_MENUS : 0u);
+  return 1;
+}
+extern "C" void mu_frontend_disc_ready(void) { if (!g_vanilla) slippi_menus::disc_ready(); }
+extern "C" int mu_frontend_disc_read(uint64_t offset, void* out, size_t bytes) { return slippi_menus::read(offset, out, bytes); }
 extern "C" int mu_frontend_pad_read(MuPadStatus out[4]) {
   host::PadState pads[4];
   host::input_poll(pads);
@@ -97,7 +119,9 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
 
 int main(int argc, char** argv) {
   mu_abi_install_crash_report();
-  std::string iso, profile_dir, log_file, cache_dir, capture_path, script;
+  std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir;
+  net_host::Options net;
+  bool offline = false;
   int volume = 70, scale = 0;
   uint32_t capture_frame = 0;
   bool fullscreen = false, hidden = false, vsync = true, vanilla = false;
@@ -115,12 +139,16 @@ int main(int argc, char** argv) {
     else if (a == "--hidden") hidden = true;
     else if (a == "--no-vsync") vsync = false;
     else if (a == "--script") script = next();
+    else if (a == "--sys-dir") sys_dir = next();
+    else if (a == "--offline") offline = true;
+    else if (net_host::parse_option(a, next, &net)) {}
     else if (a == "--digest") g_digest = std::fopen(next().c_str(), "w");
     else if (a == "--frames") g_frames_limit = uint32_t(std::strtoul(next().c_str(), nullptr, 0));
     else if (a == "--capture") { capture_path = next(); capture_frame = uint32_t(std::strtoul(next().c_str(), nullptr, 0)); }
     else if (a == "--help") {
       std::printf("MeleeUnlockedEngine --iso PATH [--profile-dir DIR] [--log-file F] [--cache-dir DIR] [--volume 0..100]\n"
-                  "  [--scale auto|1..8] [--fullscreen] [--no-vsync] [--frames N] [--capture FILE.ppm FRAME] [--script FILE]\n");
+                  "  [--scale auto|1..8] [--fullscreen] [--no-vsync] [--frames N] [--capture FILE.ppm FRAME] [--script FILE]\n"
+                  "  [--sys-dir DIR] [--offline] [--online unranked|direct:CODE|teams|party] [--user-dir DIR] [--net-delay N]\n");
       return 0;
     } else if (!a.empty() && a[0] != '-' && iso.empty()) iso = a;
   }
@@ -133,6 +161,21 @@ int main(int argc, char** argv) {
   if (log_file.empty()) log_file = (mu_dir / "engine.log").string();
   host::mu_shim_open_log(log_file);
   if (cache_dir.empty()) { cache_dir = (mu_dir / "shaders").string(); fs::create_directories(cache_dir, ec); }
+  g_vanilla = vanilla || !script.empty();   // a scripted match plays the retail game, as the parity runner does
+  // Slippi's files: the bundle's slippi_sys (Contents/Resources next to Contents/MacOS), or --sys-dir.
+  if (sys_dir.empty()) {
+    char exe[4096]; uint32_t size = sizeof exe;
+    if (_NSGetExecutablePath(exe, &size) == 0) {
+      const fs::path bundled = fs::path(exe).parent_path().parent_path() / "Resources" / "slippi_sys";
+      if (fs::is_directory(bundled, ec)) sys_dir = bundled.string();
+    }
+  }
+  if (!script.empty()) sys_dir.clear();   // scripted runs are the retail game, as the parity runner plays it
+  slippi_menus::set_sys_dir(sys_dir);
+  // Online: the player's own Slippi sign-in (support/Slippi/user.json, as the classic engine) unless the launcher said
+  // offline; a search starts from the game's Online Play page. --online without menus (tests) asks for a match at boot.
+  const bool menus_online = !offline && !vanilla && script.empty() && !sys_dir.empty() && net.online.empty() && net.net.empty();
+  if (menus_online) { net.online = "unranked"; net.from_menus = true; if (net.user_dir.empty()) net.user_dir = (support / "Slippi").string(); }
 
   // Controller settings the dashboard keeps (launcher.ini): the keyboard layout and each controller's mapping and port.
   {
@@ -181,6 +224,19 @@ int main(int argc, char** argv) {
     config.has_rng_seed = true; config.rng_seed = 0x12345678; config.has_time_base = true; config.time_base = 0;
   }
   mac_elf::set_embedded_image(mu_embedded_game, size_t(mu_embedded_game_end - mu_embedded_game));
+  bool net_on = false;
+  if (net_host::wanted(net) && (menus_online ? std::filesystem::exists(net.user_dir + "/user.json") || net.fake_user : true)) {
+    net.out_dir = (mu_dir / "net").string(); fs::create_directories(net.out_dir, ec);
+    net.iso_path = iso; net.embedded_image = true;
+    if (const int start = net_host::start(net, net_say)) {
+      host::log("online: the netplay host could not start (%d); playing offline", start);
+    } else {
+      net_on = true;
+      config.input_script.clear();
+      host::log("online: on (user folder %s)%s", net.user_dir.c_str(), menus_online ? "; a search starts from the game's Online Play page" : "");
+    }
+  } else if (menus_online) host::log("online: no Slippi sign-in in %s: the Online Play page will ask to log in", net.user_dir.c_str());
+  linux_host::set_tables_hook([](MuHostApi* host, MuGameApi*) { if (host) { net_host::install(host); mu_abi_adapt_host_table(host); } });
   linux_host::set_video_sinks(on_fifo, on_retrace, nullptr);
   int code = 0;
   std::string error;
@@ -196,7 +252,9 @@ int main(int argc, char** argv) {
     host::log("melee-unlocked engine: stopped with code %d after %u retraces, %llu FIFO bytes, %llu audio blocks", code, c.retraces,
               (unsigned long long)c.fifo_bytes, (unsigned long long)c.audio_blocks);
   }
+  net_host::stop_tracking();
   linux_host::shutdown();
+  if (net_on) { net_host::report(); net_host::shutdown(); }
   if (g_digest) std::fclose(g_digest);
   fixedmap_release_all();
   gx::init(nullptr);

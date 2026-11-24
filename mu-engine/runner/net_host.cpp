@@ -385,8 +385,9 @@ void usage(Log log) {
 bool wanted(const Options& o) { return !o.net.empty() || !o.online.empty(); }
 bool active() { return net.on; }
 
+bool g_from_menus = false;
 int start(const Options& given, Log log) {
-  options = given; say = log;
+  options = given; say = log; g_from_menus = given.from_menus;
   net.started = net.last_request = Clock::now();     // a search from the game's own menu has no online_test_match call
   netplay_bridge::Setup setup;
   setup.set_speed = net_set_speed;
@@ -452,7 +453,8 @@ int start(const Options& given, Log log) {
 
 void install(MuHostApi* host) {
   if (!host || !net.on) return;
-  host->slippi_command = net_slippi_command; host->online_test_match = net_online_test_match;
+  host->slippi_command = net_slippi_command;
+  if (!g_from_menus) host->online_test_match = net_online_test_match;   // with Slippi's menus the player picks the mode
   // An online match is recorded as a replay; a host that keeps none must still take the calls.
   if (!host->replay_event) host->replay_event = [](uint8_t, const uint8_t*, uint32_t) {};
   if (!host->replay_finished) host->replay_finished = []() {};

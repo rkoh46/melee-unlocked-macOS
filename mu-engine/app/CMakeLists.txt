@@ -43,7 +43,8 @@ add_library(mu_host_mac STATIC
   "${MU_TREE}/port/linux/host_services.cpp" "${MU_TREE}/port/linux/input_script.cpp"
   "${MU_TREE}/port/runtime/hle/ax_ucode.cpp" "${MU_TREE}/port/runtime/hle/native_savestate.cpp"
   "${MU_RUN}/mu_elf.cpp" "${MU_RUN}/macos/fixedmap_macos.c" "${MU_RUN}/macos/mu_imports_macos.c"
-  "${MU_RUN}/macos/mu_linux_varargs.S" "${MU_RUN}/macos/abi_macos.cpp")
+  "${MU_RUN}/macos/mu_linux_varargs.S" "${MU_RUN}/macos/abi_macos.cpp"
+  "${MU_RUN}/net_host.cpp" "${MU_RUN}/rollback.cpp" "${MU_RUN}/macos/dirtytrack_macos.c")
 target_include_directories(mu_host_mac PRIVATE "${MU_RUN}" "${MU_RUN}/macos" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
   "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/runtime/host" "${MU_TREE}/port/runtime/ppc" "${MU_TREE}/port/runtime/gx" "${MU_TREE}/native")
 target_compile_definitions(mu_host_mac PRIVATE MU_FOREIGN_ELF MU_SQUAD=1 MELEE_NO_SLIPPI MELEE_PORT_VERSION="mu-native"
@@ -53,17 +54,23 @@ target_compile_options(mu_host_mac PRIVATE -O2 -fno-strict-aliasing)
 
 set(_dd_objc "${DD}/gx/gx_metal.mm" "${DD}/host/controller_rate.mm")
 add_executable(melee_unlocked_mac
-  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
+  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${DD}/host/vcdiff.cpp" "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
   "${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp" "${DD}/gx/gx_texture.cpp" "${DD}/gx/gx_shader.cpp" "${DD}/gx/gx_msl.cpp" "${DD}/gx/render_observer.cpp" "${DD}/gx/authored_pose.cpp" "${DD}/gx/subframe.cpp"
   "${DD}/host/window_sdl.cpp" "${DD}/host/input_config.cpp" "${DD}/host/input_script.cpp" "${DD}/host/game_menu.cpp"
   "${DD}/host/audio_sdl.cpp" "${DD}/host/gc_adapter_iokit.cpp" ${_dd_objc})
 set_source_files_properties(${_dd_objc} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 target_include_directories(melee_unlocked_mac PRIVATE "${MU_RUN}" "${MU_RUN}/macos" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
-  "${DD}/host" "${DD}/gx" "${DD}/ppc" "${DD}/hle" "${MU_REPO}/native" "${MU_REPO}/port/third_party")
+  "${DD}/host" "${DD}/gx" "${DD}/ppc" "${DD}/hle" "${MU_REPO}/native" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/hle")
 target_compile_definitions(melee_unlocked_mac PRIVATE MU_HIGH_BASE=${MU_HIGH_BASE} MELEE_PORT_VERSION="${MELEE_PORT_VERSION}"
   MELEE_SOURCE_ART_DIR="${MU_REPO}/port/app/art/controller")
 target_compile_features(melee_unlocked_mac PRIVATE cxx_std_17)
-target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac native_animation ${AURORA_SDL3_TARGET} z
+# The netplay object (mu-engine/build.sh net: this repository's Slippi netplay with only netplay_bridge::* global).
+add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engine/build.sh" net
+  DEPENDS "${MU_RUN}/netplay_bridge_mac.cpp" "${DD}/hle/slippi_online.cpp" "${DD}/hle/slippi_net.cpp" "${DD}/hle/slippi_net.h" "${DD}/hle/slippi_online.h"
+  COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
+add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
+add_dependencies(melee_unlocked_mac mu_netplay_object)
+target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")

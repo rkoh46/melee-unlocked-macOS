@@ -27,5 +27,5 @@ kill $mock 2>/dev/null; wait $mock 2>/dev/null
 echo "side a exit $ra, side b exit $rb"
 grep -h "mock mm: matched" "$out/mock.log"
 for side in a b; do echo "== $side"; grep -E "net check|desync|rollbacks|online:|connected|stopped" "$out/$side.log" | head -12; done
-ca=$(grep -h "net check" "$out/a.log"); cb=$(grep -h "net check" "$out/b.log")
+ca=$(grep -h "net check (" "$out/a.log"); cb=$(grep -h "net check (" "$out/b.log")   # the per-frame hashes; the frame counts differ with where each side stopped
 if [ -n "$ca" ] && [ "$ca" = "$cb" ]; then echo "net check: EQUAL on both sides"; else echo "net check: DIFFERENT or missing"; fi
