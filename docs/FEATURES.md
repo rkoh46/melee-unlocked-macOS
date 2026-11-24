@@ -32,9 +32,9 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Slippi system files | host | active: Slippi's menu files served from the bundle's slippi_sys (`mu-engine/app/slippi_menus.cpp`) |
 | Slippi Ranked | host | refused, as melee-unlocked refuses it |
 | Rollback savestates | host | active: the hot-page store with macOS write tracking (580 rollbacks, net check equal, in the loopback rollback test) |
-| Slippi account | host | partial: the app's own sign-in file (Application Support/Dashdance/Slippi/user.json); the Slippi Launcher's file is not looked for by the engine |
+| Slippi account | host | active: the app's own sign-in file, or the Slippi Launcher's when the app has none |
 | Matchmaking | host + external | active: the app's matchmaking client (ENet); tested against the loopback stand-in only |
-| Online input delay | host | partial: the netplay host's delay (2 by default); the launcher's setting is not passed to the engine yet |
+| Online input delay | host | active: the launcher's setting (1-4, or the in-game menu's larger value) is passed to the engine |
 | Time sync, frame advance/skip | host | active (the app's netplay; frame-rate nudges go to the host's pacing) |
 | Desync detection and notice | game image + host | active: the game's checksum comparison (0 desync messages in the tests) |
 | Player drop handling (3.7.0) | game image + host | partial: Slippi 3.7.0 despawn frames in the ONLINE_INPUTS reply; not tested with a real drop |
