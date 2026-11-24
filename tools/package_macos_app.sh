@@ -36,6 +36,15 @@ if [[ -x "$PLAYBACK_EXE" ]]; then
 else
   echo "playback: no $PLAYBACK_EXE, replays will not play in this bundle"
 fi
+# The melee-unlocked engine (mu-engine/app): the executable the dashboard starts when that engine is chosen. Without it
+# the app plays the classic engine only and says so.
+MU_EXE="$BUILD/mu-engine/app/MeleeUnlockedEngine"
+if [[ -x "$MU_EXE" ]]; then
+  cp "$MU_EXE" "$APP/Contents/MacOS/MeleeUnlockedEngine"
+  echo "melee-unlocked engine: bundled $MU_EXE"
+else
+  echo "melee-unlocked engine: no $MU_EXE, this bundle plays the classic engine only"
+fi
 cp "$ROOT/port/app/icons/AppIcon.icon/Assets/glyph.png" "$APP/Contents/Resources/AppMark.png"   # the hero mark in the dashboard
 cp -R "$ROOT/port/app/art/controller" "$APP/Contents/Resources/controller"                        # controller editor artwork
 # App icon: the Icon Composer bundle (the Dashdance mark as a glass layer over violet) compiled by

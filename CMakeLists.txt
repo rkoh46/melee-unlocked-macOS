@@ -51,6 +51,13 @@ endif()
 if(MELEE_BUILD_EXPERIMENTAL_PORT OR MELEE_BUILD_PORT_HEADLESS OR MELEE_BUILD_PORT_METAL OR MELEE_BUILD_PORT_TESTS OR MELEE_BUILD_PORT_TRANSPORT_TESTS)
   add_subdirectory(port)
 endif()
+# The melee-unlocked engine player (mu-engine/app), next to the classic engine's app; needs mu-engine/fetch.sh and
+# mu-engine/build.sh game first.
+option(MELEE_BUILD_MU_ENGINE "Build the melee-unlocked engine player (mu-engine/app)" OFF)
+if(MELEE_BUILD_MU_ENGINE AND MELEE_BUILD_PORT_METAL)
+  enable_language(ASM)
+  add_subdirectory(mu-engine/app)
+endif()
 add_executable(native_animation_test tests/native_animation_test.cpp)
 target_include_directories(native_animation_test PRIVATE native)
 target_compile_features(native_animation_test PRIVATE cxx_std_14)

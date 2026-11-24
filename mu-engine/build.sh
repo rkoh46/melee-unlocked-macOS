@@ -81,7 +81,7 @@ M=build/mu-engine/mu
 RUNNER_SOURCES="$M/port/linux/host_services.cpp $M/port/linux/input_script.cpp $M/port/runtime/hle/ax_ucode.cpp
   $M/port/runtime/hle/native_savestate.cpp mu-engine/runner/runner_main.cpp mu-engine/runner/mu_elf.cpp mu-engine/runner/rollback.cpp
   mu-engine/runner/net_host.cpp mu-engine/runner/hostprof.cpp mu-engine/runner/netplay_bridge_stub.cpp
-  mu-engine/runner/macos/abi_macos.cpp build/mu-engine/gen/api_names.cpp build/mu-engine/gen/embedded_tables.cpp"
+  mu-engine/runner/macos/abi_macos.cpp mu-engine/runner/macos/frontend_hooks_none.cpp build/mu-engine/gen/api_names.cpp build/mu-engine/gen/embedded_tables.cpp"
 RUNNER_C="mu-engine/runner/macos/fixedmap_macos.c mu-engine/runner/macos/mu_imports_macos.c mu-engine/runner/macos/dirtytrack_macos.c"
 RUNNER_S="mu-engine/runner/macos/mu_linux_varargs.S mu-engine/runner/macos/hostprof_macos.S build/mu-engine/gen/embedded.S"
 RUNNER_INC="-Imu-engine/runner -Imu-engine/runner/macos -I$M/port/linux -I$M/port/runtime/abi -I$M/port/runtime/hle -I$M/port/runtime/host

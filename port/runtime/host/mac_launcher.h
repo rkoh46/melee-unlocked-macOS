@@ -27,6 +27,8 @@ struct LauncherSettings {
   std::string slippi_dir;      // where this app keeps its own user.json (native sign-in)
   std::string account_name, account_code;   // current login, if any
   bool account_from_launcher = false;       // login comes from the Slippi Launcher's file (macOS)
+  int engine = 0;              // 0 the melee-unlocked engine (MeleeUnlockedEngine in the bundle), 1 the classic recompiled engine
+  bool engine_available = false;            // the bundle has the melee-unlocked engine (set by main_mac.cpp)
 };
 // Shows the launcher and blocks until Play (true) or quit (false). `error` explains why the
 // remembered disc could not be used, if that happened.

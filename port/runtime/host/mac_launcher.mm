@@ -60,12 +60,14 @@ static MUStatusBar* g_status = nil;
 - (void)openSlippiSite:(id)sender { [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://slippi.gg"]]; }
 @end
 static MULinks* g_links = nil;
+// The app's name as players see it (menu, window, hero, menu bar extra).
+static NSString* const kAppName = @"melee-unlocked-macOS";
 
 namespace {
 NSMenu* build_main_menu() {
   NSMenu* menubar = [[NSMenu alloc] init];
   NSMenuItem* appItem = [[NSMenuItem alloc] init]; [menubar addItem:appItem];
-  NSMenu* app = [[NSMenu alloc] initWithTitle:@"Dashdance"];
+  NSMenu* app = [[NSMenu alloc] initWithTitle:kAppName];
   [app addItemWithTitle:@"About Dashdance" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
   [app addItem:[NSMenuItem separatorItem]];
   [app addItemWithTitle:@"Hide Dashdance" action:@selector(hide:) keyEquivalent:@"h"];
@@ -85,7 +87,7 @@ NSMenu* build_main_menu() {
   NSApp.windowsMenu = window;
   NSMenuItem* helpItem = [[NSMenuItem alloc] init]; [menubar addItem:helpItem];
   NSMenu* help = [[NSMenu alloc] initWithTitle:@"Help"];
-  NSMenuItem* gh = [help addItemWithTitle:@"Dashdance on GitHub" action:@selector(openGitHub:) keyEquivalent:@""]; gh.target = g_links;
+  NSMenuItem* gh = [help addItemWithTitle:@"melee-unlocked-macOS on GitHub" action:@selector(openGitHub:) keyEquivalent:@""]; gh.target = g_links;
   NSMenuItem* sg = [help addItemWithTitle:@"Slippi.gg" action:@selector(openSlippiSite:) keyEquivalent:@""]; sg.target = g_links;
   helpItem.submenu = help;
   NSApp.helpMenu = help;
@@ -328,7 +330,7 @@ API_AVAILABLE(macos(26.0))
 @property(nonatomic) NSStackView* readinessStack; @property(nonatomic) std::string readinessSignature; @property(nonatomic) NSStackView* controllersStack; @property(nonatomic) NSUInteger controllerCount; @property(nonatomic) std::string controllerSignature; @property(nonatomic) unsigned tickCount; @property(nonatomic, copy) NSString* remapGuid; @property(nonatomic) int capturing; @property(nonatomic) BOOL armed; @property(nonatomic) NSArray<NSButton*>* remapButtons;
 // display
 @property(nonatomic) NSSwitch* discordSwitch; @property(nonatomic) NSSwitch* discordRankSwitch; @property(nonatomic) NSTextField* regionLabel;
-@property(nonatomic) NSSegmentedControl* scaleControl; @property(nonatomic) NSSegmentedControl* anisoControl; @property(nonatomic) NSSegmentedControl* upscalerControl; @property(nonatomic) NSSwitch* vsyncSwitch; @property(nonatomic) NSSwitch* fullscreenSwitch; @property(nonatomic) NSSwitch* widescreenSwitch; @property(nonatomic) NSSlider* sharpness; @property(nonatomic) NSSwitch* onlineSwitch; @property(nonatomic) NSSegmentedControl* delayControl;
+@property(nonatomic) NSSegmentedControl* engineControl; @property(nonatomic) NSSegmentedControl* scaleControl; @property(nonatomic) NSSegmentedControl* anisoControl; @property(nonatomic) NSSegmentedControl* upscalerControl; @property(nonatomic) NSSwitch* vsyncSwitch; @property(nonatomic) NSSwitch* fullscreenSwitch; @property(nonatomic) NSSwitch* widescreenSwitch; @property(nonatomic) NSSlider* sharpness; @property(nonatomic) NSSwitch* onlineSwitch; @property(nonatomic) NSSegmentedControl* delayControl;
 - (void)acceptDroppedDisc:(NSString*)path;
 - (void)openEditor:(MUControllerEditor*)editor;
 - (void)play;
@@ -831,7 +833,7 @@ static NSButton* pairing_button(NSString* title, NSString* sym, id target, SEL a
   self.settings = settings; self.startupError = error; self.capturing = -1;
   NSRect frame = NSMakeRect(0, 0, 720, 900);
   self.window = [[NSWindow alloc] initWithContentRect:frame styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView backing:NSBackingStoreBuffered defer:NO];
-  self.window.title = @"Dashdance"; self.window.titlebarAppearsTransparent = YES; self.window.titleVisibility = NSWindowTitleHidden;
+  self.window.title = kAppName; self.window.titlebarAppearsTransparent = YES; self.window.titleVisibility = NSWindowTitleHidden;
   self.window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
   self.window.backgroundColor = rgb(0.03, 0.03, 0.09); self.window.minSize = NSMakeSize(560, 520);
   self.window.delegate = self; self.window.releasedWhenClosed = NO;
@@ -1037,7 +1039,7 @@ static NSButton* pairing_button(NSString* title, NSString* sym, id target, SEL a
   } else {
     [hero addArrangedSubview:[[MUHeroView alloc] initWithSize:110]];
   }
-  NSTextField* title = [NSTextField labelWithString:@"Dashdance"];
+  NSTextField* title = [NSTextField labelWithString:kAppName];
   title.font = meleeFont(46); title.textColor = NSColor.whiteColor;
   title.wantsLayer = YES; title.layer.shadowColor = kYellow().CGColor; title.layer.shadowOpacity = 0.5; title.layer.shadowRadius = 14; title.layer.shadowOffset = CGSizeZero;
   NSTextField* sub = [NSTextField labelWithString:@"SUPER SMASH BROS. MELEE  ·  SLIPPI ONLINE  ·  NATIVE"];
@@ -1172,6 +1174,12 @@ static NSButton* pairing_button(NSString* title, NSString* sym, id target, SEL a
   NSScreen* screen = NSScreen.mainScreen;
   NSString* info = [NSString stringWithFormat:@"%@  ·  %d Hz display%@  ·  thermal %s  ·  60 Hz simulation, each frame shown on the next refresh", gpu ? gpu.name : @"Metal", display_max_hz(screen), display_max_hz(screen) > 60 ? @" (ProMotion)" : @"", host::thermal_state_name()];
   [s addArrangedSubview:label(info, 12, NSFontWeightRegular, 0.7)];
+  // Which engine plays: melee-unlocked's (the decompilation's C built natively; default) or the classic recompiled one.
+  self.engineControl = [self segments:@[@"melee-unlocked", @"Classic"] selected:self.settings->engine_available ? MAX(0, MIN(1, self.settings->engine)) : 1];
+  [self.engineControl setEnabled:self.settings->engine_available forSegment:0];
+  [s addArrangedSubview:[self row:@"Engine" symbol:@"cpu" control:self.engineControl]];
+  [s addArrangedSubview:label(self.settings->engine_available ? @"melee-unlocked runs the game from source: its menus, modes and features. Classic is the recompiled game this app started with; it stays until melee-unlocked has online play and replays."
+                                                              : @"This build has no melee-unlocked engine (setup.sh builds it); the classic engine plays.", 11, NSFontWeightRegular, 0.6)];
   const int scales[] = {0, 1, 2, 3, 4, 6, 8}; NSInteger scaleIndex = 0;
   for (int i = 0; i < 7; ++i) if (scales[i] == self.settings->scale) scaleIndex = i;
   self.scaleControl = [self segments:@[@"Auto", @"1×", @"2×", @"3×", @"4×", @"6×", @"8×"] selected:scaleIndex];
@@ -1524,6 +1532,7 @@ static NSButton* pairing_button(NSString* title, NSString* sym, id target, SEL a
   if (self.editor) { [self.editor close]; self.editor = nil; }
   self.settings->discord_enabled = self.discordSwitch.state == NSControlStateValueOn;
   self.settings->discord_show_rank = self.discordRankSwitch.state == NSControlStateValueOn;
+  if (self.engineControl) self.settings->engine = self.settings->engine_available ? (int)MAX(0, MIN(1, self.engineControl.selectedSegment)) : 1;
   const int scales[] = {0, 1, 2, 3, 4, 6, 8};
   self.settings->scale = scales[MAX(0, MIN(6, self.scaleControl.selectedSegment))];
   self.settings->anisotropy = self.anisoControl.selectedSegment == 2 ? 16 : self.anisoControl.selectedSegment == 1 ? 4 : 1;
@@ -1562,8 +1571,8 @@ static NSButton* pairing_button(NSString* title, NSString* sym, id target, SEL a
   self.item = [NSStatusBar.systemStatusBar statusItemWithLength:NSVariableStatusItemLength];
   NSImage* mark = slippi_mark();
   if (mark) { mark.size = NSMakeSize(18, 18); self.item.button.image = mark; self.item.button.imagePosition = NSImageLeading; }
-  else self.item.button.title = @"Dashdance";
-  self.item.button.toolTip = @"Dashdance";
+  else self.item.button.title = kAppName;
+  self.item.button.toolTip = kAppName;
   [self refresh];
   return self;
 }

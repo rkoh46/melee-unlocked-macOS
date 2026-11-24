@@ -6,18 +6,25 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 B="$ROOT/build/mac"
 cd "$ROOT"
-export APP_NAME="${APP_NAME:-DashDance2}"
+export APP_NAME="${APP_NAME:-melee-unlocked-macOS}"
 APP="/Applications/$APP_NAME.app"
 if [[ "${1:-}" == "--install-only" ]]; then
   pgrep -x Dashdance > /dev/null && { echo "Quit Dashdance first."; exit 1; }
   rm -rf "$APP" && ditto "dist/$APP_NAME.app" "$APP" && echo "Installed $APP"; exit 0
 fi
+# The melee-unlocked engine (mu-engine/): its game image is rebuilt when the fetched tree is there; SKIP_MU=1 leaves it out.
+MU=OFF
+if [[ -d "$ROOT/build/mu-engine/mu" && -z "${SKIP_MU:-}" ]]; then
+  bash mu-engine/build.sh game > "$ROOT/build/mu-engine-game.log" 2>&1 || { tail -20 "$ROOT/build/mu-engine-game.log"; exit 1; }
+  MU=ON
+fi
 python3 tools/bootstrap_port.py --decomp-root deps/melee --dol deps/disc/main.dol --build-dir "$B" \
   --gct-base 0x8065CC80 --macos-arch arm64 --stage generate > "$ROOT/regen.log" 2>&1 || { tail -20 "$ROOT/regen.log"; exit 1; }
 cmake -S . -B "$B" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
   -DMELEE_DECOMP_ROOT="$ROOT/deps/melee" -DMELEE_DOL_PATH="$ROOT/deps/disc/main.dol" -DMELEE_PORT_GENERATED_DIR="$B/generated/guest" \
-  -DMELEE_BUILD_PORT_TESTS=OFF -DMELEE_BUILD_PORT_HEADLESS=OFF -DMELEE_BUILD_PORT_METAL=ON > /dev/null
+  -DMELEE_BUILD_PORT_TESTS=OFF -DMELEE_BUILD_PORT_HEADLESS=OFF -DMELEE_BUILD_PORT_METAL=ON -DMELEE_BUILD_MU_ENGINE="$MU" > /dev/null
 cmake --build "$B" --target melee_port_mac
+[[ "$MU" == ON ]] && cmake --build "$B" --target melee_unlocked_mac
 # Replay playback ("Watch this game"): the same app translated with Slippi's playback codes plus the replay code list
 # in build/playback-codes/gecko_list.bin (a playback run without it writes that file next to its re-recording; the
 # game installs the list at 0x80BE08A0). Built once build/mac-playback exists; SKIP_PLAYBACK=1 leaves it alone.

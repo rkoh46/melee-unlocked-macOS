@@ -33,6 +33,8 @@
 
 #include <algorithm>
 #include <mach-o/dyld.h>
+#include <unistd.h>
+#include <cerrno>
 #include <pthread/qos.h>
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
@@ -136,6 +138,16 @@ bool ensure_dir(const std::string& path, const char* what) {
 }
 }  // namespace
 
+// The melee-unlocked engine's executable: MELEE_MU_ENGINE, else MeleeUnlockedEngine next to this executable (the bundle's
+// Contents/MacOS); empty when this build has none.
+static std::string melee_unlocked_engine_path() {
+  if (const char* e = std::getenv("MELEE_MU_ENGINE")) return access(e, X_OK) == 0 ? e : "";
+  char path[4096]; uint32_t size = sizeof path;
+  if (_NSGetExecutablePath(path, &size) != 0) return "";
+  const fs::path candidate = fs::path(path).parent_path() / "MeleeUnlockedEngine";
+  return access(candidate.c_str(), X_OK) == 0 ? candidate.string() : "";
+}
+
 // launcher.ini: what the dashboard chose, also rewritten at exit when the in-game menu changed something.
 static void save_launcher_ini(const fs::path& path, const host::LauncherSettings& settings) {
   std::ofstream out(path, std::ios::trunc);
@@ -143,7 +155,7 @@ static void save_launcher_ini(const fs::path& path, const host::LauncherSettings
       << "\nsharpness=" << settings.sharpness << "\noverlay=" << settings.overlay_opacity << "\noverlay_scale=" << settings.overlay_scale
       << "\nscale=" << settings.scale << "\nanisotropy=" << settings.anisotropy << "\nupscaler=" << settings.upscaler << "\nvsync=" << (settings.vsync ? 1 : 0)
       << "\nfullscreen=" << (settings.fullscreen ? 1 : 0) << "\nvolume=" << settings.volume << "\nhud=" << (settings.hud ? 1 : 0)
-      << "\nonline_delay=" << settings.online_delay << "\ndiscord=" << (settings.discord_enabled ? 1 : 0) << "\ndiscord_rank=" << (settings.discord_show_rank ? 1 : 0) << "\n";
+      << "\nonline_delay=" << settings.online_delay << "\ndiscord=" << (settings.discord_enabled ? 1 : 0) << "\ndiscord_rank=" << (settings.discord_show_rank ? 1 : 0) << "\nengine=" << settings.engine << "\n";
   for (const host::ControllerConfig& c : host::controller_configs()) out << "controller." << c.guid << "=" << c.port << "|" << c.map.serialize() << "\n";
   out << "keyboard=" << host::keyboard_map().serialize() << "\n";
 }
@@ -276,6 +288,7 @@ int main(int argc, char** argv) {
       else if (const char* v = value("fullscreen=")) settings.fullscreen = *v == '1';
       else if (const char* v = value("volume=")) settings.volume = std::clamp(std::atoi(v), 0, 100);
       else if (const char* v = value("hud=")) settings.hud = *v == '1';
+      else if (const char* v = value("engine=")) settings.engine = std::clamp(std::atoi(v), 0, 1);
       else if (const char* v = value("discord=")) settings.discord_enabled = *v == '1';
       else if (const char* v = value("discord_rank=")) settings.discord_show_rank = *v == '1';
       else if (const char* v = value("keyboard=")) host::set_keyboard_map(host::KeyboardMap::parse(v));
@@ -299,6 +312,8 @@ int main(int argc, char** argv) {
     }
   }
   const bool show_launcher = iso_arg.empty() || choose_disc;
+  const std::string mu_engine = melee_unlocked_engine_path();
+  settings.engine_available = !mu_engine.empty() && replay_file.empty();
   if (show_launcher) {
     std::string previous_error;
     std::error_code ec;
@@ -320,6 +335,22 @@ int main(int argc, char** argv) {
     iso_arg = settings.iso;
     if (!settings.online) offline = true;
     if (ensure_dir(support.string(), "support")) save_launcher_ini(remembered, settings);
+    // The melee-unlocked engine is its own executable in the bundle: it replaces this process, with the dashboard's
+    // choices, and reads the controller settings from the same launcher.ini.
+    if (settings.engine == 0 && settings.engine_available) {
+      const std::string volume_text = std::to_string(settings.volume), scale_text = settings.scale > 0 ? std::to_string(settings.scale) : "auto";
+      std::vector<std::string> args = {mu_engine, "--iso", settings.iso, "--profile-dir", support.string(), "--volume", volume_text, "--scale", scale_text};
+      if (settings.fullscreen) args.push_back("--fullscreen");
+      if (!settings.vsync) args.push_back("--no-vsync");
+      std::vector<char*> argv_mu;
+      for (std::string& a : args) argv_mu.push_back(a.data());
+      argv_mu.push_back(nullptr);
+      host::log("engine: starting melee-unlocked (%s)", mu_engine.c_str());
+      host::close_log_file();
+      execv(mu_engine.c_str(), argv_mu.data());
+      host::mac_show_error("The melee-unlocked engine could not start", std::string(std::strerror(errno)) + "\n\n" + mu_engine);
+      return 1;
+    }
   }
   // A replay opens in a window next to the dashboard unless asked otherwise; Option-Return still toggles full screen.
   const bool start_fullscreen = fullscreen_arg || (settings.fullscreen && replay_file.empty());
