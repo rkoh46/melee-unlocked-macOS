@@ -344,6 +344,11 @@ int main(int argc, char** argv) {
       if (settings.fullscreen) args.push_back("--fullscreen");
       if (!settings.vsync) args.push_back("--no-vsync");
       if (settings.engine == 2) args.push_back("--vanilla");
+      // Online: the dashboard's input delay; offline when Slippi Online is off; the Slippi Launcher's sign-in when this app
+      // has none of its own (as the classic engine uses it).
+      args.push_back("--net-delay"); args.push_back(std::to_string(std::clamp(settings.online_delay, 1, 9)));
+      if (!settings.online) args.push_back("--offline");
+      if (settings.account_from_launcher) { const std::string dir = find_slippi_user_dir(); if (!dir.empty()) { args.push_back("--user-dir"); args.push_back(dir); } }
       std::vector<char*> argv_mu;
       for (std::string& a : args) argv_mu.push_back(a.data());
       argv_mu.push_back(nullptr);
