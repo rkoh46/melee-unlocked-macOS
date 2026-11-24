@@ -544,6 +544,8 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
     [window makeKeyAndOrderFront:nil];
     [window makeFirstResponder:view];
     [NSApp activateIgnoringOtherApps:YES];
+    if (std::getenv("MELEE_LAUNCHER_PLAY") && !settings.iso.empty())   // test runs: press PLAY a moment after the window shows
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [NSApp stopModalWithCode:NSModalResponseOK]; });
     if (std::getenv("MELEE_LAUNCHER_THEME")) dispatch_async(dispatch_get_main_queue(), ^{ [view openTheme]; });   // screenshots
     const NSModalResponse r = [NSApp runModalForWindow:window];
     [view closeTheme];
