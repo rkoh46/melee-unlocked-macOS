@@ -17,6 +17,10 @@ struct Config {
   int delay = 2;                 // Slippi Online input delay (frames)
   int chat = 0;                  // 0 enabled, 1 direct only, 2 disabled
   bool show_local_rank = true, show_opponent_rank = true;
+  // The ONLINE_INPUTS reply in Slippi 3.7.0's layout (559 bytes: each remote player's despawn frame as a word, the
+  // predicted inputs, the pad random bits), which melee-unlocked's engine reads. Off: the older 297-byte layout the
+  // classic engine's codes read.
+  bool reply_370 = false;
 };
 Config& config();
 

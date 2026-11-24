@@ -80,7 +80,7 @@ generate() {
 M=build/mu-engine/mu
 RUNNER_SOURCES="$M/port/linux/host_services.cpp $M/port/linux/input_script.cpp $M/port/runtime/hle/ax_ucode.cpp
   $M/port/runtime/hle/native_savestate.cpp mu-engine/runner/runner_main.cpp mu-engine/runner/mu_elf.cpp mu-engine/runner/rollback.cpp
-  mu-engine/runner/net_host.cpp mu-engine/runner/hostprof.cpp mu-engine/runner/netplay_bridge_stub.cpp
+  mu-engine/runner/net_host.cpp mu-engine/runner/hostprof.cpp
   mu-engine/runner/macos/abi_macos.cpp mu-engine/runner/macos/frontend_hooks_none.cpp build/mu-engine/gen/api_names.cpp build/mu-engine/gen/embedded_tables.cpp"
 RUNNER_C="mu-engine/runner/macos/fixedmap_macos.c mu-engine/runner/macos/mu_imports_macos.c mu-engine/runner/macos/dirtytrack_macos.c"
 RUNNER_S="mu-engine/runner/macos/mu_linux_varargs.S mu-engine/runner/macos/hostprof_macos.S build/mu-engine/gen/embedded.S"
@@ -89,7 +89,7 @@ RUNNER_INC="-Imu-engine/runner -Imu-engine/runner/macos -I$M/port/linux -I$M/por
 RUNNER_DEF="-DMU_FOREIGN_ELF -DMU_SQUAD=1 -DMELEE_NO_SLIPPI -DMELEE_PORT_VERSION=\"mu-native\" -DMELEE_LINUX_CPU_BASELINE=\"AArch64\"
   -DMU_CARD_SIMPLE_COMMIT -DMU_HIGH_BASE=$HIGH_BASE"
 build_runner() {
-  generate
+  generate; net_object
   ( cd "$repo"; unset DEVELOPER_DIR
     o=build/mu-engine/obj-mac; mkdir -p $o; objs=""
     for f in $RUNNER_C; do b=$o/$(basename $f .c).o; clang -arch arm64 -O2 -g -Wall $RUNNER_INC $RUNNER_DEF -c $f -o $b; objs="$objs $b"; done
@@ -97,13 +97,35 @@ build_runner() {
     for f in $RUNNER_SOURCES; do b=$o/$(basename $f .cpp).o
       clang++ -arch arm64 -O2 -g -std=gnu++17 -Wall -Wno-unused-function -fno-strict-aliasing $RUNNER_INC $RUNNER_DEF -c $f -o $b & done; wait
     for f in $RUNNER_SOURCES; do objs="$objs $o/$(basename $f .cpp).o"; done
-    clang++ -arch arm64 $objs -lz -o build/mu-engine/out/mu-runner )
+    clang++ -arch arm64 $objs build/mu-engine/out/netplay.o -lz -liconv -o build/mu-engine/out/mu-runner )
   echo "built $out/mu-runner"
+}
+
+# The netplay object: this repository's Slippi netplay (port/runtime/hle) and ENet with the bridge for the engine's own
+# online code (runner/netplay_bridge_mac.cpp), linked into one relocatable object in which only netplay_bridge::* stays
+# global: the app's netplay code and melee-unlocked's host services share names.
+NET_HLE="port/runtime/hle/slippi_online.cpp port/runtime/hle/slippi_net.cpp port/runtime/hle/slippi_net_diag.cpp
+  port/runtime/hle/slippi_matchmaking_protocol.cpp port/runtime/hle/slippi_offline.cpp port/runtime/hle/slippi_text.cpp mu-engine/runner/netplay_bridge_mac.cpp"
+NET_INC="-Imu-engine/runner -Iport/runtime/hle -Iport/runtime/host -Iport/runtime/gx -Iport/runtime/ppc -Iport/runtime
+  -Iport/third_party/enet/include -Iport/third_party -Iport/third_party/nlohmann/include -Iport/app -Inative"
+net_object() {
+  ( cd "$repo"; unset DEVELOPER_DIR
+    o=build/mu-engine/obj-net; rm -rf $o; mkdir -p $o
+    for f in callbacks compress host list packet peer protocol unix; do
+      clang -arch arm64 -O2 -w -fvisibility=hidden -DHAS_FCNTL=1 -DHAS_POLL=1 -DHAS_INET_PTON=1 -DHAS_INET_NTOP=1 -DHAS_SOCKLEN_T=1 \
+        -DHAS_MSGHDR_FLAGS=1 -Iport/third_party/enet/include -c port/third_party/enet/$f.c -o $o/enet_$f.o & done
+    for f in $NET_HLE; do
+      clang++ -arch arm64 -std=gnu++20 -O2 -g -w -fvisibility=hidden -fvisibility-inlines-hidden $NET_INC -c $f -o $o/$(basename $f .cpp).o & done
+    wait
+    nm -gU $o/netplay_bridge_mac.o | awk '$3 ~ /netplay_bridge/ {print $3}' > $o/exported.txt
+    ld -r -arch arm64 -exported_symbols_list $o/exported.txt $o/*.o -o build/mu-engine/out/netplay.o )
+  echo "built $out/netplay.o"
 }
 
 case "${1:-all}" in
   game) build_game ;;
   runner) build_runner ;;
+  net) net_object ;;
   all) build_game; build_runner ;;
   *) echo "usage: build.sh [game|runner]" >&2; exit 2 ;;
 esac

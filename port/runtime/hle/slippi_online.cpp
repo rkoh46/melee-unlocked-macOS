@@ -392,7 +392,27 @@ void prepare_opponent_inputs(int32_t frame, bool should_skip, std::vector<uint8_
     tx.resize(PAD_FULL_SIZE * ROLLBACK_MAX_FRAMES, 0);
     q.insert(q.end(), tx.begin(), tx.end());
   }
-  for (int i = 0; i < REMOTE_PLAYER_MAX; ++i) q.push_back(should_despawn[i]);
+  if (!config().reply_370) { for (int i = 0; i < REMOTE_PLAYER_MAX; ++i) q.push_back(should_despawn[i]); return; }
+  // Slippi 3.7.0: the frame each remote fighter despawns on (0: none), so every side removes it on the same frame even
+  // inside a rollback; then the inputs to predict each player's frames after their latest one with (the latest real
+  // input: this build sends and uses no input suggestions, which is Slippi's own behaviour without them); then random
+  // bits the game sends with its next pad and mixes into the seed.
+  for (int i = 0; i < REMOTE_PLAYER_MAX; ++i) {
+    uint32_t despawn_frame = 0;
+    if (i < remote_count && results[i]->is_disconnected) {
+      const int32_t threshold = results[i]->latest_frame + 2 * ROLLBACK_MAX_FRAMES + 2;
+      despawn_frame = (uint32_t)(((threshold + DESPAWN_INTERVAL - 1) / DESPAWN_INTERVAL) * DESPAWN_INTERVAL);
+    }
+    append_u32(q, despawn_frame);
+  }
+  for (int i = 0; i < REMOTE_PLAYER_MAX; ++i) {
+    uint8_t latest[PAD_FULL_SIZE] = {};
+    if (i < remote_count && results[i]->data.size() >= (size_t)PAD_FULL_SIZE) std::memcpy(latest, results[i]->data.data(), PAD_FULL_SIZE);
+    for (int j = 0; j < ROLLBACK_MAX_FRAMES; ++j) q.insert(q.end(), latest, latest + PAD_FULL_SIZE);
+  }
+  static uint32_t rng_bits = 0x2545F491u;
+  rng_bits = rng_bits * 1664525u + 1013904223u;
+  q.push_back((uint8_t)(rng_bits >> 24));
 }
 
 void handle_online_inputs(const uint8_t* payload, std::vector<uint8_t>& q) {

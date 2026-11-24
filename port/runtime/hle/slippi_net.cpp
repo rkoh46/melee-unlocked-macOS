@@ -925,8 +925,16 @@ void Matchmaking::startMatchmaking() {
   if (!client_) { state_ = ERROR_ENCOUNTERED; error_msg_ = "Failed to create mm client"; return; }
   prioritize_socket(client_->socket);
   ENetAddress addr;
-  enet_address_set_host(&addr, "mm.slippi.gg");
-  addr.port = 43113;
+  // Tests: MELEE_MM_LOOPBACK_PORT points the search at the loopback stand-in for the matchmaking service
+  // (tools/mac/mock_matchmaking). Only 127.0.0.1 can be chosen this way.
+  if (const char* loopback = std::getenv("MELEE_MM_LOOPBACK_PORT")) {
+    enet_address_set_host(&addr, "127.0.0.1");
+    addr.port = (enet_uint16)std::atoi(loopback);
+    host::log("slippi: matchmaking at the loopback stand-in, port %u", (unsigned)addr.port);
+  } else {
+    enet_address_set_host(&addr, "mm.slippi.gg");
+    addr.port = 43113;
+  }
   server_ = enet_host_connect(client_, &addr, 3, 0);
   if (!server_) { state_ = ERROR_ENCOUNTERED; error_msg_ = "Failed to start connection to mm server"; return; }
   int attempts = 0;
