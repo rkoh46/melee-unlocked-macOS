@@ -57,9 +57,11 @@ your settings, Slippi sign-in, replays and memory card where they were.
 | Vanilla | melee-unlocked's engine playing the game as the disc does: no codes, nothing unlocked. |
 
 **What works with the Source Port today:** offline play with picture, sound and controllers (keyboard, controllers macOS
-sees, the GameCube adapter), memory card saves, the in-game menu (F1 or Esc). **Not yet:** Slippi online and watching
-replays in the Source Port (use Static Recomp for both for now), melee-unlocked's own in-game settings panel, and mod
-packs. The full list, row by row, is in [docs/FEATURES.md](docs/FEATURES.md).
+sees, the GameCube adapter), memory card saves, Slippi online from the game's own Online Play page (Unranked, Direct,
+Teams; Ranked is refused, as melee-unlocked refuses it), a replay of every match and Watch from the Replay Viewer, and the
+mod catalog on the Mods page (download and install). **Not yet:** melee-unlocked's own in-game settings panel (F1 or Esc
+opens the app's menu), loading an installed mod in the Source Port, and the replay viewer's controls (pause, jumps,
+takeover). The full list, row by row, is in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## About this fork
 
