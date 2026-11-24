@@ -16,7 +16,7 @@ sleep 1
 for side in a b; do
   seed=$([ $side = a ] && echo 303 || echo 404)
   MELEE_MM_LOOPBACK_PORT=$port sandbox-exec -p "$profile" timeout 1200 "$engine" --iso "$iso" --profile-dir "$out/$side" --hidden --volume 0 \
-    --frames "$frames" --online unranked --fake-user --user-dir "$out/$side/user" --net-inputs $seed > "$out/$side.log" 2>&1 &
+    --frames "$frames" --online unranked --fake-user --user-dir "$out/$side/user" --net-inputs $seed $([ $side = b ] && echo "${MU_B_ARGS:-}") > "$out/$side.log" 2>&1 &
   eval "pid_$side=$!"
   sleep 2
 done

@@ -122,7 +122,7 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
 int main(int argc, char** argv) {
   mu_abi_install_crash_report();
   std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir;
-  bool record = true, script_codes = false;
+  bool record = true, script_codes = false, audio_device = true;
   net_host::Options net;
   bool offline = false;
   int volume = 70, scale = 0;
@@ -147,6 +147,7 @@ int main(int argc, char** argv) {
     else if (a == "--replay") replay = next();
     else if (a == "--replay-dir") replay_dir = next();
     else if (a == "--no-record") record = false;
+    else if (a == "--no-audio-device") audio_device = false;   // tests: mix and count the sound, open no output device
     else if (a == "--script-codes") script_codes = true;   // tests: a scripted match with melee-unlocked's codes on (not the retail game)
     else if (net_host::parse_option(a, next, &net)) {}
     else if (a == "--digest") g_digest = std::fopen(next().c_str(), "w");
@@ -221,7 +222,7 @@ int main(int argc, char** argv) {
   gx::metal_set_overlay(backend, host::game_overlay);
   host::window_input_init();
   gx::init(backend);
-  const bool audio = host::audio_open(volume, nullptr, true);
+  const bool audio = host::audio_open(volume, nullptr, audio_device);
   if (!audio) host::log("audio: device unavailable, continuing silent");
 
   linux_host::Config config;
@@ -267,16 +268,17 @@ int main(int argc, char** argv) {
     host::log("melee-unlocked engine: stopped with code %d after %u retraces, %llu FIFO bytes, %llu audio blocks", code, c.retraces,
               (unsigned long long)c.fifo_bytes, (unsigned long long)c.audio_blocks);
   }
+  // The sound stops with the game: shutting the netplay host down takes a moment, and the output would only run dry.
+  { uint64_t silent_ms = 0; const uint64_t gaps = host::audio_underruns(&silent_ms);
+    host::log("audio: %llu frames played, %llu blocks dropped, %llu gaps (%llu ms held)", (unsigned long long)host::audio_pushed_frames(),
+              (unsigned long long)host::audio_dropped_blocks(), (unsigned long long)gaps, (unsigned long long)silent_ms); }
+  if (audio) host::audio_close();
   net_host::stop_tracking();
   linux_host::shutdown();
   if (net_on) { net_host::report(); net_host::shutdown(); }
   if (g_digest) std::fclose(g_digest);
   fixedmap_release_all();
   gx::init(nullptr);
-  { uint64_t silent_ms = 0; const uint64_t gaps = host::audio_underruns(&silent_ms);
-    host::log("audio: %llu frames played, %llu blocks dropped, %llu gaps (%llu ms held)", (unsigned long long)host::audio_pushed_frames(),
-              (unsigned long long)host::audio_dropped_blocks(), (unsigned long long)gaps, (unsigned long long)silent_ms); }
-  if (audio) host::audio_close();
   host::gcadapter_shutdown();
   host::log("metal: %llu frames presented", (unsigned long long)gx::metal_frames_presented(backend));
   host::window_set_resize_callback(nullptr);
