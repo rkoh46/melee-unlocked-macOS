@@ -108,6 +108,26 @@ NSImage* art(NSString* name) {
 }
 }  // namespace
 
+// ---- the mod installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp) -------------------------------------
+// Declared as in mu-engine/app/mods_facade.h (keep the two in step). These weak definitions answer "no installer"; the app
+// links the real ones when the melee-unlocked engine is built.
+namespace mu_mods {
+struct Row {
+  std::string id, name, version, note, line;
+  int state = 0; int percent = -1;
+  bool automatic = false, file_ready = false, failed = false;
+};
+__attribute__((weak)) bool available() { return false; }
+__attribute__((weak)) void configure(const std::string&, const std::string&) {}
+__attribute__((weak)) std::vector<Row> rows() { return {}; }
+__attribute__((weak)) bool install(const std::string&, std::string* why) { if (why) *why = "this build has no mod installer"; return false; }
+__attribute__((weak)) bool remove(const std::string&, std::string* why) { if (why) *why = "this build has no mod installer"; return false; }
+__attribute__((weak)) bool busy() { return false; }
+__attribute__((weak)) void cancel() {}
+__attribute__((weak)) std::string catalog_error() { return "this build has no mod installer"; }
+__attribute__((weak)) std::string downloads_dir() { return {}; }
+}
+
 // ---- the colour picker (launcher_theme_picker.inl): a 268 x 324 popover with an HSV wheel, a value bar, hex, Apply ----
 @class MULaunchView;
 @interface MUThemeView : NSView
@@ -131,6 +151,8 @@ NSImage* art(NSString* name) {
 @property(nonatomic) std::string error;
 @property(nonatomic) NSPanel* themePanel;
 @property(nonatomic) NSMutableDictionary<NSString*, NSValue*>* buttons;   // name -> rect, rebuilt every paint
+@property(nonatomic) NSTimer* modsTimer;   // repaints the Mods page while a job runs
+@property(nonatomic) std::string modsMessage;
 - (void)openTheme;
 - (void)closeTheme;
 @end
@@ -394,15 +416,51 @@ NSImage* art(NSString* name) {
   [self button:@"replaysfolder" rect:LR(CX, WIN_H - 50, 170, 32) title:@"Open Replays folder" primary:NO enabled:YES];
   if (!can_watch) text(@"Watching a replay needs the melee-unlocked engine in this build.", LR(CX + 180, WIN_H - 50, CW - 180, 32), f_small(), C_FAINT, LEFT, 0, true);
 }
-// ---- Mods ------------------------------------------------------------------------------------------------------------
+// ---- Mods: melee-unlocked's catalog, installed by this app's own installer (download, SHA-256, archive, xdelta3) ----
 - (void)paintMods {
+  host::LauncherSettings& st = *self.settings;
+  const std::string mods_dir = home() + "/Library/Application Support/Dashdance/melee-unlocked/Mods";
   text(@"MODS", LR(CX, 32, CW, 18), f_label(), C_FAINT, LEFT, 1);
-  [self row:64 dot:C_FAINT words:@"Mods: none active" link:nil name:@""];
-  text(@"melee-unlocked's built-in content (the 20XX Hack Pack's and Training Mode's features, extra fighters and stages) is part of the Source Port engine and is chosen in game. "
-       @"Mod packs from a modded disc image are not loaded on the Mac yet; the Mods folder is where they will go.\n\n"
-       @"The mod catalog (download and install, as melee-unlocked's launcher does it) comes with the shared mod installer.",
-       LR(CX, 92, CW, 110), f_small(), C_DIM, LEFT, 0, true);
-  [self button:@"modsfolder" rect:LR(CX, 214, 170, 32) title:@"Open Mods folder" primary:NO enabled:YES];
+  if (!mu_mods::available()) {
+    [self row:64 dot:C_FAINT words:@"Mods: none active" link:nil name:@""];
+    text(@"This build has no mod installer (it comes with the melee-unlocked engine).", LR(CX, 92, CW, 40), f_small(), C_DIM, LEFT, 0, true);
+    [self button:@"modsfolder" rect:LR(CX, 140, 170, 32) title:@"Open Mods folder" primary:NO enabled:YES];
+    return;
+  }
+  mu_mods::configure(mods_dir, st.iso);
+  const std::vector<mu_mods::Row> list = mu_mods::rows();
+  if (list.empty()) text(ns("The catalog could not be read: " + mu_mods::catalog_error()), LR(CX, 58, CW, 40), f_small(), C_BAD, LEFT, 0, true);
+  CGFloat y = 56;
+  for (size_t i = 0; i < list.size() && i < 10; ++i) {
+    const mu_mods::Row& r = list[i];
+    round_rect(LR(CX, y, CW, 34), 7, C_FIELD, C_FIELD, &C_FIELD_BORDER);
+    text(ns(r.name), LR(CX + 10, y + 2, 230, 17), f_body(), C_TEXT);
+    NSString* sub = r.state == 3 || (!r.line.empty() && r.failed) ? ns(r.line) : r.state == 1 ? ns("Installed · " + r.version)
+                  : r.state == 2 ? ns("Update available · " + r.version) : r.automatic ? ns("Version " + r.version)
+                  : r.file_ready ? @"Downloaded file found" : @"Put its download in the Downloads folder";
+    if (r.state == 3 && r.percent >= 0) sub = [NSString stringWithFormat:@"%@ (%d%%)", sub, r.percent];
+    text(sub, LR(CX + 10, y + 17, CW - 120, 15), f_small(), r.failed ? C_BAD : r.state == 1 ? C_OK : C_FAINT);
+    NSString* name = [NSString stringWithFormat:@"mod:%zu", i];
+    if (r.state == 3) [self button:@"modcancel" rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Cancel" primary:NO enabled:YES];
+    else if (r.state == 1) [self button:[@"remove-" stringByAppendingString:name] rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Remove" primary:NO enabled:!mu_mods::busy()];
+    else [self button:[@"install-" stringByAppendingString:name] rect:LR(CX + CW - 96, y + 4, 88, 26) title:r.state == 2 ? @"Update" : @"Install" primary:NO
+              enabled:!mu_mods::busy() && !st.iso.empty() && (r.automatic || r.file_ready)];
+    y += 37;
+  }
+  [self button:@"modsfolder" rect:LR(CX, WIN_H - 46, 150, 30) title:@"Open Mods folder" primary:NO enabled:YES];
+  NSString* note = !self.modsMessage.empty() ? ns(self.modsMessage)
+                 : @"Mods install as discs built from your own disc. Loading them in the Source Port on the Mac comes next.";
+  text(note, LR(CX + 160, WIN_H - 48, CW - 160, 34), f_small(), self.modsMessage.empty() ? C_FAINT : C_WARN, LEFT, 0, true);
+  // While a job runs the page repaints itself twice a second.
+  if (mu_mods::busy() && !self.modsTimer) {
+    __weak MULaunchView* weak = self;
+    self.modsTimer = [NSTimer timerWithTimeInterval:0.5 repeats:YES block:^(NSTimer* t) {
+      MULaunchView* v = weak;
+      if (!v || !mu_mods::busy()) { [t invalidate]; if (v) { v.modsTimer = nil; [v setNeedsDisplay:YES]; } return; }
+      [v setNeedsDisplay:YES];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:self.modsTimer forMode:NSRunLoopCommonModes];   // the launcher runs modally
+  }
 }
 // ---- input ------------------------------------------------------------------------------------------------------------
 - (NSString*)buttonAt:(NSPoint)p {
@@ -457,6 +515,15 @@ NSImage* art(NSString* name) {
     else [self watch:path];
   }
   else if ([key isEqualToString:@"theme"]) [self openTheme];
+  else if ([key hasPrefix:@"install-mod"] || [key hasPrefix:@"remove-mod"]) {
+    const std::vector<mu_mods::Row> list = mu_mods::rows();
+    if (index >= 0 && index < (int)list.size()) {
+      std::string why;
+      const bool ok = [key hasPrefix:@"install"] ? mu_mods::install(list[index].id, &why) : mu_mods::remove(list[index].id, &why);
+      self.modsMessage = ok ? std::string() : why;
+    }
+  }
+  else if ([key isEqualToString:@"modcancel"]) mu_mods::cancel();
   else if ([key isEqualToString:@"scale"]) { const int v[] = {0, 1, 2, 3, 4}; s.scale = v[std::clamp(index, 0, 4)]; }
   else if ([key isEqualToString:@"fullscreen"]) s.fullscreen = index == 1;
   else if ([key isEqualToString:@"vsync"]) s.vsync = index == 1;

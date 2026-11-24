@@ -76,3 +76,21 @@ target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac native_animation "$
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")
+
+# The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page: linked into the app
+# (melee_port_mac) as objects so its definitions replace the launcher's weak "no installer" ones. melee-unlocked's
+# catalog and the LZMA SDK decoders come from the fetched tree at build time.
+file(READ "${MU_TREE}/mods-catalog-2.json" _catalog)
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/gen/mods_catalog_json.h.new" "// generated from the fetched tree's mods-catalog-2.json\n#pragma once\nstatic const char kModsCatalogJson[] = R\"MUCATALOG(${_catalog})MUCATALOG\";\n")
+configure_file("${CMAKE_CURRENT_BINARY_DIR}/gen/mods_catalog_json.h.new" "${CMAKE_CURRENT_BINARY_DIR}/gen/mods_catalog_json.h" COPYONLY)
+set(MI "${MU_REPO}/mu-engine/modinstall")
+add_library(mu_modinstall_objs OBJECT "${MU_APPSRC}/mods_facade.cpp"
+  "${MI}/mi_hash.cpp" "${MI}/mi_io.cpp" "${MI}/mi_archive.cpp" "${MI}/mi_lzma.cpp" "${MI}/mi_vcdiff.cpp" "${MI}/mi_catalog.cpp"
+  "${MI}/mod_install.cpp" "${MI}/mi_fetch_curl.cpp"
+  "${MU_TREE}/port/third_party/lzma/LzmaDec.c" "${MU_TREE}/port/third_party/lzma/Lzma2Dec.c")
+target_include_directories(mu_modinstall_objs PRIVATE "${MI}" "${MU_TREE}/port/third_party/lzma" "${MU_REPO}/port/third_party" "${CMAKE_CURRENT_BINARY_DIR}/gen")
+target_compile_features(mu_modinstall_objs PRIVATE cxx_std_17)
+if(TARGET melee_port_mac)
+  target_sources(melee_port_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs>)
+  target_link_libraries(melee_port_mac PRIVATE curl z)
+endif()
