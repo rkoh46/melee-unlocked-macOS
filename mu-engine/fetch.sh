@@ -38,4 +38,11 @@ apply() {   # $1 the git tree, $2 the patch
 }
 for p in "$here"/patches/0*.patch; do apply "$tree" "$p"; done
 for p in "$here"/patches/decomp-*.patch; do apply "$tree/sourceport/extern/melee" "$p"; done
+# Dear ImGui's Metal back end at the version melee-unlocked vendors (v1.92.8): melee-unlocked ships only its Windows and
+# Linux back ends. Fetched, never committed (MIT).
+imgui_ver="$(sed -n 's/^Dear ImGui v//p' "$tree/port/third_party/imgui/VERSION.txt")"
+mkdir -p "$work/imgui-metal"
+for f in imgui_impl_metal.h imgui_impl_metal.mm; do
+  [ -s "$work/imgui-metal/$f" ] || curl -fsSL "https://raw.githubusercontent.com/ocornut/imgui/v$imgui_ver/backends/$f" -o "$work/imgui-metal/$f"
+done
 echo "tree: $tree"

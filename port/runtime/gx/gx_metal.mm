@@ -31,6 +31,11 @@
 
 namespace gx {
 namespace {
+std::mutex& ui_pass_mutex() { static std::mutex m; return m; }
+UiPass& ui_pass() { static UiPass pass; return pass; }
+}
+void metal_set_ui_pass(UiPass pass) { std::lock_guard<std::mutex> lock(ui_pass_mutex()); ui_pass() = std::move(pass); }
+namespace {
 
 constexpr int FRAME_SLOTS = 3;
 constexpr size_t VERTEX_RING = 24u << 20, INDEX_RING = 12u << 20, CONSTANT_RING = 32u << 20;
@@ -940,6 +945,13 @@ class MetalBackend final : public Backend {
     [enc setFragmentSamplerState:blit_sampler_ atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     draw_overlay(enc, ww, wh);
+    {
+      std::lock_guard<std::mutex> lock(ui_pass_mutex());
+      if (ui_pass()) {
+        [enc setViewport:MTLViewport{0, 0, ww, wh, 0, 1}];
+        ui_pass()((__bridge void*)enc, (__bridge void*)rp, (__bridge void*)command_, (int)ww, (int)wh);
+      }
+    }
     [enc endEncoding];
     drawable_ = drawable;
     fx_presented_ = fx;

@@ -38,4 +38,9 @@ uint64_t metal_frames_presented(Backend* backend);
 // Drawn over every presented frame (touch controls); the provider runs on the render thread.
 using OverlayProvider = std::function<bool(host::OverlayFrame&)>;
 void metal_set_overlay(Backend* backend, OverlayProvider provider);
+// Drawn last in the present pass, over the picture and the overlay (melee-unlocked's ImGui panel): the provider gets the
+// pass's MTLRenderCommandEncoder, MTLRenderPassDescriptor and MTLCommandBuffer and the drawable's size in pixels, on the
+// render thread. One per process; nullptr removes it.
+using UiPass = std::function<void(void* encoder, void* pass, void* command_buffer, int width, int height)>;
+void metal_set_ui_pass(UiPass pass);
 }  // namespace gx
