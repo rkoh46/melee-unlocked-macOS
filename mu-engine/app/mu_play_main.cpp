@@ -15,7 +15,9 @@
 #include "replays.h"
 
 #include "audio.h"
-#include "game_menu.h"
+#include "app/game_menu.h"     // ui/app/game_menu.h: the menu interface melee-unlocked's panel (ui/mu_panel.cpp) implements
+#include "frontend.h"
+#include "ui_metal.h"
 #include "gx_core.h"
 #include "gx_metal.h"
 #include "host.h"
@@ -122,7 +124,7 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
 int main(int argc, char** argv) {
   mu_abi_install_crash_report();
   std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir;
-  bool record = true, script_codes = false, audio_device = true;
+  bool record = true, script_codes = false, audio_device = true, script_clock = false;
   net_host::Options net;
   bool offline = false;
   int volume = 70, scale = 0;
@@ -147,7 +149,8 @@ int main(int argc, char** argv) {
     else if (a == "--replay") replay = next();
     else if (a == "--replay-dir") replay_dir = next();
     else if (a == "--no-record") record = false;
-    else if (a == "--no-audio-device") audio_device = false;   // tests: mix and count the sound, open no output device
+    else if (a == "--no-audio-device") audio_device = false;
+    else if (a == "--script-real-clock") script_clock = true;   // tests: a scripted match on the real clock and seed (as a player's)   // tests: mix and count the sound, open no output device
     else if (a == "--script-codes") script_codes = true;   // tests: a scripted match with melee-unlocked's codes on (not the retail game)
     else if (net_host::parse_option(a, next, &net)) {}
     else if (a == "--digest") g_digest = std::fopen(next().c_str(), "w");
@@ -213,6 +216,7 @@ int main(int argc, char** argv) {
   gx::MetalOptions gfx;
   gfx.efb_scale = scale; gfx.vsync = vsync; gfx.cache_dir = cache_dir;
   gfx.capture_path = capture_path; gfx.capture_frame = capture_frame;
+  gfx.capture_ui = std::getenv("MELEE_CAPTURE_UI") != nullptr;   // screenshots of the settings panel (MELEE_MENU_OPEN)
   void* layer = host::window_create(1280, 960, L"melee-unlocked-macOS", !hidden);
   int client_w = 0, client_h = 0;
   host::window_client_size(&client_w, &client_h);
@@ -220,6 +224,23 @@ int main(int argc, char** argv) {
   host::window_set_resize_callback([backend](int w, int h) { gx::metal_resize(backend, w, h); });
   if (fullscreen) host::window_set_fullscreen(true);
   gx::metal_set_overlay(backend, host::game_overlay);
+  // melee-unlocked's settings panel (L + R + Start, or F1 / Escape): drawn with ImGui over the picture; what it changes
+  // applies here, on the simulation thread.
+  fe::options.out_dir = mu_dir.string(); fe::options.iso = iso;
+  {
+    host::RuntimeSettings rs;
+    rs.scale = scale; rs.vsync = vsync; rs.volume = volume; rs.fullscreen = fullscreen; rs.online_delay = net.delay;
+    host::menu_init(rs, [backend, gfx](const host::RuntimeSettings& s, host::MenuChange what) mutable {
+      switch (what) {
+        case host::MenuChange::Volume: host::audio_set_volume(s.volume); break;
+        case host::MenuChange::Fullscreen: host::window_set_fullscreen(s.fullscreen); break;
+        case host::MenuChange::Graphics: case host::MenuChange::Anisotropy:
+          gfx.efb_scale = s.scale; gfx.vsync = s.vsync; gfx.anisotropy = s.anisotropy; gx::metal_set_options(backend, gfx); break;
+        default: break;
+      }
+    });
+  }
+  gx::metal_set_ui_pass(mu_ui_metal::pass());
   host::window_input_init();
   gx::init(backend);
   const bool audio = host::audio_open(volume, nullptr, audio_device);
@@ -236,7 +257,7 @@ int main(int argc, char** argv) {
   config.vanilla_game = vanilla;   // Vanilla: melee-unlocked as the disc plays (MU_GAME_OPTION_VANILLA)
   if (!script.empty()) {        // a scripted match (tests): the same pads, seed and clock as the parity runner
     config.input_script = script; config.vanilla_game = !script_codes;
-    config.has_rng_seed = true; config.rng_seed = 0x12345678; config.has_time_base = true; config.time_base = 0;
+    if (!script_clock) { config.has_rng_seed = true; config.rng_seed = 0x12345678; config.has_time_base = true; config.time_base = 0; }
   }
   mac_elf::set_embedded_image(mu_embedded_game, size_t(mu_embedded_game_end - mu_embedded_game));
   bool net_on = false;
@@ -247,6 +268,7 @@ int main(int argc, char** argv) {
       host::log("online: the netplay host could not start (%d); playing offline", start);
     } else {
       net_on = true;
+      fe::set_session_online(true);
       config.input_script.clear();
       host::log("online: on (user folder %s)%s", net.user_dir.c_str(), menus_online ? "; a search starts from the game's Online Play page" : "");
     }
@@ -283,6 +305,16 @@ int main(int argc, char** argv) {
   host::log("metal: %llu frames presented", (unsigned long long)gx::metal_frames_presented(backend));
   host::window_set_resize_callback(nullptr);
   gx::metal_set_overlay(backend, nullptr);
+  gx::metal_set_ui_pass(nullptr);
+  if (host::menu_changed()) {   // what the panel changed is the launcher's next start too (launcher.ini, the keys it reads)
+    const host::RuntimeSettings s = host::menu_settings();
+    fe::app_ini_set("volume", std::to_string(s.volume)); fe::app_ini_set("scale", std::to_string(s.scale));
+    fe::app_ini_set("vsync", s.vsync ? "1" : "0"); fe::app_ini_set("fullscreen", s.fullscreen ? "1" : "0");
+    fe::app_ini_set("hud", s.hud ? "1" : "0"); fe::app_ini_set("online_delay", std::to_string(std::clamp(s.online_delay, 1, 9)));
+    for (const host::ControllerConfig& c : host::controller_configs())   // the CONTROLS page: remaps, deadzones, rumble
+      fe::app_ini_set("controller." + c.guid, std::to_string(c.port) + "|" + c.map.serialize());
+    fe::app_ini_set("keyboard", host::keyboard_map().serialize());
+  }
   delete backend;
   host::window_destroy();
   return code;

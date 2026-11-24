@@ -7,7 +7,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Mac status | Meaning |
 |---|---|
 | active | On in the Mac app with the melee-unlocked engine. |
-| in the engine | Part of the game image and on by default; the Mac app has no setting for it yet (the melee-unlocked settings panel is not ported). |
+| in the engine | Part of the game image and on by default; the Mac app has no setting for it yet. |
 | engine option, no setting | In the game image behind an option word; the Mac app does not set it yet. |
 | not wired | Exists upstream; the Mac host, renderer or launcher does not provide it yet. |
 | out of scope | YouGame. |
@@ -267,11 +267,11 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 
 | Feature | Side | Mac status |
 |---|---|---|
-| PC settings overlay | renderer | not wired |
-| Settings appearances | renderer | not wired |
-| Settings search | renderer | not wired |
-| Settings file | host | not wired |
-| Pause menu on Esc | renderer | not wired |
+| PC settings overlay | renderer | active: melee-unlocked's own panel code (VIDEO, AUDIO, GAME, CONTROLS, OVERLAYS, CUSTOMIZE, GECKO CODES, MODS) drawn with Dear ImGui on the Metal renderer; L + R + Start, F1 or Escape opens it; controller and keyboard navigation (`mu-engine/app/ui`) |
+| Settings appearances | renderer | partial: the Clean side style with melee-unlocked's palettes and accents; the other menu styles are not ported |
+| Settings search | renderer | active: melee-unlocked's search code in the panel |
+| Settings file | host | active: what the panel changes is saved to launcher.ini for the next start |
+| Pause menu on Esc | renderer | active: Escape opens the settings panel |
 | "Settings: F1" reminder | renderer | not wired |
 | Frame counter and performance graph | renderer | not wired |
 | Player nicknames above fighters | renderer | not wired |

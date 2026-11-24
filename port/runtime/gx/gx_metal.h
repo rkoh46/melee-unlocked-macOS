@@ -23,6 +23,7 @@ struct MetalOptions {
   std::string capture_path;  // write a PPM of the presented EFB region at capture_frame
   uint32_t capture_frame = 0;
   uint32_t capture_every = 0;
+  bool capture_ui = false;    // the capture also has the UI pass (metal_set_ui_pass) drawn over it
   std::string cache_dir;     // pipelines.bin lives here: every pipeline seen, precompiled in the background next launch
 };
 

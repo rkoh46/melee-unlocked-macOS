@@ -53,11 +53,50 @@ set_target_properties(mu_host_mac PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
 target_compile_options(mu_host_mac PRIVATE -O2 -fno-strict-aliasing)
 
 set(_dd_objc "${DD}/gx/gx_metal.mm" "${DD}/host/controller_rate.mm")
+
+# melee-unlocked's in-game settings panel (ui/mu_panel.cpp, from Melee-NX-NetPlay's frontend) in place of the app's
+# game_menu.cpp: its drawing code taken from the fetched tree at build time (ui/mu_ui_extract.py -> gen/mu_ui), Dear
+# ImGui from the fetched tree with imgui_impl_metal (fetch.sh), its fonts and launcher art embedded below.
+set(MU_UI "${MU_APPSRC}/ui")
+set(MU_UI_GEN "${CMAKE_CURRENT_BINARY_DIR}/gen/mu_ui")
+set(IMGUI "${MU_TREE}/port/third_party/imgui")
+set(IMGUI_METAL "${MU_REPO}/build/mu-engine/imgui-metal")
+execute_process(COMMAND python3 -I "${MU_UI}/mu_ui_extract.py" "${MU_TREE}" "${MU_UI_GEN}" OUTPUT_QUIET RESULT_VARIABLE _mu_ui_rc)
+if(NOT _mu_ui_rc EQUAL 0)
+  message(FATAL_ERROR "melee-unlocked engine: ui/mu_ui_extract.py could not take the panel's code from ${MU_TREE}")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MU_UI}/mu_ui_extract.py")
+set(_ui_embed "${CMAKE_CURRENT_BINARY_DIR}/gen/embedded_ui.S")
+set(_ui_files "")
+set(_ui_asm ".section __TEXT,__const\n")
+foreach(_pair "font_black|port/runtime/gx/ui_sources/gd_melee/assets/kit/SourceSans3-Black.otf"
+              "font_bold|port/runtime/gx/ui_sources/gd_melee/assets/kit/SourceSans3-Bold.otf"
+              "bailey|port/app/bailey_cut.bmp" "mark|port/app/melee_mark.bmp")
+  string(REPLACE "|" ";" _p "${_pair}")
+  list(GET _p 0 _n)
+  list(GET _p 1 _f)
+  if(NOT EXISTS "${MU_TREE}/${_f}")
+    message(FATAL_ERROR "melee-unlocked engine: ${_f} is missing from the fetched tree")
+  endif()
+  string(APPEND _ui_asm ".p2align 4\n.globl _mu_ui_${_n}\n_mu_ui_${_n}: .incbin \"${MU_TREE}/${_f}\"\n.globl _mu_ui_${_n}_end\n_mu_ui_${_n}_end:\n")
+  list(APPEND _ui_files "${MU_TREE}/${_f}")
+endforeach()
+file(WRITE "${_ui_embed}.new" "${_ui_asm}")
+configure_file("${_ui_embed}.new" "${_ui_embed}" COPYONLY)
+set_source_files_properties("${_ui_embed}" PROPERTIES OBJECT_DEPENDS "${_ui_files}")
+add_library(mu_imgui STATIC "${IMGUI}/imgui.cpp" "${IMGUI}/imgui_draw.cpp" "${IMGUI}/imgui_tables.cpp" "${IMGUI}/imgui_widgets.cpp"
+  "${IMGUI_METAL}/imgui_impl_metal.mm")
+target_include_directories(mu_imgui PUBLIC "${IMGUI}" "${IMGUI_METAL}")
+set_source_files_properties("${IMGUI_METAL}/imgui_impl_metal.mm" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+target_compile_features(mu_imgui PRIVATE cxx_std_17)
+set(_mu_ui_sources "${MU_UI}/mu_panel.cpp" "${MU_UI}/mu_mods.cpp" "${MU_UI}/frontend_mac.cpp" "${MU_UI}/ui_metal.mm" "${_ui_embed}")
+set_source_files_properties("${MU_UI}/ui_metal.mm" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+set_source_files_properties("${MU_UI}/mu_panel.cpp" PROPERTIES COMPILE_DEFINITIONS "app_menu_frame=menu_frame")
 add_executable(melee_unlocked_mac
   "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${MU_APPSRC}/replays.cpp" "${DD}/host/vcdiff.cpp"
   "${MU_TREE}/port/runtime/hle/native_replay_stream.cpp" "${MU_TREE}/port/third_party/slippilib/SlippiGame.cpp" "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
   "${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp" "${DD}/gx/gx_texture.cpp" "${DD}/gx/gx_shader.cpp" "${DD}/gx/gx_msl.cpp" "${DD}/gx/render_observer.cpp" "${DD}/gx/authored_pose.cpp" "${DD}/gx/subframe.cpp"
-  "${DD}/host/window_sdl.cpp" "${DD}/host/input_config.cpp" "${DD}/host/input_script.cpp" "${DD}/host/game_menu.cpp"
+  "${DD}/host/window_sdl.cpp" "${DD}/host/input_config.cpp" "${DD}/host/input_script.cpp" ${_mu_ui_sources}
   "${DD}/host/audio_sdl.cpp" "${DD}/host/gc_adapter_iokit.cpp" ${_dd_objc})
 set_source_files_properties(${_dd_objc} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 set_source_files_properties("${MU_TREE}/port/runtime/hle/native_replay_stream.cpp" PROPERTIES COMPILE_OPTIONS "-include;${MU_APPSRC}/gmtime_s.h")
@@ -66,16 +105,19 @@ target_include_directories(melee_unlocked_mac PRIVATE "${MU_RUN}" "${MU_RUN}/mac
 target_compile_definitions(melee_unlocked_mac PRIVATE MU_HIGH_BASE=${MU_HIGH_BASE} MELEE_PORT_VERSION="${MELEE_PORT_VERSION}"
   MELEE_SOURCE_ART_DIR="${MU_REPO}/port/app/art/controller")
 target_compile_features(melee_unlocked_mac PRIVATE cxx_std_17)
+target_include_directories(melee_unlocked_mac BEFORE PRIVATE "${MU_UI}" "${MU_UI_GEN}" "${MU_REPO}/mu-engine/modinstall" "${CMAKE_CURRENT_BINARY_DIR}/gen")
 # The netplay object (mu-engine/build.sh net: this repository's Slippi netplay with only netplay_bridge::* global).
 add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engine/build.sh" net
   DEPENDS "${MU_RUN}/netplay_bridge_mac.cpp" "${DD}/hle/slippi_online.cpp" "${DD}/hle/slippi_net.cpp" "${DD}/hle/slippi_net.h" "${DD}/hle/slippi_online.h"
   COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
 add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
 add_dependencies(melee_unlocked_mac mu_netplay_object)
-target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
+target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")
+# mu_panel.cpp asks for the Practice menu weakly (the Switch's features/proai.cpp): absent, its row is left out.
+target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi")
 
 # The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page: linked into the app
 # (melee_port_mac) as objects so its definitions replace the launcher's weak "no installer" ones. melee-unlocked's

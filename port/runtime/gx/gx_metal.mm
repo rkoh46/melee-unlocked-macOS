@@ -1163,7 +1163,12 @@ class MetalBackend final : public Backend {
         } else {
           const EfbCopy& c = frame.copies[cmd.index];
           if (c.to_xfb) {
-            if (!skip_present_ && present_efb(c)) presented = true;
+            const bool shown = !skip_present_ && present_efb(c);
+            if (shown) presented = true;
+            else {   // nothing presented (a hidden window): the UI still runs its frame, so it animates and answers input
+              std::lock_guard<std::mutex> lock(ui_pass_mutex());
+              if (ui_pass()) ui_pass()(nullptr, nullptr, nullptr, (int)(c.src_w * scale_), (int)(c.src_h * scale_));
+            }
             // Snapshot the presented EFB before the game's clear erases it:
             // encoding this after the loop reads the cleared EFB (all-black
             // captures). The blit joins this frame's command buffer, so it
@@ -1189,6 +1194,7 @@ class MetalBackend final : public Backend {
                   capture_w_ = w; capture_h_ = h;
                   MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:(capture_bgra_ ? MTLPixelFormatBGRA8Unorm : MTLPixelFormatRGBA8Unorm) width:w height:h mipmapped:NO];
                   td.storageMode = MTLStorageModeShared;
+                  if (opts_.capture_ui) td.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
                   capture_staging_ = [device_ newTextureWithDescriptor:td];
                   capture_path_pending_ = opts_.capture_path;
                   capture_cmd_ = command_;
@@ -1196,6 +1202,17 @@ class MetalBackend final : public Backend {
                   [blit copyFromTexture:source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(x, y, 0) sourceSize:MTLSizeMake(w, h, 1)
                               toTexture:capture_staging_ destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
                   [blit endEncoding];
+                  std::lock_guard<std::mutex> lock(ui_pass_mutex());
+                  if (opts_.capture_ui && ui_pass()) {   // the UI drawn over the captured picture, as it is over the window
+                    MTLRenderPassDescriptor* ui_rp = [MTLRenderPassDescriptor renderPassDescriptor];
+                    ui_rp.colorAttachments[0].texture = capture_staging_;
+                    ui_rp.colorAttachments[0].loadAction = MTLLoadActionLoad;
+                    ui_rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+                    id<MTLRenderCommandEncoder> ui_enc = [command_ renderCommandEncoderWithDescriptor:ui_rp];
+                    [ui_enc setViewport:MTLViewport{0, 0, (double)w, (double)h, 0, 1}];
+                    ui_pass()((__bridge void*)ui_enc, (__bridge void*)ui_rp, (__bridge void*)command_, (int)w, (int)h);
+                    [ui_enc endEncoding];
+                  }
                 }
               }
             }

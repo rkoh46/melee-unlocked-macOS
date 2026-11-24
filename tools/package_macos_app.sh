@@ -44,6 +44,8 @@ if [[ -x "$MU_EXE" ]]; then
   echo "melee-unlocked engine: bundled $MU_EXE"
   # melee-unlocked's launcher artwork (the MU mark, Bailey), converted from the fetched tree; never committed.
   python3 -I "$ROOT/tools/mu_launcher_art.py" "$ROOT/build/mu-engine/mu/port/app" "$APP/Contents/Resources/mu-art" >/dev/null
+  # The engine embeds Source Sans 3 (the settings panel's fonts): its SIL Open Font License travels with it.
+  cp "$ROOT/build/mu-engine/mu/port/runtime/gx/ui_sources/gd_melee/assets/kit/SourceSans3-OFL.md" "$APP/Contents/Resources/mu-art/SourceSans3-OFL.md"
 else
   echo "melee-unlocked engine: no $MU_EXE, this bundle plays the classic engine only"
 fi
