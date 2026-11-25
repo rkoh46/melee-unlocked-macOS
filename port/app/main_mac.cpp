@@ -22,6 +22,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <ctime>
 
 #include <mach-o/dyld.h>
 #include <unistd.h>
@@ -177,8 +178,17 @@ int main(int argc, char** argv) {
     if (fs::is_directory(previous, ec) && !fs::exists(support, ec)) fs::rename(previous, support, ec);
   }
   fs::create_directories(support / "melee-unlocked", ec);
-  g_log = std::fopen((support / "melee-unlocked/launcher.log").c_str(), "w");
-  host::log("melee-unlocked-macOS %s: launcher", MELEE_PORT_VERSION);
+  {   // launcher.log, as upstream's: kept across starts (why a Play started no game), begun again once it passes 256 KB
+    const fs::path log_path = support / "melee-unlocked/launcher.log";
+    const bool big = fs::exists(log_path, ec) && fs::file_size(log_path, ec) > 256 * 1024;
+    g_log = std::fopen(log_path.c_str(), big ? "w" : "a");
+    if (g_log && !big) std::fputs("\n", g_log);
+  }
+  {
+    char when[32]; const std::time_t now = std::time(nullptr); std::tm t{}; localtime_r(&now, &t);
+    std::strftime(when, sizeof when, "%Y-%m-%d %H:%M:%S", &t);
+    host::log("melee-unlocked-macOS %s: launcher, %s", MELEE_PORT_VERSION, when);
+  }
 
   // Remembered launcher settings (launcher.ini).
   const fs::path remembered = support / "launcher.ini";
@@ -263,6 +273,8 @@ int main(int argc, char** argv) {
   host::log("launcher: starting the engine (%s)", engine.c_str());
   if (g_log) { std::fclose(g_log); g_log = nullptr; }
   execv(engine.c_str(), argv_engine.data());
-  host::mac_show_error("The game could not start", std::string(std::strerror(errno)) + "\n\n" + engine);
+  const int why = errno;
+  if ((g_log = std::fopen((support / "melee-unlocked/launcher.log").c_str(), "a"))) host::log("launcher: the engine did not start: %s", std::strerror(why));
+  host::mac_show_error("The game could not start", std::string(std::strerror(why)) + "\n\n" + engine);
   return 1;
 }

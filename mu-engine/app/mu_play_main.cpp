@@ -34,6 +34,10 @@
 #include <mach-o/dyld.h>
 #include <algorithm>
 #include <pthread.h>
+#include <sys/sysctl.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
+#include <IOKit/pwr_mgt/IOPMLib.h>
 #include <sys/qos.h>
 #include <atomic>
 #include <cmath>
@@ -146,8 +150,30 @@ void on_retrace(void*) {
 }
 
 std::atomic<uint32_t> g_trace_retrace{0};   // the command trace's retrace column (below)
+const Clock::time_point g_started = Clock::now();
+// Upstream's diagnostic summary lines (its main.cpp and host.cpp): the settings that decide how the game feels, the machine and
+// the power source, once at the start, so a report says what it ran on.
+void log_diagnostics(const gx::MetalOptions& gfx, bool net_on) {
+  char cpu[128] = "", model[64] = ""; size_t n = sizeof cpu, m = sizeof model;
+  sysctlbyname("machdep.cpu.brand_string", cpu, &n, nullptr, 0);
+  sysctlbyname("hw.model", model, &m, nullptr, 0);
+  int cores = 0; size_t cn = sizeof cores; sysctlbyname("hw.perflevel0.physicalcpu", &cores, &cn, nullptr, 0);
+  uint64_t mem = 0; size_t mn = sizeof mem; sysctlbyname("hw.memsize", &mem, &mn, nullptr, 0);
+  const char* power = "unknown";
+  if (CFTypeRef info = IOPSCopyPowerSourcesInfo()) {
+    if (CFStringRef type = IOPSGetProvidingPowerSourceType(info)) power = CFStringCompare(type, CFSTR(kIOPMACPowerKey), 0) == kCFCompareEqualTo ? "mains" : "battery";
+    CFRelease(info);
+  }
+  host::log("diagnostics: renderer Metal, internal resolution %s, vsync %s, sub-frame %s, frame cap %s, %s", gfx.efb_scale ? (std::to_string(gfx.efb_scale) + "x").c_str() : "auto",
+            gfx.vsync ? "on" : "off", fe::settings_get("subframe").empty() ? "off" : fe::settings_get("subframe").c_str(),
+            fe::settings_get("fps").empty() ? "none" : fe::settings_get("fps").c_str(), net_on ? "online allowed" : "offline");
+  host::log("diagnostics: %s (%s), %d performance cores, %.0f GB, power from %s, macOS game thread at user-interactive QoS", cpu, model, cores,
+            double(mem) / (1024.0 * 1024 * 1024), power);
+}
 void on_frame(const MuStatePod& state, const linux_host::Counters& counters, void*) {
   g_trace_retrace.store(counters.retraces, std::memory_order_relaxed);
+  if (counters.retraces == 1)   // upstream's startup timing (+ms): from the program's start to the game's first frame
+    host::log("diagnostics: the first frame ran %.0f ms after the start", std::chrono::duration<double, std::milli>(Clock::now() - g_started).count());
   host::mu_shim_set_scene(uint8_t(state.scene_major), uint8_t(state.scene));
   // The parity runner's per-retrace state row: the digest (--digest) and the netplay host's record of shown states.
   char row[1400]; int n = std::snprintf(row, sizeof row, "%u,%u,%u,%u,%u", counters.retraces, state.scene_major, state.scene, state.match_frame, state.rng);
@@ -654,6 +680,7 @@ int main(int argc, char** argv) {
   if (g_play && !net_on) config.pace = false;   // paced here (on_retrace), so the replay viewer can fast-forward
   linux_host::set_tables_hook(tables_hook);
   linux_host::set_video_sinks(on_fifo, on_retrace, nullptr);
+  log_diagnostics(gfx, net_on);   // upstream's summary lines (main.cpp): what decides how it feels, the machine, the power source
   int code = 0;
   std::string error;
   if (!linux_host::initialize(config, &error)) {

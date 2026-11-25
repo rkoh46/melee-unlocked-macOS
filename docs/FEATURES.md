@@ -377,8 +377,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M22 | Crashed-start recovery | not wired; medium: same idea for the Metal pipeline cache |
 | M23 | Frame generation off after a Streamline crash | not wired; n/a |
 | M24 | Game thread priority and timer resolution | active in the Mac's form: the game thread (the engine's main thread) runs at QOS_CLASS_USER_INTERACTIVE (`mu_play_main.cpp`), as the GameCube adapter thread does; macOS has no timer resolution or EcoQoS switch |
-| M25 | Diagnostic summary lines | not wired; easy |
-| M26 | Launcher logs | not wired; easy |
+| M25 | Diagnostic summary lines | active: the engine logs upstream's summary at start (`diagnostics: renderer Metal, internal resolution auto, vsync on, sub-frame off, frame cap none, offline`; the chip, model, performance cores, memory and whether it runs on mains or battery) and the startup timing (`diagnostics: the first frame ran 194 ms after the start`), `mu_play_main.cpp` |
+| M26 | Launcher logs | active: `melee-unlocked/launcher.log` is kept across starts and begun again once it passes 256 KB (upstream's rule), each start dated; a start whose engine did not run says why (`port/app/main_mac.cpp`). Three dated starts kept in a test home |
 | M27 | Shared disc memory outside the game folder | not wired; easy |
 | M28 | Version mismatch warning | not wired; n/a |
 | M29 | Engine switch requested by the game | not wired; n/a |
