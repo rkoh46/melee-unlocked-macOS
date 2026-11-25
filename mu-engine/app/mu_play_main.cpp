@@ -404,6 +404,7 @@ int main(int argc, char** argv) {
   std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir, play_script;
   bool record = true, script_codes = false, audio_device = true, script_clock = false;
   net_host::Options net;
+  bool net_prefs_given = false;   // --net-direct-pause / --net-port-colour / --net-shield / --net-skip on the command line
   bool offline = false;
   int volume = 70, scale = 0;
   uint32_t capture_frame = 0, capture_every = 0;
@@ -432,7 +433,9 @@ int main(int argc, char** argv) {
     else if (a == "--no-audio-device") audio_device = false;
     else if (a == "--script-real-clock") script_clock = true;   // tests: a scripted match on the real clock and seed (as a player's)   // tests: mix and count the sound, open no output device
     else if (a == "--script-codes") script_codes = true;   // tests: a scripted match with melee-unlocked's codes on (not the retail game)
-    else if (net_host::parse_option(a, next, &net)) {}
+    else if (net_host::parse_option(a, next, &net)) {
+      if (a == "--net-direct-pause" || a == "--net-port-colour" || a == "--net-shield" || a == "--net-skip") net_prefs_given = true;
+    }
     else if (a == "--digest") g_digest = std::fopen(next().c_str(), "w");
     else if (a == "--frames") g_frames_limit = uint32_t(std::strtoul(next().c_str(), nullptr, 0));
     else if (a == "--capture") { capture_path = next(); capture_frame = uint32_t(std::strtoul(next().c_str(), nullptr, 0)); }
@@ -506,10 +509,17 @@ int main(int argc, char** argv) {
   if (g_play) {
     fe::options.play = true; fe::options.app = true;
     fe::options.out_dir = mu_dir.string(); fe::options.base_dir = mu_dir.string(); fe::options.iso = iso;
-    fe::options.offline = offline; fe::options.online_delay = net.delay;
+    fe::options.offline = offline; fe::options.online_delay = net.delay_auto ? 0 : net.delay;   // 0: automatic
     for (int i = 1; i < argc; ++i) fe::options.rest.push_back(argv[i]);
     fe::settings_app_defaults(!sys_dir.empty() && !vanilla);
     fe::settings_load((mu_dir / "settings.ini").string());
+    // settings.ini's online preferences (directpause, portcolour1/2, shield_color_online, blockcode1..3: the panel's and the
+    // launcher's rows) go to the netplay unless the command line set them.
+    if (!net_prefs_given) {
+      std::string skip[3];
+      fe::settings_net_prefs(&net.direct_pause, net.port_colour, &net.shield_online, skip);
+      for (int k = 0, at = 0; k < 3; ++k) if (!skip[k].empty()) net.skip[at++] = skip[k];
+    }
     fe::settings_set_quiet("replay_dir", replay_dir.empty() ? (support / "Replays").string() : replay_dir);
     if (!record) fe::settings_set_quiet("savereplays", "0");
     if (vanilla) fe::settings_set_quiet("vanilla", "1");
@@ -550,7 +560,7 @@ int main(int argc, char** argv) {
   // applies here, on the simulation thread.
   if (!g_play) { fe::options.out_dir = mu_dir.string(); fe::options.iso = iso; }
   fe::mac_menu_initial = [=](host::RuntimeSettings& rs) {
-    rs.scale = scale; rs.vsync = vsync; rs.volume = volume; rs.fullscreen = fullscreen; rs.online_delay = net.delay;
+    rs.scale = scale; rs.vsync = vsync; rs.volume = volume; rs.fullscreen = fullscreen; rs.online_delay = net.delay_auto ? 0 : net.delay;
   };
   // The renderer's options change from the panel (simulation thread) and the overlays' picture page (render thread).
   static std::mutex gfx_mutex;
@@ -569,7 +579,7 @@ int main(int argc, char** argv) {
   };
   fe::mac_set_picture = [backend, &gfx](const fe::MacPicture& p) {
     std::lock_guard<std::mutex> lock(gfx_mutex);
-    gfx.brightness = p.brightness; gfx.contrast = p.contrast; gfx.vibrance = p.vibrance; gfx.crt = p.crt; gfx.crt_curve = p.crt_curve;
+    gfx.brightness = p.brightness; gfx.contrast = p.contrast; gfx.vibrance = p.vibrance; gfx.sharpness = p.sharpness; gfx.crt = p.crt; gfx.crt_curve = p.crt_curve;
     // The overlays' Auto shape is 4:3: the renderer's own choice (4:3, or 16:9 with the widescreen code). 0 fills the window.
     if (p.aspect >= 0) gfx.picture_aspect = std::fabs(p.aspect - 4.0f / 3.0f) < 1e-3f ? 0.0f : p.aspect <= 0.0f ? 99.0f : p.aspect;
     if (p.scale > 0) gfx.efb_scale = p.scale;   // Auto keeps the launcher's choice
@@ -756,7 +766,7 @@ int main(int argc, char** argv) {
     const host::RuntimeSettings s = host::menu_settings();
     fe::app_ini_set("volume", std::to_string(s.volume)); fe::app_ini_set("scale", std::to_string(s.scale));
     fe::app_ini_set("vsync", s.vsync ? "1" : "0"); fe::app_ini_set("fullscreen", s.fullscreen ? "1" : "0");
-    fe::app_ini_set("hud", s.hud ? "1" : "0"); fe::app_ini_set("online_delay", std::to_string(std::clamp(s.online_delay, 1, 9)));
+    fe::app_ini_set("hud", s.hud ? "1" : "0"); fe::app_ini_set("online_delay", s.online_delay <= 0 ? "auto" : std::to_string(std::clamp(s.online_delay, 1, 9)));   // 0: automatic
     for (const host::ControllerConfig& c : host::controller_configs())   // the CONTROLS page: remaps, deadzones, rumble
       fe::app_ini_set("controller." + c.guid, std::to_string(c.port) + "|" + c.map.serialize());
     fe::app_ini_set("keyboard", host::keyboard_map().serialize());

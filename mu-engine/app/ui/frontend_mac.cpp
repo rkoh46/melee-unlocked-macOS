@@ -144,7 +144,7 @@ namespace { std::mutex g_pic_mutex; fe::MacPicture g_pic; }
 void aurora_set_picture(const AuroraPicture* p) {
   if (!p) return;
   std::lock_guard<std::mutex> lock(g_pic_mutex);
-  g_pic.brightness = p->brightness; g_pic.contrast = p->contrast; g_pic.vibrance = p->vibrance; g_pic.crt = int(p->crt); g_pic.crt_curve = p->crt_curve;
+  g_pic.brightness = p->brightness; g_pic.contrast = p->contrast; g_pic.vibrance = p->vibrance; g_pic.sharpness = p->sharpness; g_pic.crt = int(p->crt); g_pic.crt_curve = p->crt_curve;
   if (fe::mac_set_picture) fe::mac_set_picture(g_pic);
 }
 namespace aurora::window {

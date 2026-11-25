@@ -18,6 +18,6 @@ extern std::function<void(host::RuntimeSettings&)> mac_menu_initial;
 extern std::function<void(const host::RuntimeSettings&, host::MenuChange)> mac_menu_apply;
 void app_menu_setup();
 // The overlays' picture options (fe/overlay_draw.cpp through the Aurora calls in frontend_mac.cpp), any thread.
-struct MacPicture { float brightness = 1, contrast = 1, vibrance = 1; int crt = 0; float crt_curve = 1; float aspect = -1; int scale = -1; };
+struct MacPicture { float brightness = 1, contrast = 1, vibrance = 1, sharpness = 0; int crt = 0; float crt_curve = 1; float aspect = -1; int scale = -1; };
 extern std::function<void(const MacPicture&)> mac_set_picture;
 }
