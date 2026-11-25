@@ -151,7 +151,7 @@ set_source_files_properties(${_fe_enet} PROPERTIES COMPILE_DEFINITIONS "HAS_FCNT
   COMPILE_OPTIONS "-w;-include;arpa/inet.h")
 set_target_properties(mu_fe PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
 target_include_directories(mu_fe BEFORE PRIVATE "${FE_GEN}/slpshim" "${FE_GEN}/zstdshim")
-target_include_directories(mu_fe PRIVATE "${FE}" "${FE}/features" "${FE_GEN}" "${MU_RUN}" "${MU_RUN}/features" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
+target_include_directories(mu_fe PRIVATE "${FE}" "${FE}/features" "${FE_GEN}" "${MU_REPO}/mu-engine/modinstall" "${MU_RUN}" "${MU_RUN}/features" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
   "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/runtime/ppc" "${MU_TREE}/port/runtime/gx" "${MU_TREE}/native" "${MU_REPO}/build/mu-engine/gen"
   "${_enet}/include" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/host" "${DD}/host")
 target_compile_definitions(mu_fe PRIVATE MU_FOREIGN_ELF MU_SQUAD=1 MELEE_NO_SLIPPI MELEE_PORT_VERSION="mu-native" MU_HIGH_BASE=${MU_HIGH_BASE})

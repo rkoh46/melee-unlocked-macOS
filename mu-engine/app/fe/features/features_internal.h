@@ -29,6 +29,7 @@ void register_extras();              // extras.cpp: Reset CPU training options, 
 void register_egg();                 // egg_command.cpp: the character select frame command (0xDA) for the easter egg
 void register_gecko();               // gecko.cpp: the player's Gecko codes (GeckoCodes.ini), offline
 void register_phob();                // phob.cpp: PhobGCC settings on a stock controller (the adapter's raw reports), its menu
+void register_modlooks();            // modlooks.cpp: Get mod looks (Diet Melee, Animelee) from the authors' downloads
 void register_graphics();            // graphics.cpp: SSAO, texture packs, menu videos, shader presets, HDR, Lab view, captures
 
 // options.cpp: the session as the modules see it, updated once per retrace and by the netplay commands.
