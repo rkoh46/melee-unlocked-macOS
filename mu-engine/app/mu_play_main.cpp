@@ -492,6 +492,7 @@ int main(int argc, char** argv) {
       if (const char* v = value("keyboard=")) host::set_keyboard_map(host::KeyboardMap::parse(v));
       else if (const char* v = value("discord=")) discord_on = *v == '1';             // the classic app's Discord setting (default on)
       else if (const char* v = value("discord_rank=")) net.discord_rank = *v == '1';
+      else if (const char* v = value("discord_app_id=")) { if (*v) setenv("MELEE_DISCORD_APP_ID", v, 1); }   // melee-unlocked's Application ID
       else if (const char* v = value("controller.")) {
         std::string rest = v; size_t eq = rest.find('='), bar = rest.find('|', eq == std::string::npos ? 0 : eq);
         if (eq != std::string::npos && bar != std::string::npos) {
@@ -543,7 +544,19 @@ int main(int argc, char** argv) {
     gx::metal_set_present_loop([](gx::Backend& b, gx::FrameQueue& q, const std::atomic<bool>& stop, gx::PresentRender render) {
       fe::present::loop(b, q, stop, [] {}, render);
     }, [] { return fe::present::active(); });
-  void* layer = host::window_create(1280, 960, L"melee-unlocked-macOS", !hidden);
+  // melee-unlocked's Window size (settings.ini window: "follow", the default, or WxH): the window opens at that size;
+  // it stays resizable and the picture follows it, as "Follow window" does.
+  int window_w = 1280, window_h = 960;
+  {
+    std::ifstream in(mu_dir / "settings.ini");
+    std::string line;
+    while (std::getline(in, line)) {
+      int w = 0, h = 0;
+      if (line.rfind("window ", 0) == 0 && std::sscanf(line.c_str() + 7, "%dx%d", &w, &h) == 2 && w >= 320 && h >= 240 && w <= 7680 && h <= 4320) { window_w = w; window_h = h; }
+      else if (line.rfind("window ", 0) == 0) { window_w = 1280; window_h = 960; }
+    }
+  }
+  void* layer = host::window_create(window_w, window_h, L"melee-unlocked-macOS", !hidden);
   // Controllers do not count as activity to macOS: while the game's window is up the display stays awake (melee-unlocked's
   // SetThreadExecutionState). Released when the program ends.
   IOPMAssertionID display_awake = kIOPMNullAssertionID;

@@ -154,7 +154,7 @@ std::vector<Device> g_devices;
 int g_device = 0;
 int g_step = 0, g_step_frames = 0;
 bool g_step_armed = false;
-enum ControlsRow { C_DEVICE, C_REMAP, C_STICK_DZ, C_CSTICK_DZ, C_TRIGGER, C_SWAP, C_RUMBLE, C_TEST_RUMBLE, C_MODIFIER, C_RESET };
+enum ControlsRow { C_DEVICE, C_REMAP, C_STICK_DZ, C_CSTICK_DZ, C_TRIGGER, C_SWAP, C_RUMBLE, C_TEST_RUMBLE, C_MODIFIER, C_RESET, C_PORT };
 
 // What the panel asked for, applied on the simulation thread (panel_service).
 enum class Act { Main, Extra, Controls, Remap, Quit, Ini, Setting, Practice, ModPrimary, ModRemove, ModProfile, Gecko };
@@ -179,6 +179,8 @@ void refresh_devices_locked() {
     for (const host::ControllerInfo& c : host::window_list_controllers()) if (!c.is_gamecube_adapter) g_devices.push_back({c.guid, c.name});
   g_device = 0;
   for (size_t i = 0; i < g_devices.size(); ++i) if (g_devices[i].guid == keep) g_device = int(i);
+  if (keep == "\x01")   // screenshots: the CONTROLS page opens on this device (0 the keyboard, 1 the first controller)
+    if (const char* d = std::getenv("MELEE_MENU_DEVICE")) g_device = std::clamp(std::atoi(d), 0, int(g_devices.size()) - 1);
 }
 void set_open_locked(bool open) {
   if (open != g_open.load()) host::log("menu: %s", open ? "opened" : "closed");
@@ -228,6 +230,7 @@ bool controls_act_locked(int r, int dir) {
     case C_TRIGGER: c.map.trigger_press = std::clamp(dir, 20, 100); break;
     case C_SWAP: c.map.swap_sticks = !c.map.swap_sticks; break;
     case C_RUMBLE: c.map.rumble = !c.map.rumble; break;
+    case C_PORT: c.port = std::clamp(dir, 0, 4); break;   // melee-unlocked's Play as Pn: 0 the first free port
     default: return false;
   }
   host::upsert_controller_config(c);
@@ -389,6 +392,12 @@ std::array<Category, 8> build_rows(bool in_game) {
         a.a = C_TRIGGER; c.rows.push_back(slider("Trigger press point", m.trigger_press, 20, 100, 5, "%d%%", a));
         a.a = C_SWAP; c.rows.push_back(toggle("Swap sticks", m.swap_sticks, a));
         a.a = C_RUMBLE; c.rows.push_back(toggle("Rumble", m.rumble, a));
+        // melee-unlocked's "Play as Pn": the port this controller plays as (launcher.ini controller.<guid>, taken at once by
+        // window_sdl.cpp's port assignment; a port the GameCube adapter uses stays the adapter's).
+        a.a = C_PORT;
+        Row port = choice("Plays as", std::clamp(pad_config(d->guid).port, 0, 4), {"First free port", "P1", "P2", "P3", "P4"}, a);
+        port.hint = "A fixed port keeps this controller there whatever is plugged in first.";
+        c.rows.push_back(port);
         Row t; t.label = "Test rumble"; t.kind = Kind::Action; t.action = Action{Act::Controls}; t.action.a = C_TEST_RUMBLE; c.rows.push_back(t);
       }
       Row reset; reset.label = "Reset to defaults"; reset.kind = Kind::Action; reset.action = Action{Act::Controls}; reset.action.a = C_RESET; c.rows.push_back(reset);

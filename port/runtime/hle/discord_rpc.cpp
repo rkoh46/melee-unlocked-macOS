@@ -254,6 +254,13 @@ void start(bool show_rank, const std::string& application_id_override) {
 #else
   if (g_running.load()) return;
   g_app_id = application_id_override.empty() ? kApplicationId : application_id_override;
+  // melee-unlocked's Discord Application ID setting (launcher.ini discord_app_id, handed over as MELEE_DISCORD_APP_ID):
+  // another application's id, digits only, up to 24.
+  if (const char* env = std::getenv("MELEE_DISCORD_APP_ID"); application_id_override.empty() && env && *env) {
+    const std::string id = env;
+    if (id.size() <= 24 && id.find_first_not_of("0123456789") == std::string::npos) g_app_id = id;
+    else host::log("discord: application id \"%s\" is not a Discord id (digits only); using the app's own", env);
+  }
   touch_state([&](State& s) { s.show_rank = show_rank; s.phase = Phase::Menus; });
   g_running.store(true);
   g_thread = std::thread(run);

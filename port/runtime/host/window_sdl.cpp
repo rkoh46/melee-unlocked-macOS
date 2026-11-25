@@ -311,9 +311,10 @@ void refresh_client_size() {
 }
 
 void open_gamepad(SDL_JoystickID id) {
+  for (SDL_Gamepad* open : g_gamepads) if (SDL_GetGamepadID(open) == id) return;   // already open (listed at start, then announced)
   if (SDL_Gamepad* pad = SDL_OpenGamepad(id)) {
     g_gamepads.push_back(pad);
-    log("input: gamepad connected: %s (vendor %04x product %04x)", SDL_GetGamepadName(pad), SDL_GetGamepadVendor(pad), SDL_GetGamepadProduct(pad));
+    log("input: gamepad connected: %s (vendor %04x product %04x, %s)", SDL_GetGamepadName(pad), SDL_GetGamepadVendor(pad), SDL_GetGamepadProduct(pad), gamepad_guid(pad).c_str());
   }
 }
 void close_gamepad(SDL_JoystickID id) {
@@ -433,6 +434,7 @@ void* window_create(int w, int h, const wchar_t* title, bool visible) {
   if (const char* force = std::getenv("MELEE_TOUCH_OVERLAY")) g_touch_forced = *force && *force != '0';
   g_window = SDL_CreateWindow(narrow(title).c_str(), w, h, flags);
   if (!g_window) die("SDL window: %s", SDL_GetError());
+  log("window: %dx%d points%s", w, h, visible ? "" : " (hidden)");
   g_view = SDL_Metal_CreateView(g_window);
   if (!g_view) die("SDL Metal view: %s", SDL_GetError());
   refresh_client_size();
@@ -526,6 +528,13 @@ void window_input_init() {
   done = true;
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
   if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) { log("input: SDL gamepad init failed: %s", SDL_GetError()); return; }
+  if (const char* name = std::getenv("MELEE_TEST_VIRTUAL_PAD")) {   // tests and screenshots: a gamepad that is not there
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD; desc.naxes = SDL_GAMEPAD_AXIS_COUNT; desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.vendor_id = 0x1234; desc.product_id = 0x0001; desc.name = *name ? name : "Test gamepad";
+    if (!SDL_AttachVirtualJoystick(&desc)) log("input: virtual test gamepad: %s", SDL_GetError());
+  }
   int count = 0;
   if (SDL_JoystickID* ids = SDL_GetGamepads(&count)) { for (int i = 0; i < count; ++i) open_gamepad(ids[i]); SDL_free(ids); }
 }
@@ -665,6 +674,17 @@ void input_poll(PadState out[4]) {
     while (port < 4 && taken[port]) ++port;
     if (port >= 4) break;
     taken[port] = true; read_gamepad(pad, out[port]); g_gamepad_port[port] = SDL_GetGamepadID(pad); ++port;
+  }
+  {   // which gamepad plays as which port, logged when it changes (a fixed port from Plays as, or the first free one)
+    static SDL_JoystickID last[4] = {};
+    for (int i = 0; i < 4; ++i)
+      if (g_gamepad_port[i] != last[i]) {
+        last[i] = g_gamepad_port[i];
+        if (SDL_Gamepad* pad = g_gamepad_port[i] ? SDL_GetGamepadFromID(g_gamepad_port[i]) : nullptr) {
+          const ControllerConfig* cfg = controller_config_for(gamepad_guid(pad));
+          log("input: %s plays as P%d (%s)", SDL_GetGamepadName(pad), i + 1, cfg && cfg->port == i + 1 ? "its fixed port" : "first free port");
+        }
+      }
   }
   if (!(adapter_mask & 1u)) { out[0].err = 0; read_keyboard(out[0]); read_touch(out[0]); }
   if (g_window && !g_focused.load() && !g_background_input.load())   // Background input off, another window in front
