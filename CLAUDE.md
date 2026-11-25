@@ -46,7 +46,12 @@ as `rkoh` (git config); never as the Mac login name.
   before any change lands. Online: `mu-engine/tools/online_loopback_test.sh`, `net_rollback_test.sh` and
   `app_online_test.sh` (net check equal, 0 desyncs). Replays: 0 differing post-frame records on playback.
 - Online tests run on loopback only, under a sandbox profile that refuses outside connections, against the
-  matchmaking stand-in `tools/mac/mock_matchmaking.cpp`. Never contact Slippi's servers from a test; never Ranked.
+  stand-ins for Slippi 3.7.0's WebSocket matchmaking queue (`tools/mac/mock_matchmaking_ws.py`, `MELEE_MM_LOOPBACK_PORT`) and its
+  HTTP services (`tools/mac/mock_slippi_http.py`, `MELEE_SERVICES_LOOPBACK_PORT`). Never contact Slippi's servers from a test;
+  never Ranked.
+- The engine's netplay is Melee-NX-NetPlay's Slippi 3.7.0 netplay: `mu-engine/net` (a copy of its port/runtime/hle files and
+  ENet changes) with its patches and the Mac's (`mu-engine/net/patches`), assembled by `mu-engine/net_sources.sh`. To follow
+  the Switch, copy its files and patches again; port/runtime/hle (Slippi 3.6.4) stays the legacy engine's.
 - Never run melee-unlocked's release binaries, launcher or updater, and never a mod's own programs: build MU from
   source only. Test windows stay hidden or offscreen (the user plays on this Mac).
 

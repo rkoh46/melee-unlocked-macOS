@@ -38,6 +38,8 @@ struct Setup {
   // The replay of the game just reported, for Slippi's upload request (patches/net-0008: asked on the reporter's thread when the
   // service's reply carries uploadUrl; may wait for the host's replay writer). Empty: none. Null: no uploads.
   std::string (*replay_path)() = nullptr;
+  bool discord = false;           // Discord Rich Presence (the app's discord_rpc; a player's own sign-in only)
+  bool discord_rank = true;       // the presence shows the player's rank
 };
 // Choices exchanged with another Melee-NX-NetPlay build (patches/net-0004; against anyone else they change nothing but this
 // player's own shield colour on this screen) and the Unranked skip list. From the next connection on.
@@ -98,4 +100,7 @@ struct FrameTrace { int skip = 0; bool advanced = false; int32_t offset_us = 0; 
 NETPLAY_API FrameTrace frame_trace();
 // The input delay from the next game on: `frames` 1..9, or automatic (2..5 from the round trip at each game's start).
 NETPLAY_API void set_delay(int frames, bool automatic);
+// The game's replay events (0x36 Game Start, 0x38 Post-Frame, 0x39 Game End; payload after the command byte), for the
+// Discord presence. Anything else is ignored.
+NETPLAY_API void replay_event(uint8_t command, const uint8_t* payload, uint32_t size);
 }

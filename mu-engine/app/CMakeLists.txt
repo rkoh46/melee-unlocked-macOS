@@ -176,11 +176,11 @@ target_compile_definitions(melee_unlocked_mac PRIVATE MU_HIGH_BASE=${MU_HIGH_BAS
   MELEE_SOURCE_ART_DIR="${MU_REPO}/port/app/art/controller")
 target_compile_features(melee_unlocked_mac PRIVATE cxx_std_17)
 target_include_directories(melee_unlocked_mac BEFORE PRIVATE "${MU_UI}" "${FE}" "${MU_UI_GEN}" "${MU_REPO}/mu-engine/modinstall" "${CMAKE_CURRENT_BINARY_DIR}/gen")
-file(GLOB _net_patches "${MU_REPO}/mu-engine/patches/net-*.patch")
-# The netplay object (mu-engine/build.sh net: this repository's Slippi netplay with only netplay_bridge::* global).
+file(GLOB _net_patches "${MU_REPO}/mu-engine/net/patches/*.patch" "${MU_REPO}/mu-engine/net/hle/*" "${MU_REPO}/mu-engine/net/enet/*")
+# The netplay object (mu-engine/build.sh net: Melee-NX-NetPlay's Slippi 3.7.0 netplay, mu-engine/net, with only netplay_bridge::* global).
 add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engine/build.sh" net
-  DEPENDS "${MU_RUN}/netplay_bridge_mac.cpp" "${DD}/hle/slippi_online.cpp" "${DD}/hle/slippi_net.cpp" "${DD}/hle/slippi_net.h" "${DD}/hle/slippi_online.h"
-    "${DD}/hle/slippi_report.cpp" ${_net_patches}
+  DEPENDS "${MU_RUN}/netplay_bridge_mac.cpp" "${MU_RUN}/netplay_bridge.h" "${MU_REPO}/mu-engine/net_sources.sh"
+    "${DD}/hle/discord_rpc.cpp" "${DD}/hle/slippi_login.cpp" ${_net_patches}
   COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
 add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
 add_dependencies(melee_unlocked_mac mu_netplay_object)

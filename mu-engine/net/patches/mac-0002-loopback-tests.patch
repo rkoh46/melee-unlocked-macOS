@@ -1,0 +1,30 @@
+Loopback tests (mu-engine/net/patches/mac-0002): with SLIPPI_MM_URL naming a queue stand-in on 127.0.0.1 (ws://127.0.0.1:PORT,
+tools/mac/mock_matchmaking_ws.py; the bridge sets it from MELEE_MM_LOOPBACK_PORT) the matchmaking client uses that address in place
+of the pinned one and looks up no STUN server, whose names would be resolved through the system's DNS service. Anything else
+in SLIPPI_MM_URL is ignored, so a player's build only ever queues at Slippi's service. Applied by ../../net_sources.sh.
+
+diff -ruN a/port/runtime/hle/slippi_net.cpp b/port/runtime/hle/slippi_net.cpp
+--- a/port/runtime/hle/slippi_net.cpp
++++ b/port/runtime/hle/slippi_net.cpp
+@@ -1460,7 +1460,12 @@
+   prioritize_socket(client_->socket);
+ 
+   std::vector<ENetAddress> stun_addrs;
+-  for (size_t i = 0; i < version::kStunServerCount; ++i) {
++  // mu-engine/net/patches/mac-0002: a test against the loopback queue stand-in (SLIPPI_MM_URL ws://127.0.0.1:...) looks up no
++  // STUN server: resolving one would send a DNS query out of the machine.
++  const char* mm_url = std::getenv("SLIPPI_MM_URL");
++  const bool loopback_test = mm_url && std::strncmp(mm_url, "ws://127.0.0.1:", 15) == 0;
++  if (loopback_test) host::log("slippi: loopback queue stand-in: no STUN lookups");
++  for (size_t i = 0; i < version::kStunServerCount && !loopback_test; ++i) {
+     ENetAddress addr;
+     if (enet_address_set_host(&addr, version::kStunServers[i].host) != 0) { host::log("slippi: cannot resolve STUN server %s", version::kStunServers[i].host); continue; }
+     addr.port = version::kStunServers[i].port;
+@@ -1497,6 +1502,7 @@
+   request.uid = me.uid; request.play_key = me.play_key; request.user_connect_code = me.connect_code; request.display_name = me.display_name;
+   request.app_version = version::kSemver;
+   request.url = version::kMatchmakingUrl;
++  if (loopback_test) request.url = mm_url;   // mu-engine/net/patches/mac-0002: the tests' queue stand-in (loopback only)
+   // A cancel that arrived during STUN must not start a session nobody will poll.
+   if (is_mm_terminated_) return;
+   session_id_ = mm::start(request);

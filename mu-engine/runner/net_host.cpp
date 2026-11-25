@@ -393,6 +393,7 @@ int start(const Options& given, Log log) {
   netplay_bridge::Setup setup;
   setup.set_speed = net_set_speed;
   setup.replay_path = replay_path_hook;
+  setup.discord = options.discord; setup.discord_rank = options.discord_rank;
   {
     netplay_bridge::OnlinePrefs prefs;
     prefs.direct_pause = options.direct_pause; prefs.port_colour[0] = options.port_colour[0]; prefs.port_colour[1] = options.port_colour[1];

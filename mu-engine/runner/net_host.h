@@ -31,6 +31,8 @@ struct Options {
   std::string online;               // --online unranked|direct:CODE|teams|party (services builds only)
   std::string user_dir;             // --user-dir: where user.json is (default: the app's folder on the console)
   bool fake_user = false;           // --fake-user: tests against a local mock service only
+  bool discord = false;             // Discord Rich Presence for a player's own sign-in (the app: launcher.ini discord=1)
+  bool discord_rank = true;         // launcher.ini discord_rank
   int retry_seconds = 0;            // --net-retry: with --net, keep asking for the match this long when the peer is not there yet
   int delay = 2;                    // --net-delay: Slippi input delay, frames
   bool delay_auto = false;          // --net-delay auto: the app's automatic delay (2..5 frames from the ping at each game's start)

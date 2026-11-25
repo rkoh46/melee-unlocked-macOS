@@ -28,7 +28,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 
 | Feature | Side | Mac status |
 |---|---|---|
-| Slippi Unranked, Direct, Teams, Party | game image + host + external | active: from the game's Online Play page with the player's Slippi sign-in; tested on loopback only (two engines, Unranked, net check equal, 0 desyncs) |
+| Slippi Unranked, Direct, Teams, Party | game image + host + external | active: from the game's Online Play page with the player's Slippi sign-in, on Slippi 3.7.0's netplay (Melee-NX-NetPlay's, mu-engine/net: the WebSocket queue at matchmaking.slippi.gg, STUN, 3.7.0's wire format). Tested on loopback only against tools/mac/mock_matchmaking_ws.py under the sandbox profile: two engines from the menus (Unranked, Direct by a remembered code), two runners (Unranked, same-router fallback, slow first frame, rollbacks through a delay relay): net checks equal, 0 desync messages. Not yet played against a real opponent on Slippi's service from the Mac |
 | Slippi system files | host | active: Slippi's menu files served from the bundle's slippi_sys (`mu-engine/app/slippi_menus.cpp`) |
 | Slippi Ranked | host | refused, as melee-unlocked refuses it |
 | Rollback savestates | host | active: the hot-page store with macOS write tracking (580 rollbacks, net check equal, in the loopback rollback test) |
@@ -38,49 +38,49 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Time sync, frame advance/skip | host | active (the app's netplay; frame-rate nudges go to the host's pacing) |
 | Desync detection and notice | game image + host | active: the game's checksum comparison (0 desync messages in the tests) |
 | Player drop handling (3.7.0) | game image + host | partial: Slippi 3.7.0 despawn frames in the ONLINE_INPUTS reply; not tested with a real drop |
-| Slippi input suggestions (3.7.0) | host | not wired: the reply carries the latest real input as every prediction (Slippi's behaviour without suggestions) |
-| Version gate | host | not wired: online play is the next milestone (netplay host as on the Switch) |
+| Slippi input suggestions (3.7.0) | host | partial: the netplay object is Slippi 3.7.0's (mu-engine/net): the other player's suggestions are received and used by Slippi 3.7.0's rules; this player's are not sent (the Switch's sampler reads the controllers beside the game's poll; the Mac's input path has no such read yet) |
+| Version gate | host | active: the engine's netplay reports Slippi 3.7.0 (Melee-NX-NetPlay's 3.7.0 netplay: the WebSocket queue, appVersion 3.7.0 in the join) and says so when Slippi names a newer release; loopback queue stand-in: `join ... appVersion 3.7.0`. The legacy engine (port/runtime/hle) is still 3.6.4, which Slippi's service now refuses |
 | Replay recording (.slp) | game image + host | active: every match, offline and online (`mu-engine/app/replays.cpp`) |
 | Compressed replays (.slpz) | host | active: settings.ini compressreplays 1 (melee-unlocked's zstd) |
 | Replay playback | game image + host | active: `--replay` and the launcher's Watch, through the replays module (`fe/features/replays.cpp`); a replay without a code list plays as Vanilla. Recordings with codes (online, offline play mode) play back with 0 differing post-frame records (an online loopback game: 2194 of 2194 equal). A vanilla recording started from the menus still differs in a few records (vs4_busy: 16 of 29296): frame -118 is the stage's collision state at the first spawn, which the playback's direct boot sets up differently (docs/MAC_FIXES.md #10) |
 | Replay viewer controls | host + renderer | active: Start/Z pause, D-pad seek and step, L speed, R fast forward, X/Y tips (the replays module, drawn by `fe/overlay_draw.cpp`) |
 | Replay takeover | game image + host | active: A takes over (the replays module) |
 | Replay coach tips | game image + host + renderer | active: melee-unlocked's coach (replay_coach.cpp from the fetched tree) through the replays module |
-| Game reporting | host + external | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Quick chat | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Stage pool and random stage | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Pause in Direct and Friends | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Skip in Unranked | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Early inputs ("subframe rollback") | host + game image | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Early rollback from early pads | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Build message and setup hash | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Opponent shield colour | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Online port colours | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Live pick previews | host + game image | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Opponent origin label | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Play while you search | host + game image + renderer | active for Unranked, Direct and Teams: the Switch's search module (fe/features/search.cpp) on the netplay object's kept search (mu-engine/patches/net-0001). L+R held on Slippi's select with a search running and the fighter locked in: Training while the search goes on; B asks "Keep searching while you play?" (settings.ini `keep_search`); found: back to the select and the match. `mu-engine/tools/app_online_menus_test.sh` from the game's menus on loopback: online_keep_search (Unranked, Training), online_keep_ask (the question, A), online_direct_keep (Direct by a remembered code): each found, back on the select locked in, match played, net check equal, 0 desync messages |
-| Warm-up room | host | wired, not run on the Mac: the same search module and kept connection; the sparring partner reads the opponent's locked-in pick (net-0001 `remote_character`). The Switch's test needs `--feature-test unranked-as-direct` (the loopback stand-in pairs Unranked), which the Mac engine does not take yet |
-| Training after online | host | wired, not run on the Mac: settings.ini `online_training_after` / `online_return_training` and "Search again?" (search module, net-0001 `code`); the Switch's test needs `--feature-test unranked-as-direct` |
-| Arena rooms and invites | host + renderer + game image | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Slippi spectator server | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Ping readout | renderer | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Network and timing overlay | renderer + host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Session trace file | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Agreed Gecko codes online | host | not wired: online play is the next milestone (netplay host as on the Switch) |
+| Game reporting | host + external | active: game reports with the disc MD5 and the replay upload when Slippi asks (app_online_test.sh against tools/mac/mock_slippi_http.py: `game report ... isoHash 0e63d422...`, `replay upload ... a Slippi replay`); match status reports for Ranked are not used (Ranked is refused) |
+| Quick chat | game image + host | active: Slippi's message ids both ways, settings.ini quick chat 0/1/2 (`set_chat`), custom chat lines from the profile refresh; not run on the Mac with a real opponent |
+| Stage pool and random stage | game image + host | active: the netplay object's stage pool from the queue's stage list (Slippi 3.7.0 rules); loopback matches picked from it |
+| Pause in Direct and Friends | host | active: Slippi's rule (Start pauses Direct); between two Melee-NX-NetPlay-family builds the build message can turn it off (settings.ini, net-0004) |
+| Skip in Unranked | host | wired: settings.ini blockcode1..3 go to the netplay object's skip list (net-0004); not run on the Mac |
+| Early inputs ("subframe rollback") | host + game image | partial: see "Slippi input suggestions (3.7.0)": received, not sent |
+| Early rollback from early pads | host | partial: received suggestions are used as Slippi 3.7.0 uses them (net-0001); not sent from the Mac |
+| Build message and setup hash | host | active between Melee-NX-NetPlay-family builds (net-0004, message 0xD0): loopback log `opponent 1 is a Melee-NX-NetPlay build: Direct pause on, shield colour none, port colours -1/-1`; ignored by Slippi Dolphin. No setup hash |
+| Opponent shield colour | game image + host | wired (net-0004, between our builds): settings.ini online shield colour; not run on the Mac |
+| Online port colours | game image + host | wired (net-0004, between our builds); not run on the Mac |
+| Live pick previews | host + game image | wired (net-0005, command 0xED, between our builds); not run on the Mac |
+| Opponent origin label | host | not applicable: the label is for YouGame's Both search (YouGame is out of scope) |
+| Play while you search | host + game image + renderer | active for Unranked, Direct and Teams: the Switch's search module (fe/features/search.cpp) on the netplay object's kept search (mu-engine/net: Melee-NX-NetPlay's net-0005/0010). L+R held on Slippi's select with a search running and the fighter locked in: Training while the search goes on; B asks "Keep searching while you play?" (settings.ini `keep_search`); found: back to the select and the match. `mu-engine/tools/app_online_menus_test.sh` from the game's menus on loopback: online_keep_search (Unranked, Training), online_keep_ask (the question, A), online_direct_keep (Direct by a remembered code): each found, back on the select locked in, match played, net check equal, 0 desync messages. Re-run on Slippi 3.7.0's netplay (mu-engine/net): online_keep_search equal; online_direct_keep equal on the second run (the first time the game did not reach the main menu on the way back: "the select never came back"; 1 of 2) |
+| Warm-up room | host | wired, not shown on the Mac: the same search module and kept connection; the sparring partner reads the opponent's locked-in pick (net-0010). The Switch's test (`app_online_menus_test.sh` with `MU_ARGS_A="--feature-test unranked-as-direct"` and online_warmup_a/b) ran on the Mac with net check equal, but its first match did not end before the script's L+R, so the warm-up itself was not reached |
+| Training after online | host | wired, not run on the Mac: settings.ini `online_training_after` / `online_return_training` and "Search again?" (search module, net-0010 `code`); the Switch's test needs `--feature-test unranked-as-direct` |
+| Arena rooms and invites | host + renderer + game image | not wired: only between melee-unlocked peers (its own messages and a second viewer process); not started on the Switch either |
+| Slippi spectator server | host | wired: fe/features/spectator.cpp from the Switch (settings.ini `slippi_spectator 1`, off by default); not run on the Mac |
+| Ping readout | renderer | wired: the HUD and the network overlay read the bridge's ping (the round trip from the game's pad acknowledgements); not run on the Mac |
+| Network and timing overlay | renderer + host | wired: fe/features/netoverlay.cpp (settings.ini `netoverlay 1`) on the bridge's frame trace (time sync waits, halts, offset) and the rollback store; not run on the Mac |
+| Session trace file | host | active: `Game_*.trace` beside an online match's replay when the match had a mark or a long wait (settings.ini `session_trace`, upstream's CSV); the menus test logs `session trace of ... not kept (no mark, no long wait)` |
+| Agreed Gecko codes online | host | not wired (an upstream stub) |
 | YouGame online: sign-in | host + renderer + external | out of scope |
 | YouGame Ranked | game image + host + external | out of scope |
 | YouGame Unranked, with "Both" search | game image + host + external | out of scope |
 | YouGame Friends | game image + host + external | out of scope |
-| Friends live handoff | host | not wired: online play is the next milestone (netplay host as on the Switch) |
+| Friends live handoff | host | out of scope (YouGame Friends) |
 | YouGame Doubles | game image + host + external | out of scope |
-| Local partner in Doubles | host + game image | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Squad Strike | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
+| Local partner in Doubles | host + game image | not wired (the Switch build leaves it out too) |
+| Squad Strike | game image + host | partial: offline VS only, as a setting, off by default (fe/settings.cpp from the Switch); not online |
 | YouGame tournament / CPU bracket | game image + host + external | out of scope |
-| Console link | game image + host + external | not wired: online play is the next milestone (netplay host as on the Switch) |
+| Console link | game image + host + external | not wired |
 | YouGame relay and UDP transports | host + external | out of scope |
 | YouGame version pin | host + launcher | out of scope |
-| mu_net P2P Direct | host + game image | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Discord Rich Presence and Join | host | not wired: online play is the next milestone (netplay host as on the Switch) |
+| mu_net P2P Direct | host + game image | not wired: melee-unlocked's own peer-to-peer Direct (between its builds); Slippi Direct is active |
+| Discord Rich Presence and Join | host | partial: the app's Discord presence (port/runtime/hle/discord_rpc.cpp, the Discord desktop app's local socket) is in the engine's netplay object: menus, searching, opponent, stage, characters and stocks from the replay events; launcher.ini `discord` (on by default) and `discord_rank`; never for a test's made-up user. Not looked at with Discord running. No Join button |
 
 ## 4. Gameplay options and code packs
 
@@ -330,13 +330,13 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 |---|---|---|
 | M1 | Connect-code history and autocomplete (Direct and Teams) | active: the netplay object answers 0xBE as Slippi Dolphin does (direct-codes.json, teams-codes.json beside user.json); app_online_menus_test.sh online_direct_keep: the entry offered MOCK#002, Z took it, `matchmaking started (mode 2, code 'MOCK#002')` |
 | M2 | Custom quick-chat messages | not wired; easy / easy. FEATURES "Quick chat" only covers message ids |
-| M3 | Display name refresh from Slippi's user API | active (mu-engine/patches/net-0004): after sign-in the display name, connect code, latest version and chat lines come from Slippi's user service on a thread of its own; user.json is never written. Loopback test: `profile refreshed from Slippi's user service: Mock 2 (refreshed) (MOCK#002), its 16 chat messages` |
+| M3 | Display name refresh from Slippi's user API | active (mu-engine/net, Melee-NX-NetPlay's net-0008): after sign-in the display name, connect code, latest version and chat lines come from Slippi's user service on a thread of its own; user.json is never written. Loopback test: `profile refreshed from Slippi's user service: Mock 2 (refreshed) (MOCK#002), its 16 chat messages` |
 | M4 | Slippi account auto-discovery (desktop) | not wired; not applicable on Switch (sign-in screen) / easy and important on macOS: players already signed in with the Slippi Launcher play without signing in again |
-| M5 | Replay upload when Slippi asks, and disc MD5 in the report | active (net-0004): the app's reporter is linked into the engine's netplay object; the report carries the disc MD5 (cached in iso_md5_cache.txt) and the replay is asked for on the reporter's thread when Slippi's reply has uploadUrl. app_online_test.sh against tools/mac/mock_slippi_http.py: `game report ... isoHash 0e63d422...`, `replay upload /upload/1: 1266301 bytes (gzip) ... a Slippi replay` |
-| M6 | Same-router fallback addresses | active (net-0002): same public address: the LAN address first, after 2 s the public one too, in the same 8 s. online_loopback_test.sh with `MU_MOCK_ARGS=--dead-lan`: `the same-router (LAN) address has not answered in 2 s; trying the public address too`, connected, net check equal |
-| M7 | Play while searching for a Slippi Direct or Teams code | active: Direct and Teams searches are kept like Unranked (search module + net-0001); online_direct_keep run on the Mac (see "Play while you search") |
-| M8 | Warm-up sparring partner (sub-item) | wired (net-0001 `remote_character`; fe/features/search.cpp, Fight a pro for the CPU); not run on the Mac (see "Warm-up room") |
-| M9 | "Search again?" after an online session (sub-item) | wired (search module, net-0001 `code`); not run on the Mac (see "Training after online") |
+| M5 | Replay upload when Slippi asks, and disc MD5 in the report | active (mu-engine/net, net-0008): Slippi 3.7.0's reporter is in the engine's netplay object; the report carries the disc MD5 (cached in iso_md5_cache.txt) and the replay is asked for on the reporter's thread when Slippi's reply has uploadUrl. app_online_test.sh against tools/mac/mock_slippi_http.py: `game report ... isoHash 0e63d422...`, `replay upload /upload/1: 1266301 bytes (gzip) ... a Slippi replay` |
+| M6 | Same-router fallback addresses | active (mu-engine/net, net-0006): same public address: the LAN address first, after 2 s the public one too, in the same 8 s. online_loopback_test.sh with `MU_MOCK_ARGS=--dead-lan`: `the same-router (LAN) address has not answered in 2 s; trying the public address too`, connected, net check equal |
+| M7 | Play while searching for a Slippi Direct or Teams code | active: Direct and Teams searches are kept like Unranked (search module + net-0005); online_direct_keep run on the Mac (see "Play while you search") |
+| M8 | Warm-up sparring partner (sub-item) | wired (net-0010 `remote_character`; fe/features/search.cpp, Fight a pro for the CPU); not run on the Mac (see "Warm-up room") |
+| M9 | "Search again?" after an online session (sub-item) | wired (search module, net-0010 `code`); not run on the Mac (see "Training after online") |
 | M10 | Kept-search question on leaving the select (sub-item) | active: settings.ini `keep_search` 0 ask, 1 always, 2 never; online_keep_ask run on the Mac (B, the question, A, found, back, match) |
 | M11 | Auto delay from a pre-match ping | not wired; easy / easy |
 | M12 | Opponent's automatic L-cancel announced | not wired; easy / easy |
@@ -344,7 +344,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M14 | Legacy replays (no stored code list) | not wired; easy / easy (map the legacy list to `MU_REPLAY_CODE_*`; the static engine serves bytes) |
 | M15 | Slippi 3.7.0 rank, MMR and bot flags in replays | not wired; easy / easy |
 | M16 | Player drop read by own frames (sub-item) | not wired; easy / easy |
-| M17 | Slow first frame is not "gone" | active (net-0003): 30 s before the other player's first online frame, Slippi's 7 s after. online_loopback_test.sh with `MU_B_ENV=MELEE_NET_TEST_SLOW_FIRST_FRAME_MS=12000`: side a waited 714 retraces (12 s) at frame 8, no drop, net check equal |
+| M17 | Slow first frame is not "gone" | active (mu-engine/net, net-0007): 30 s before the other player's first online frame, Slippi's 7 s after. online_loopback_test.sh with `MU_B_ENV=MELEE_NET_TEST_SLOW_FIRST_FRAME_MS=12000`: side a waited 714 retraces (12 s) at frame 8, no drop, net check equal |
 | M18 | Network condition simulator (developer) | not wired; easy / easy (FEATURES only lists this repo's `--net-clock-skew`) |
 | M19 | Slippi command trace (developer) | not wired; easy / easy |
 | M20 | Smoother time sync (experimental) | not wired; easy / easy |

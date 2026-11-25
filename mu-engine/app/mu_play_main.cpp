@@ -12,6 +12,7 @@
 #include "fixedmap.h"
 #include "abi_macos.h"
 #include "net_host.h"
+#include "netplay_bridge.h"
 #include "slippi_menus.h"
 #include "feature_calls.h"
 #include <sstream>
@@ -199,6 +200,12 @@ void tables_hook(MuHostApi* host, MuGameApi* game) {
   if (!host) return;
   net_host::install(host);
   if (g_net_on && g_play) { g_net_command = host->slippi_command; host->slippi_command = command; }
+  // The game's replay events also go to the Discord presence (stage, characters, stocks), after the replays module.
+  if (g_net_on && g_play && host->replay_event) {
+    static void (*replay_next)(uint8_t, const uint8_t*, uint32_t) = nullptr;
+    replay_next = host->replay_event;
+    host->replay_event = [](uint8_t c, const uint8_t* p, uint32_t n) { replay_next(c, p, n); netplay_bridge::replay_event(c, p, n); };
+  }
   mu_abi_adapt_host_table(host);
 }
 } // namespace
@@ -314,6 +321,7 @@ int main(int argc, char** argv) {
   if (menus_online) { net.online = "unranked"; net.from_menus = true; if (net.user_dir.empty()) net.user_dir = (support / "Slippi").string(); }
 
   // Controller settings the dashboard keeps (launcher.ini): the keyboard layout and each controller's mapping and port.
+  bool discord_on = true;
   {
     std::ifstream in(support / "launcher.ini");
     std::string line;
@@ -321,6 +329,8 @@ int main(int argc, char** argv) {
       while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
       auto value = [&](const char* key) -> const char* { size_t n = std::strlen(key); return line.compare(0, n, key) == 0 ? line.c_str() + n : nullptr; };
       if (const char* v = value("keyboard=")) host::set_keyboard_map(host::KeyboardMap::parse(v));
+      else if (const char* v = value("discord=")) discord_on = *v == '1';             // the classic app's Discord setting (default on)
+      else if (const char* v = value("discord_rank=")) net.discord_rank = *v == '1';
       else if (const char* v = value("controller.")) {
         std::string rest = v; size_t eq = rest.find('='), bar = rest.find('|', eq == std::string::npos ? 0 : eq);
         if (eq != std::string::npos && bar != std::string::npos) {
@@ -486,6 +496,7 @@ int main(int argc, char** argv) {
     net.out_dir = (mu_dir / "net").string(); fs::create_directories(net.out_dir, ec);
     net.iso_path = iso; net.embedded_image = true;
     if (&fe::features::online_replay_for_report) net_host::set_replay_path_hook(fe::features::online_replay_for_report);   // Slippi's replay upload
+    net.discord = discord_on && menus_online;   // Discord Rich Presence for the player's own sign-in (never a test's)
     if (const int start = net_host::start(net, net_say)) {
       host::log("online: the netplay host could not start (%d); playing offline", start);
     } else {

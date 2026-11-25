@@ -1,0 +1,56 @@
+The Mac's engine build of the Switch's Slippi 3.7.0 netplay (mu-engine/net/patches/mac-0001, applied by ../../net_sources.sh after
+Melee-NX-NetPlay's net-0001..0010):
+- one build for players and tests: Slippi's HTTP services (game reports, the profile refresh, rank) go to the loopback stand-in
+  when MELEE_SERVICES_LOOPBACK_PORT is set (tools/mac/mock_slippi_http.py), read at each request; only http://127.0.0.1:<port>
+  can be chosen that way (the Switch pins a test build at compile time instead);
+- gx::gpu_sync_all is declared here (the app's gx_core.h has no GPU worker; the bridge answers it).
+
+diff -ruN a/port/runtime/hle/slippi_http.h b/port/runtime/hle/slippi_http.h
+--- a/port/runtime/hle/slippi_http.h
++++ b/port/runtime/hle/slippi_http.h
+@@ -11,8 +11,20 @@
+ #define SLIPPI_GRAPHQL_URL SLIPPI_PIN_SERVICES_URL "/graphql"
+ #define SLIPPI_USERS_URL SLIPPI_PIN_SERVICES_URL "/user/"
+ #else
+-#define SLIPPI_GRAPHQL_URL "https://internal.slippi.gg/graphql"
+-#define SLIPPI_USERS_URL "https://users-rest-dot-slippi.uc.r.appspot.com/user/"
++// mu-engine/net/patches/mac-0001: the Mac's engine is one build for players and tests. Tests point these requests at the
++// loopback stand-in at run time (MELEE_SERVICES_LOOPBACK_PORT, tools/mac/mock_slippi_http.py); only http://127.0.0.1:<port>
++// can be chosen that way.
++#include <cstdlib>
++namespace slippi::report {
++inline std::string services_url(const char* path, const char* real) {
++  const char* port = std::getenv("MELEE_SERVICES_LOOPBACK_PORT");
++  if (!port || !*port) return real;
++  for (const char* c = port; *c; ++c) if (*c < '0' || *c > '9') return real;
++  return std::string("http://127.0.0.1:") + port + path;
++}
++}  // namespace slippi::report
++#define SLIPPI_GRAPHQL_URL (slippi::report::services_url("/graphql", "https://internal.slippi.gg/graphql"))
++#define SLIPPI_USERS_URL (slippi::report::services_url("/user/", "https://users-rest-dot-slippi.uc.r.appspot.com/user/"))
+ #endif
+ namespace slippi::report {
+ bool http_request(const char* method, const std::string& url, const std::string& headers, const std::string& body,
+diff -ruN a/port/runtime/hle/slippi_online.cpp b/port/runtime/hle/slippi_online.cpp
+--- a/port/runtime/hle/slippi_online.cpp
++++ b/port/runtime/hle/slippi_online.cpp
+@@ -65,6 +65,7 @@
+ #include "host.h"
+ #include "gx_core.h"
+ #include "window.h"
++namespace gx { void gpu_sync_all(); }   // mu-engine/net/patches/mac-0001: the app's gx_core.h has no GPU worker (the bridge answers it)
+ #include <algorithm>
+ #include <cmath>
+ #include <array>
+diff -ruN a/port/runtime/hle/slippi_report.cpp b/port/runtime/hle/slippi_report.cpp
+--- a/port/runtime/hle/slippi_report.cpp
++++ b/port/runtime/hle/slippi_report.cpp
+@@ -45,7 +45,7 @@
+ #else
+ const char* USER_AGENT = "SlippiDolphin (b: ishiiruka) (v: " SLIPPI_PIN_VERSION ") (o: linux)";
+ #endif
+-const char* ENDPOINT = SLIPPI_GRAPHQL_URL;   // patches/net-0008 (slippi_http.h)
++#define ENDPOINT SLIPPI_GRAPHQL_URL   // patches/net-0008 (slippi_http.h); mac-0001: a std::string, read at each request
+ constexpr int MAX_ATTEMPTS = 5;
+ 
+ struct StatusJob { std::string uid, play_key, match_id, status; };

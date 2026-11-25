@@ -300,7 +300,7 @@ when the app is packaged (`tools/mu_launcher_art.py`).
 1. **Translate.** `port/recomp` reads your disc's executable and Slippi's Gecko code tables and writes one C++ function per game function. Apple Clang compiles them into a static library. This step runs on your machine; nothing from the game is ever committed here.
 2. **Run.** `port/runtime` is the host: guest memory, the GameCube SDK services the game expects (disc, controllers, audio DSP, memory cards), and the Slippi EXI device that Slippi's code talks to.
 3. **Draw.** The game's GX commands are decoded into draw calls and rendered by a native Metal backend (`port/runtime/gx/gx_metal.mm`) with shaders generated the way Dolphin generates them, so what you see matches the Windows build.
-4. **Connect.** `slippi_net` and `slippi_online` are wire-compatible ports of Slippi Dolphin's netplay client, matchmaking and reporting.
+4. **Connect.** `slippi_net` and `slippi_online` are wire-compatible ports of Slippi Dolphin's netplay client, matchmaking and reporting. The legacy engine's copy in `port/runtime/hle` speaks Slippi 3.6.4, which Slippi's service now refuses. The melee-unlocked engine's netplay object is Melee-NX-NetPlay's Slippi 3.7.0 port (`mu-engine/net`: the WebSocket matchmaking queue with STUN, 3.7.0's pads, player-drop reports and input suggestions, Slippi's HTTP services over libcurl), assembled by `mu-engine/net_sources.sh` with its patches and the Mac's (`mu-engine/net/patches/mac-*`: tests point the queue and the HTTP services at loopback stand-ins at run time, `MELEE_MM_LOOPBACK_PORT` and `MELEE_SERVICES_LOOPBACK_PORT`; anything but 127.0.0.1 is ignored).
 
 ## Build from source
 
