@@ -589,9 +589,9 @@ int main(int argc, char** argv) {
     gx::metal_set_post_hooks(mu_gfx::hooks());
     fe::gfx::apply_renderer = [backend, &gfx](float ssao, int msaa, int hdr, float paper_white, float peak) {
       std::lock_guard<std::mutex> lock(gfx_mutex);
-      if (gfx.ssao == ssao && gfx.msaa == msaa) return;
-      gfx.ssao = ssao; gfx.msaa = msaa; gx::metal_set_options(backend, gfx);
-      (void)hdr; (void)paper_white; (void)peak;
+      if (gfx.ssao == ssao && gfx.msaa == msaa && gfx.hdr == hdr && gfx.hdr_paper_white == paper_white && gfx.hdr_peak == peak) return;
+      gfx.ssao = ssao; gfx.msaa = msaa; gfx.hdr = hdr; gfx.hdr_paper_white = paper_white; gfx.hdr_peak = peak;
+      gx::metal_set_options(backend, gfx);
     };
     host::window_set_key_hook([](int key, int mods) {
       if (!(mods & (SDL_KMOD_CTRL))) return false;

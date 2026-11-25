@@ -34,6 +34,10 @@ struct MetalOptions {
   std::string cache_dir;     // pipelines.bin lives here: every pipeline seen, precompiled in the background next launch
   int msaa = 1;              // multisample anti-aliasing on the EFB pass: 1 (off), 2, 4 or 8 samples (melee-unlocked's msaa),
                              // resolved at the end of each pass; 1 leaves the renderer exactly as it was
+  int hdr = 0;               // 1: extended dynamic range output (EDR): a half-float drawable in extended linear sRGB, the
+                             // picture's white at hdr_paper_white nits (macOS's reference white is 100), the panel and
+                             // overlays drawn into an sRGB layer and composited at the same white; 0: as it was
+  float hdr_paper_white = 203.0f, hdr_peak = 1000.0f;
   float ssao = 0.0f;         // screen-space ambient occlusion strength 0..1 (melee-unlocked's ssao): contact shading from the
                              // EFB depth in the present pass; 0 = off (the present pass is then unchanged)
 };

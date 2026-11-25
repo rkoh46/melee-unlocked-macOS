@@ -1,7 +1,7 @@
 // The engine's picture effects, as melee-unlocked's VIDEO page has them (port/runtime/gx/pc_settings.cpp, its settings.ini
 // keys): screen-space ambient occlusion (ssao), Dolphin-format texture packs (customtextures, prefetchtextures, texpackoff,
 // dumptextures), looping menu video backgrounds (videobackgrounds), RetroArch shader presets (shaderpreset), HDR output
-// (hdroutput, hdrpaperwhite, hdrpeak: kept in the settings, no output yet), the Lab view (labview, look_lab_fighters, look_lab_stage, lab_colour_*), the
+// (hdroutput, hdrpaperwhite, hdrpeak: EDR on the Mac), the Lab view (labview, look_lab_fighters, look_lab_stage, lab_colour_*), the
 // one-frame glitch detector (flickerscan) and frame capture bursts (Ctrl+F2). This module keeps the settings and the panel's
 // rows (gfx_live.h); the Metal side is mu-engine/app/gfx (effects_mac.mm, lab_mac.cpp). Display only, offline and online.
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -155,6 +155,12 @@ void register_graphics() {
                   }, nullptr, nullptr});
   add_menu_entry({"Picture", "Ambient occlusion (SSAO)", [] { const float a = live().ssao.load(); return a <= 0.0f ? std::string("Off") : pct(a); },
                   [](int d) { auto& a = live().ssao; a.store(std::clamp(std::round((a.load() + 0.1f * d) * 10.0f) / 10.0f, 0.0f, 1.0f)); edited(); }, nullptr, write_all});
+  add_menu_entry({"Picture", "HDR output (extended range)", [] { return on_off(live().hdr.load() != 0); },
+                  [](int) { live().hdr.store(live().hdr.load() ? 0 : 1); edited(); }, nullptr, write_all});
+  add_menu_entry({"Picture", "  Paper white", [] { return std::to_string(int(live().hdr_paper_white.load())) + " nits"; },
+                  [](int d) { auto& a = live().hdr_paper_white; a.store(std::clamp(a.load() + 20.0f * d, 80.0f, 500.0f)); edited(); }, nullptr, write_all});
+  add_menu_entry({"Picture", "  Peak brightness", [] { return std::to_string(int(live().hdr_peak.load())) + " nits"; },
+                  [](int d) { auto& a = live().hdr_peak; a.store(std::clamp(a.load() + 100.0f * d, 400.0f, 10000.0f)); edited(); }, nullptr, write_all});
   add_menu_entry({"Picture", "Shader preset (RetroArch)", preset_row, [](int d) { step_preset(d); edited(); }, nullptr, write_all});
   add_menu_entry({"Picture", "  Preset status", [] { const std::string s = fe::gfx::shader_status(); return s.empty() ? std::string("Running") : s; },
                   nullptr, nullptr, nullptr});

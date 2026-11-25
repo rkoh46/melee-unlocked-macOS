@@ -139,7 +139,24 @@ float ssao(depth2d<float> dep, float2 uv, float k) {
   return saturate(1.0 - occ * 0.125 * k);
 }
 float2 crt_warp(float2 uv01, float k) { float2 d = uv01 * 2.0 - 1.0; d *= 1.0 + k * 0.06 * dot(d.yx, d.yx); return d * 0.5 + 0.5; }
+float4 blit_color(O i, constant C& c, texture2d<float> src, depth2d<float> dep, sampler samp);
 fragment float4 blit_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d<float> src [[texture(0)]], depth2d<float> dep [[texture(1)]], sampler samp [[sampler(0)]]) {
+  return blit_color(i, c, src, dep, samp);
+}
+// HDR output (EDR): the same picture, then sRGB to linear and scaled so its white sits at the paper white (box.w = paper white /
+// 100, macOS's reference white), clamped to the peak (look.w is the output height, so the peak rides in sharp.w).
+float3 srgb_to_linear(float3 v) { return select(pow((v + 0.055) / 1.055, float3(2.4)), v / 12.92, v <= 0.04045); }
+fragment float4 blit_hdr_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d<float> src [[texture(0)]], depth2d<float> dep [[texture(1)]], sampler samp [[sampler(0)]]) {
+  float4 col = blit_color(i, c, src, dep, samp);
+  return float4(min(srgb_to_linear(saturate(col.rgb)) * c.box.w, float3(max(c.sharp.w, c.box.w))), 1.0);
+}
+// The panel and overlays, drawn into an sRGB layer (premultiplied), composited over the HDR picture at the same white.
+fragment float4 ui_hdr_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d<float> ui [[texture(0)]], sampler samp [[sampler(0)]]) {
+  float4 u = ui.sample(samp, i.uv);
+  float3 straight = u.a > 0.0 ? u.rgb / u.a : float3(0.0);
+  return float4(srgb_to_linear(saturate(straight)) * c.box.w * u.a, u.a);
+}
+float4 blit_color(O i, constant C& c, texture2d<float> src, depth2d<float> dep, sampler samp) {
   float2 screen = (i.uv - c.rect.zw) / max(c.rect.xy, float2(1e-6));   // 0..1 over the picture
   float2 uv = i.uv;
   if (c.pic.w > 0.0 && c.look.y >= 2.0) {
@@ -252,6 +269,7 @@ class MetalBackend final : public Backend {
 #endif
     if (rescale && (pick_scale() != scale_ || o.msaa != samples_requested_)) { wait_idle(); efb_copies_.clear(); create_efb(); }
     if (resample) { wait_idle(); samplers_.clear(); }
+    if ((opts_.hdr != 0) != hdr_on_) { wait_idle(); apply_hdr(); }
   }
   uint64_t frames_presented() const { return frames_presented_; }
   void log_scale_change() const { host::log("metal: internal resolution now %ux%u (EFB x%d)", EFB_WIDTH * scale_, EFB_HEIGHT * scale_, scale_); }
@@ -264,7 +282,7 @@ class MetalBackend final : public Backend {
     if (!device_) host::die("metal: no GPU device");
     layer_.device = device_;
     layer_.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    layer_.framebufferOnly = YES;
+    layer_.framebufferOnly = hdr_probe_frame_ == 0;
     layer_.opaque = YES;   // with a full-screen window this lets the compositor hand the drawable straight to the display (no extra frame of latency)
     layer_.drawableSize = CGSizeMake(client_w_, client_h_);
 #if TARGET_OS_OSX
@@ -297,6 +315,7 @@ class MetalBackend final : public Backend {
     vertex_descriptor_.layouts[0].stride = sizeof(Vertex);
     vertex_descriptor_.layouts[0].stepFunction = MTLVertexStepFunctionPerVertex;
     create_blit_pipelines();
+    apply_hdr();
     create_efb();
     host::log("metal: %s", device_.name.UTF8String);
   }
@@ -324,6 +343,8 @@ class MetalBackend final : public Backend {
       return state;
     };
     blit_present_ = make("blit_vs", "blit_ps", MTLPixelFormatBGRA8Unorm, false, false);
+    blit_present_hdr_ = make("blit_vs", "blit_hdr_ps", MTLPixelFormatRGBA16Float, false, false);
+    ui_composite_hdr_ = make("blit_vs", "ui_hdr_ps", MTLPixelFormatRGBA16Float, false, true);
     blit_copy_ = make("blit_vs", "blit_ps", MTLPixelFormatRGBA8Unorm, false, false);
     clear_pipeline_ = make("clear_vs", "clear_ps", MTLPixelFormatRGBA8Unorm, true, false);
     blit_library_ = lib;
@@ -354,6 +375,21 @@ class MetalBackend final : public Backend {
     id<MTLRenderPipelineState> state = [device_ newRenderPipelineStateWithDescriptor:d error:&error];
     if (!state) host::die("metal: MSAA clear pipeline: %s", error.localizedDescription.UTF8String);
     return state;
+  }
+  // HDR output: the drawable's format and colour space follow opts_.hdr (EDR on the Mac).
+  void apply_hdr() {
+    const bool want = opts_.hdr != 0;
+    if (want == hdr_on_) return;
+    hdr_on_ = want;
+    layer_.pixelFormat = want ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm;
+#if TARGET_OS_OSX || TARGET_OS_IOS
+    if (@available(macOS 10.11, iOS 16.0, *)) layer_.wantsExtendedDynamicRangeContent = want;
+#endif
+    CGColorSpaceRef space = want ? CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB) : nullptr;
+    layer_.colorspace = space;
+    if (space) CGColorSpaceRelease(space);
+    host::log("metal: HDR output %s%s", want ? "on (extended range, paper white " : "off",
+              want ? (std::to_string(int(opts_.hdr_paper_white)) + " nits)").c_str() : "");
   }
   float output_aspect() const {
     if (opts_.picture_aspect > 50.0f) return (float)std::max(client_w_, 1) / (float)std::max(client_h_, 1);   // the whole window
@@ -1124,6 +1160,33 @@ class MetalBackend final : public Backend {
     [enc endEncoding];
     return final_tex_;
   }
+  // Tests (MELEE_HDR_PROBE=N, the layer then not framebuffer-only): presented frame N's drawable read back after the GPU is done,
+  // its brightest value and a picture (values over the reference white shown as they are, clipped at 1) written beside the log.
+  void probe_drawable(id<MTLTexture> t) {
+    const NSUInteger w = t.width, h = t.height, bpp = t.pixelFormat == MTLPixelFormatRGBA16Float ? 8 : 4;
+    id<MTLBuffer> buf = [device_ newBufferWithLength:w * h * bpp options:MTLResourceStorageModeShared];
+    id<MTLBlitCommandEncoder> b = [command_ blitCommandEncoder];
+    [b copyFromTexture:t sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0) sourceSize:MTLSizeMake(w, h, 1)
+              toBuffer:buf destinationOffset:0 destinationBytesPerRow:w * bpp destinationBytesPerImage:w * h * bpp];
+    [b endEncoding];
+    const bool half = bpp == 8, bgra = t.pixelFormat == MTLPixelFormatBGRA8Unorm;
+    const std::string dir = opts_.cache_dir;
+    [command_ addCompletedHandler:^(id<MTLCommandBuffer>) {
+      float peak = 0; double sum = 0;
+      std::vector<uint8_t> rgb(w * h * 3);
+      for (NSUInteger i = 0; i < w * h; ++i) {
+        float v[3];
+        if (half) { const __fp16* p = (const __fp16*)buf.contents + i * 4; for (int k = 0; k < 3; ++k) v[k] = float(p[k]); }
+        else { const uint8_t* p = (const uint8_t*)buf.contents + i * 4; for (int k = 0; k < 3; ++k) v[k] = p[bgra ? 2 - k : k] / 255.0f; }
+        for (int k = 0; k < 3; ++k) { peak = std::max(peak, v[k]); sum += v[k];
+          const float enc = half ? (v[k] <= 0.0031308f ? v[k] * 12.92f : 1.055f * std::pow(std::max(v[k], 0.0f), 1.0f / 2.4f) - 0.055f) : v[k];
+          rgb[i * 3 + k] = (uint8_t)std::clamp(enc * 255.0f + 0.5f, 0.0f, 255.0f); }
+      }
+      const std::string path = dir + (half ? "/hdr-probe.ppm" : "/sdr-probe.ppm");
+      std::ofstream f(path, std::ios::binary); f << "P6\n" << w << ' ' << h << "\n255\n"; f.write((const char*)rgb.data(), (std::streamsize)rgb.size());
+      host::log("metal: %s probe: brightest value %.3f (1.0 = reference white), mean %.3f; %s", half ? "HDR" : "SDR", peak, sum / double(w * h * 3), path.c_str());
+    }];
+  }
   PostFrame post_frame(const EfbCopy& c) const {
     PostFrame pf;
     pf.device = (__bridge void*)device_; pf.command_buffer = (__bridge void*)command_;
@@ -1179,22 +1242,64 @@ class MetalBackend final : public Backend {
     }
     if (opts_.filter == 1 && !fx && !effect) { bc.box[0] = std::max(bc.box[0], 2.0f); bc.box[1] = std::max(bc.box[1], 2.0f); }   // area: a wider box
     if (!fx && !effect) bc.box[2] = std::clamp(opts_.ssao, 0.0f, 1.0f);   // SSAO reads the EFB depth at the picture's uv
-    [enc setRenderPipelineState:blit_present_];
+    const bool hdr = hdr_on_ && drawable.texture.pixelFormat == MTLPixelFormatRGBA16Float;
+    const float hdr_gain = std::clamp(opts_.hdr_paper_white, 80.0f, 500.0f) / 100.0f;
+    if (hdr) { bc.box[3] = hdr_gain; bc.sharp[3] = std::clamp(opts_.hdr_peak, 400.0f, 10000.0f) / 100.0f; }
+    [enc setRenderPipelineState:hdr ? blit_present_hdr_ : blit_present_];
     [enc setVertexBytes:&bc length:sizeof bc atIndex:0];
     [enc setFragmentBytes:&bc length:sizeof bc atIndex:0];
     [enc setFragmentTexture:(effect ? effect : fx ? fx_out_ : efb_color_) atIndex:0];
     [enc setFragmentTexture:efb_depth_ atIndex:1];
     [enc setFragmentSamplerState:blit_sampler_ atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-    draw_overlay(enc, ww, wh);
-    {
+    if (!hdr) {
+      draw_overlay(enc, ww, wh);
       std::lock_guard<std::mutex> lock(ui_pass_mutex());
       if (ui_pass()) {
         [enc setViewport:MTLViewport{0, 0, ww, wh, 0, 1}];
         ui_pass()((__bridge void*)enc, (__bridge void*)rp, (__bridge void*)command_, (int)ww, (int)wh);
       }
+      [enc endEncoding];
+    } else {
+      // HDR: the overlays and the panel (BGRA8 pipelines, sRGB values) go into their own layer, then over the picture,
+      // linearised to the same white.
+      [enc endEncoding];
+      if (!ui_layer_ || ui_layer_.width != (NSUInteger)ww || ui_layer_.height != (NSUInteger)wh) {
+        MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm width:(NSUInteger)ww height:(NSUInteger)wh mipmapped:NO];
+        td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead; td.storageMode = MTLStorageModePrivate;
+        ui_layer_ = [device_ newTextureWithDescriptor:td];
+      }
+      MTLRenderPassDescriptor* urp = [MTLRenderPassDescriptor renderPassDescriptor];
+      urp.colorAttachments[0].texture = ui_layer_;
+      urp.colorAttachments[0].loadAction = MTLLoadActionClear;
+      urp.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0);
+      urp.colorAttachments[0].storeAction = MTLStoreActionStore;
+      id<MTLRenderCommandEncoder> uenc = [command_ renderCommandEncoderWithDescriptor:urp];
+      draw_overlay(uenc, ww, wh);
+      {
+        std::lock_guard<std::mutex> lock(ui_pass_mutex());
+        if (ui_pass()) {
+          [uenc setViewport:MTLViewport{0, 0, ww, wh, 0, 1}];
+          ui_pass()((__bridge void*)uenc, (__bridge void*)urp, (__bridge void*)command_, (int)ww, (int)wh);
+        }
+      }
+      [uenc endEncoding];
+      MTLRenderPassDescriptor* crp = [MTLRenderPassDescriptor renderPassDescriptor];
+      crp.colorAttachments[0].texture = drawable.texture;
+      crp.colorAttachments[0].loadAction = MTLLoadActionLoad;
+      crp.colorAttachments[0].storeAction = MTLStoreActionStore;
+      id<MTLRenderCommandEncoder> cenc = [command_ renderCommandEncoderWithDescriptor:crp];
+      [cenc setViewport:MTLViewport{0, 0, ww, wh, 0, 1}];
+      BlitConstants ub{{1, 1, 0, 0}, {1.0f / ww, 1.0f / wh, 0, 0}, {1, 1, 0, hdr_gain}};
+      [cenc setRenderPipelineState:ui_composite_hdr_];
+      [cenc setVertexBytes:&ub length:sizeof ub atIndex:0];
+      [cenc setFragmentBytes:&ub length:sizeof ub atIndex:0];
+      [cenc setFragmentTexture:ui_layer_ atIndex:0];
+      [cenc setFragmentSamplerState:blit_sampler_ atIndex:0];
+      [cenc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+      [cenc endEncoding];
     }
-    [enc endEncoding];
+    if (hdr_probe_frame_ && frames_presented_ + 1 == (uint64_t)hdr_probe_frame_) probe_drawable(drawable.texture);
     drawable_ = drawable;
     fx_presented_ = fx;
     effect_presented_ = effect;
@@ -1621,6 +1726,10 @@ class MetalBackend final : public Backend {
   Ring vertex_ring_[FRAME_SLOTS], index_ring_[FRAME_SLOTS], constant_ring_[FRAME_SLOTS];
   MTLVertexDescriptor* vertex_descriptor_ = nil;
   id<MTLRenderPipelineState> blit_present_ = nil, blit_copy_ = nil, clear_pipeline_ = nil, overlay_pipeline_ = nil;
+  id<MTLRenderPipelineState> blit_present_hdr_ = nil, ui_composite_hdr_ = nil;   // HDR output (opts_.hdr)
+  id<MTLTexture> ui_layer_ = nil;   // HDR output: the panel and overlays in sRGB, composited over the picture
+  bool hdr_on_ = false;
+  const int hdr_probe_frame_ = [] { const char* e = std::getenv("MELEE_HDR_PROBE"); return e ? std::atoi(e) : 0; }();   // tests: read the drawable back
   OverlayProvider overlay_;
   host::OverlayFrame overlay_frame_;
   uint64_t trace_interval_ = [] { const char* e = std::getenv("MELEE_METAL_TRACE"); return e ? (uint64_t)std::strtoull(e, nullptr, 0) : 0ull; }();

@@ -137,3 +137,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - MSAA in the Metal renderer (launcher.ini `msaa` 2/4/8, a Picture row): multisampled EFB pass resolved at each pass end; `app_graphics_test.sh msaa`.
 - RetroArch shader presets end to end: `mu-engine/librashader.sh` builds librashader v0.12.0 (pinned commit, Cargo.lock) with its Metal runtime in the engine build; the app bundles it (Contents/Frameworks); a test preset `mu-engine/tests/shaders/scanlines.slangp`.
 - Tests: the stage select's menu video, 20XX TE's L-cancel flash modes with the TE save (`app_lcancel_flash_test.sh ISO 2|3|4`, `MU_TE_GCI`), Lab silhouettes from a pack fixture in upstream's format.
+- HDR output on the Mac (EDR): `hdroutput`, `hdrpaperwhite`, `hdrpeak` and Picture rows; the panel and overlays composite from an sRGB layer at the paper white; `MELEE_HDR_PROBE` for tests.
