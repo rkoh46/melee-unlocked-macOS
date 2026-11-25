@@ -21,6 +21,7 @@
 #include "frontend.h"
 #include "user_gecko.h"          // melee-unlocked port/runtime/host (the fetched tree)
 #include "gameplay_policy.h"
+#include "mu_host.h"            // MuHostApi: the disc_entrynum hook below
 
 #include <algorithm>
 #include <atomic>
@@ -119,7 +120,27 @@ void load_codes() {
   publish_rows();
 }
 
-void tables(MuHostApi*, MuGameApi*) { if (options.play) load_codes(); }
+// The codes once more whenever the game opens a disc file (the host's disc_entrynum). A VS match's scene start refills the
+// start data and loads and builds the fighters inside one frame on the Mac (the disc answers at once), so a code that sets a
+// start-data value (a fighter's model scale) would be overwritten before the frame's pass and never reach the fighters; on a
+// console or a PC the loads span frames and the per-frame pass gets there first. Applied here, the value is in place when the
+// fighter files open, just before the fighters read it. Same rule as the frame pass: offline, never in a replay or a vanilla
+// session, only with a code switched on.
+std::atomic<bool> g_may_run{false};
+int32_t (*g_entrynum_next)(const char*) = nullptr;
+int32_t entrynum_with_codes(const char* path) {
+  if (g_may_run.load(std::memory_order_relaxed) && user_gecko::any_enabled()) {
+    user_gecko::apply();
+    static int logged = 0;
+    if (logged++ < 3) say("gecko: player codes applied as %s opens", path ? path : "a file");
+  }
+  return g_entrynum_next ? g_entrynum_next(path) : -1;
+}
+void tables(MuHostApi* host, MuGameApi*) {
+  if (!options.play) return;
+  load_codes();
+  if (host && host->disc_entrynum && !g_entrynum_next && user_gecko::any_enabled()) { g_entrynum_next = host->disc_entrynum; host->disc_entrynum = entrynum_with_codes; }
+}
 
 // Once per frame, as upstream applies them each frame (it does so at the pad read; here right after the frame, the same
 // point of every frame). Offline only.
@@ -127,6 +148,7 @@ void on_retrace(const Retrace& info) {
   if (!g_loaded || !user_gecko::any_enabled()) return;
   bind_native();
   const bool run = !info.online && !replay_playing() && !vanilla();
+  g_may_run.store(run, std::memory_order_relaxed);
   if (run) user_gecko::apply(); else user_gecko::suspend_function_patches();
   // Tests (app_gecko_test.sh, MU_GECKO_PROBE=1): every 10 s, P1's model scale in the VS start data as the game image hands it back.
   static const bool probe = std::getenv("MU_GECKO_PROBE") != nullptr;
