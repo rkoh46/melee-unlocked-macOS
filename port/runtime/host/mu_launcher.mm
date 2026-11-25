@@ -794,15 +794,24 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
     const mu_mods::Row& r = list[i];
     round_rect(LR(CX, y, CW, 34), 7, C_FIELD, C_FIELD, &C_FIELD_BORDER);
     text(ns(r.name), LR(CX + 10, y + 2, 230, 17), f_body(), C_TEXT);
+    // A mod melee-unlocked offers from its page only (no licence or permission in its catalog to fetch it for the player):
+    // Download page opens that page, Choose File takes the archive from anywhere, and a download landing in ~/Downloads turns
+    // the row into Install by itself. Every file is checked against the catalog's SHA-256 before anything is built.
+    const bool by_hand = !r.automatic && (r.state == 0 || r.state == 2);
+    NSString* found = r.found.empty() ? nil : ns(r.found);
+    NSString* where = !found ? nil : [found.stringByDeletingLastPathComponent.lastPathComponent isEqualToString:@"Downloads"] &&
+                                         ![found containsString:@"/melee-unlocked/Mods/"] ? @"Downloads" : @"the Mods folder";
     NSString* sub = r.state == 3 || (!r.line.empty() && r.failed) ? ns(r.line) : r.state == 1 ? ns("Installed · " + r.version)
-                  : r.state == 2 ? ns("Update available · " + r.version) : r.automatic ? ns("Version " + r.version)
-                  : r.file_ready ? @"Downloaded file found" : @"Put its download in the Downloads folder";
+                  : r.state == 2 && !by_hand ? ns("Update available · " + r.version) : r.automatic ? ns("Version " + r.version)
+                  : found ? [NSString stringWithFormat:@"Ready to install from %@", where]
+                  : @"Not installed · download it from its page";
     if (r.state == 3 && r.percent >= 0) sub = [NSString stringWithFormat:@"%@ (%d%%)", sub, r.percent];
     if (r.state == 1) {   // its disc's costume skins, as the last game start counted them (mods-cache/disc-skins.txt)
       const size_t skins = disc_skins(r.id);
       if (skins) sub = [NSString stringWithFormat:@"%@ · %zu skin%s (Settings > Mods > Choose skins in game)", tx(sub), skins, skins == 1 ? "" : "s"];
     }
-    text(sub, LR(CX + 10, y + 17, CW - 120, 15), f_small(), r.failed ? C_BAD : r.state == 1 ? C_OK : C_FAINT);
+    const BOOL two = by_hand && r.state != 3;
+    text(sub, LR(CX + 10, y + 17, CW - (two ? 222 : 120), 15), f_small(), r.failed ? C_BAD : r.state == 1 ? C_OK : found && two ? C_TEXT : C_FAINT);
     NSString* name = [NSString stringWithFormat:@"mod:%zu", i];
     if (r.state == 3) [self button:@"modcancel" rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Cancel" primary:NO enabled:YES];
     else if (r.state == 1) {
@@ -810,20 +819,30 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
       [self button:[@"use-" stringByAppendingString:name] rect:LR(CX + CW - 190, y + 4, 88, 26) title:chosen ? @"In use" : @"Use" primary:chosen enabled:YES];
       [self button:[@"remove-" stringByAppendingString:name] rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Remove" primary:NO enabled:!mu_mods::busy()];
     }
+    else if (two) {
+      [self button:[@"choose-" stringByAppendingString:name] rect:LR(CX + CW - 208, y + 4, 100, 26) title:@"Choose File…" primary:NO enabled:!mu_mods::busy()];
+      if (found) [self button:[@"install-" stringByAppendingString:name] rect:LR(CX + CW - 104, y + 4, 96, 26) title:r.state == 2 ? @"Update" : @"Install" primary:NO
+                      enabled:!mu_mods::busy()];
+      else [self button:[@"page-" stringByAppendingString:name] rect:LR(CX + CW - 104, y + 4, 96, 26) title:@"Download page" primary:NO enabled:!r.page.empty()];
+    }
     else [self button:[@"install-" stringByAppendingString:name] rect:LR(CX + CW - 96, y + 4, 88, 26) title:r.state == 2 ? @"Update" : @"Install" primary:NO
-              enabled:!mu_mods::busy() && !st.iso.empty() && (r.automatic || r.file_ready)];
+              enabled:!mu_mods::busy()];
     y += 37;
   }
   [self button:@"modsfolder" rect:LR(CX, WIN_H - 46, 150, 30) title:@"Open Mods folder" primary:NO enabled:YES];
+  bool any_by_hand = false;
+  for (const auto& r : list) any_by_hand = any_by_hand || (!r.automatic && r.state == 0);
   NSString* note = !self.modsMessage.empty() ? ns(self.modsMessage)
+                 : any_by_hand ? @"A mod with a download page: download it there and it shows up here from Downloads, checked against its official hash."
                  : @"Mods install as discs built from your own disc. Use one and it loads at the next offline start (Online off).";
   text(note, LR(CX + 160, WIN_H - 48, CW - 160, 34), f_small(), self.modsMessage.empty() ? C_FAINT : C_WARN, LEFT, 0, true);
-  // While a job runs the page repaints itself twice a second.
-  if (mu_mods::busy() && !self.modsTimer) {
+  // While the page is up it repaints itself twice a second: a job's progress, and a download that has just landed in
+  // ~/Downloads (the row turns into Install without a restart, as melee-unlocked's page checks every two seconds).
+  if (!self.modsTimer) {
     __weak MULaunchView* weak = self;
     self.modsTimer = [NSTimer timerWithTimeInterval:0.5 repeats:YES block:^(NSTimer* t) {
       MULaunchView* v = weak;
-      if (!v || !mu_mods::busy()) { [t invalidate]; if (v) { v.modsTimer = nil; [v setNeedsDisplay:YES]; } return; }
+      if (!v || v.tab != 3) { [t invalidate]; if (v) v.modsTimer = nil; return; }
       [v setNeedsDisplay:YES];
     }];
     [NSRunLoop.mainRunLoop addTimer:self.modsTimer forMode:NSRunLoopCommonModes];   // the launcher runs modally
@@ -917,6 +936,26 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
       std::string why;
       const bool ok = [key hasPrefix:@"install"] ? mu_mods::install(list[index].id, &why) : mu_mods::remove(list[index].id, &why);
       self.modsMessage = ok ? std::string() : why;
+    }
+  }
+  else if ([key hasPrefix:@"page-mod"]) {   // the mod's official download page, in the browser
+    const std::vector<mu_mods::Row> list = mu_mods::rows();
+    if (index >= 0 && index < (int)list.size() && !list[index].page.empty()) {
+      host::log("launcher: %s: opening its download page %s", list[index].id.c_str(), list[index].page.c_str());
+      [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:ns(list[index].page)]];
+    }
+  }
+  else if ([key hasPrefix:@"choose-mod"]) {   // upstream's "Add file...": the downloaded archive or .xdelta, wherever it is
+    const std::vector<mu_mods::Row> list = mu_mods::rows();
+    if (index >= 0 && index < (int)list.size()) {
+      NSOpenPanel* panel = [NSOpenPanel openPanel];
+      panel.message = [NSString stringWithFormat:@"Choose the download of %@", ns(list[index].name)];
+      panel.allowedFileTypes = @[@"zip", @"7z", @"xdelta", @"gci"];
+      panel.directoryURL = [NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Downloads"]];
+      if ([panel runModal] == NSModalResponseOK) {
+        std::string why;
+        self.modsMessage = mu_mods::install_file(list[index].id, panel.URL.path.UTF8String, &why) ? std::string() : why;
+      }
     }
   }
   else if ([key isEqualToString:@"modcancel"]) mu_mods::cancel();

@@ -75,6 +75,8 @@ void configure(const std::string& mods_dir, const std::string& disc_path) {
   c.mods_dir = mods_dir; c.cache_dir = mods_dir + "/.cache"; c.disc_path = disc_path;
   c.catalog_json = kModsCatalogJson;
   c.fetcher = modinstall::curl_fetcher();
+  // The browser's download folder: a mod melee-unlocked offers from its page only is picked up there as soon as it lands.
+  if (const char* home = std::getenv("HOME")) c.watch_dirs.push_back(std::string(home) + "/Downloads");
   c.log = log_line;
   g_manager = std::make_unique<modinstall::Manager>(c);
   g_mods_dir = mods_dir;
@@ -87,12 +89,14 @@ std::vector<Row> rows() {
     Row r;
     r.id = s.mod.id; r.name = s.mod.name; r.version = s.installed_version.empty() ? s.mod.version : s.installed_version;
     r.note = s.mod.note; r.line = s.line; r.percent = s.percent; r.automatic = s.automatic; r.file_ready = s.file_ready; r.failed = s.failed;
+    r.page = s.mod.page; r.found = s.found_path;
     r.state = s.state == modinstall::State::Installed ? 1 : s.state == modinstall::State::UpdateAvailable ? 2 : s.state == modinstall::State::Working ? 3 : 0;
     out.push_back(r);
   }
   return out;
 }
 bool install(const std::string& id, std::string* why) { return g_manager && g_manager->install(id, why); }
+bool install_file(const std::string& id, const std::string& path, std::string* why) { return g_manager && g_manager->install_file(id, path, why); }
 bool remove(const std::string& id, std::string* why) { return g_manager && g_manager->remove(id, why); }
 bool busy() { return g_manager && g_manager->busy(); }
 void cancel() { if (g_manager) g_manager->cancel(); }

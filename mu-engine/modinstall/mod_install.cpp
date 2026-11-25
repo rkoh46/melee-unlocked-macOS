@@ -5,6 +5,7 @@
 #include "mi_vcdiff.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -61,6 +62,24 @@ class DiscSink : public OutputSink {
   Md5 md5_;
   uint64_t bytes_ = 0;
 };
+
+// A download's name as compared: lower case, letters and digits only, a browser's " (1)" / "-1" copy number dropped
+// before the extension. "ANIMELEE_-_COMPLETE_EDITION_-_PATCH_1.0 (2).zip" and the catalog's
+// "ANIMELEE - COMPLETE EDITION - PATCH 1.0.zip" compare equal; the extension must stay the same.
+std::string download_key(std::string name) {
+  std::string ext;
+  const size_t dot = name.find_last_of('.');
+  if (dot != std::string::npos && dot > 0) { ext = lower(name.substr(dot)); name = name.substr(0, dot); }
+  while (!name.empty() && name.back() == ' ') name.pop_back();
+  if (name.size() > 3 && name.back() == ')') {
+    const size_t open = name.find_last_of('(');
+    if (open != std::string::npos && open + 1 < name.size() - 1 &&
+        name.find_first_not_of("0123456789", open + 1) == name.size() - 1) name = name.substr(0, open);
+  }
+  std::string out;
+  for (char c : name) if (std::isalnum(static_cast<unsigned char>(c))) out += char(std::tolower(static_cast<unsigned char>(c)));
+  return out + ext;
+}
 
 std::string percent_text(uint64_t done, uint64_t total) {
   if (!total) return size_text(done);
@@ -135,7 +154,8 @@ ModStatus Manager::status(const std::string& id) {
   const CatalogMod& m = out.mod;
   out.automatic = m.one_click && m.direct_file() && config_.fetcher != nullptr;
   out.downloads_path = join(join(config_.mods_dir, "Downloads"), m.asset_pattern);
-  out.file_ready = file_exists(out.downloads_path) && (!m.download_bytes || file_size(out.downloads_path) == m.download_bytes);
+  out.found_path = find_download(m);
+  out.file_ready = !out.found_path.empty();
   std::string version, file;
   const std::string sha = read_installed(m.id, &version, &file);
   if (!sha.empty() && !file.empty() && file_exists(join(join(config_.mods_dir, m.id), file))) {
@@ -157,7 +177,35 @@ std::vector<ModStatus> Manager::list() {
 
 std::string Manager::busy_id() { std::lock_guard<std::mutex> lock(mutex_); return busy_.load() ? job_id_ : std::string(); }
 
-bool Manager::install(const std::string& id, std::string* why) {
+bool Manager::install(const std::string& id, std::string* why) { return start(id, std::string(), why); }
+
+bool Manager::install_file(const std::string& id, const std::string& path, std::string* why) {
+  std::string scratch;
+  if (!why) why = &scratch;
+  if (path.empty() || !file_exists(path)) { *why = "That file was not found."; return false; }
+  return start(id, path, why);
+}
+
+std::string Manager::find_download(const CatalogMod& m) {
+  const std::string own = join(join(config_.mods_dir, "Downloads"), m.asset_pattern);
+  if (file_exists(own) && (!m.download_bytes || file_size(own) == m.download_bytes)) return own;
+  if (m.one_click && m.direct_file() && config_.fetcher) return {};   // fetched by Install: the browser's folder is not searched
+  const std::string want = download_key(m.asset_pattern);
+  for (const auto& dir : config_.watch_dirs) {
+    std::string best;
+    for (const auto& name : list_dir(dir)) {
+      if (name.empty() || name[0] == '.' || download_key(name) != want) continue;
+      const std::string path = join(dir, name);
+      const uint64_t size = file_size(path);
+      if (!size || (m.download_bytes && size != m.download_bytes)) continue;
+      if (best.empty() || file_mtime(path) > file_mtime(best)) best = path;   // the newest copy
+    }
+    if (!best.empty()) return best;
+  }
+  return {};
+}
+
+bool Manager::start(const std::string& id, const std::string& chosen, std::string* why) {
   std::string scratch;
   if (!why) why = &scratch;
   const CatalogMod* mod = nullptr;
@@ -170,13 +218,13 @@ bool Manager::install(const std::string& id, std::string* why) {
   busy_ = true;
   set_line(id, "Starting...");
   const CatalogMod copy = *mod;
-  worker_ = std::thread([this, copy] { run_job(copy); });
+  worker_ = std::thread([this, copy, chosen] { run_job(copy, chosen); });
   return true;
 }
 
-void Manager::run_job(const CatalogMod& mod) {
+void Manager::run_job(const CatalogMod& mod, const std::string& chosen) {
   std::string why;
-  const bool ok = job(mod, &why);
+  const bool ok = job(mod, chosen, &why);
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& [key, line] : lines_) if (key == mod.id) {
@@ -200,7 +248,7 @@ bool Manager::ensure_download(const CatalogMod& mod, bool* fetched, std::string*
   const bool automatic = mod.one_click && mod.direct_file();
   if (!automatic) {
     // melee-unlocked offers these from their pages only (no licence or permission recorded, or not a direct file).
-    *why = "Download " + mod.asset_pattern + " from " + mod.page + " and put it in mods/Downloads/, then choose Install again.";
+    *why = "Download " + mod.asset_pattern + " from its page (" + mod.page + "), then press Install, or Choose File if it is saved elsewhere.";
     return false;
   }
   if (!config_.fetcher) { *why = "This build cannot download. Put " + mod.asset_pattern + " (from " + mod.page + ") in mods/Downloads/."; return false; }
@@ -330,15 +378,20 @@ bool Manager::build_disc(const CatalogMod& mod, const std::string& input, std::s
   return true;
 }
 
-bool Manager::job(const CatalogMod& mod, std::string* why) {
+bool Manager::job(const CatalogMod& mod, const std::string& chosen, std::string* why) {
   if (mod.sha256.empty()) { *why = "This mod has no verified download in the catalog."; return false; }
   if (mod.is_disc() && (mod.patch_sha256.empty() || (mod.output_sha256.empty() && mod.output_md5.empty()))) {
     *why = "This mod's patch has not been verified in the catalog. Nothing was installed."; return false;
   }
   if (mod.is_disc() && !check_vanilla(why)) return false;
   bool fetched = false;
-  if (!ensure_download(mod, &fetched, why)) return false;
-  const std::string input = join(join(config_.mods_dir, "Downloads"), mod.asset_pattern);
+  // The file: the one the player chose, else one already on disk (Downloads/ or a watched folder), else fetched.
+  std::string input = chosen.empty() ? find_download(mod) : chosen;
+  if (input.empty()) {
+    if (!ensure_download(mod, &fetched, why)) return false;
+    input = join(join(config_.mods_dir, "Downloads"), mod.asset_pattern);
+  }
+  log(mod.id + ": installing from " + input);
   set_line(mod.id, "Checking the download...", 0);
   int shown = -1;
   const std::string sha = sha256_file(input, [&](uint64_t done, uint64_t total) {
@@ -347,9 +400,12 @@ bool Manager::job(const CatalogMod& mod, std::string* why) {
     return !cancelled();
   });
   if (cancelled()) { *why = "Cancelled."; return false; }
-  if (sha != mod.sha256) {
+  // The official archive, or (as melee-unlocked accepts a dropped patch) the bare .xdelta from inside it.
+  const bool bare_patch = mod.is_disc() && ends_with(input, ".xdelta") && !mod.patch_sha256.empty() && sha == mod.patch_sha256;
+  if (sha != mod.sha256 && !bare_patch) {
     if (fetched) remove_file(input);
-    *why = "The file " + mod.asset_pattern + " did not match the verified release (SHA-256 " + (sha.empty() ? "unreadable" : sha.substr(0, 16) + "...") + "). Nothing was installed.";
+    *why = "The file " + base_name(input) + " is not " + mod.name + "'s verified download (SHA-256 " + (sha.empty() ? "unreadable" : sha.substr(0, 16) + "...") +
+           "). Get " + mod.asset_pattern + " from its download page. Nothing was installed.";
     return false;
   }
   log(mod.id + ": " + mod.asset_pattern + " verified (sha256 " + sha + ")");

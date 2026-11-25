@@ -39,6 +39,7 @@ struct ModStatus {
   int percent = -1;                  // progress of the current step, -1 when none
   bool failed = false;               // the last job for this mod failed (line says why)
   std::string downloads_path;        // where its file is looked for: Downloads/<asset>
+  std::string found_path;            // the download found on disk (Downloads/, or a watched folder such as ~/Downloads)
 };
 
 struct Config {
@@ -49,6 +50,10 @@ struct Config {
   Platform* platform = nullptr;      // null: the POSIX default (statvfs)
   bool keep_downloads = false;       // keep a fetched archive after its disc is built (default: deleted to save space)
   std::string cache_dir;             // <out>/mods-cache (mods.cpp's comparison cache): an entry is dropped on remove
+  // Folders where the player's browser saves downloads (the Mac: ~/Downloads). A mod the catalog does not let us fetch
+  // is found there by its file name (a browser's " (1)" copy and MediaFire's underscores for spaces included) and
+  // installed from where it is, after the same SHA-256 check as a fetched file. Nothing there is moved or deleted.
+  std::vector<std::string> watch_dirs;
   std::function<void(const std::string&)> log;   // one line per step (any thread)
 };
 
@@ -67,6 +72,12 @@ class Manager {
   ModStatus status(const std::string& id);
   // Install or Update (a job on the worker thread). False with *why set when it cannot start.
   bool install(const std::string& id, std::string* why = nullptr);
+  // Install from a file the player chose (melee-unlocked's "Add file..."): the official archive, or the bare .xdelta inside
+  // it, wherever it is. It must be this mod's verified download (its SHA-256, or the patch's for a .xdelta); else nothing
+  // is installed. The file stays where it is.
+  bool install_file(const std::string& id, const std::string& path, std::string* why = nullptr);
+  // The download of a mod, if it is on disk: Downloads/<asset>, else a matching file in a watched folder. Empty if none.
+  std::string find_download(const CatalogMod& mod);
   bool remove(const std::string& id, std::string* why = nullptr);   // the disc or save and its record; saves on the profile's card stay
   void cancel();
   bool busy() const { return busy_.load(); }
@@ -78,8 +89,9 @@ class Manager {
 
  private:
   struct Progress;
-  void run_job(const CatalogMod& mod);
-  bool job(const CatalogMod& mod, std::string* why);
+  void run_job(const CatalogMod& mod, const std::string& chosen);
+  bool start(const std::string& id, const std::string& chosen, std::string* why);
+  bool job(const CatalogMod& mod, const std::string& chosen, std::string* why);
   bool ensure_download(const CatalogMod& mod, bool* fetched, std::string* why);
   bool check_vanilla(std::string* why);
   bool build_disc(const CatalogMod& mod, const std::string& input, std::string* output_sha256, std::string* why);
