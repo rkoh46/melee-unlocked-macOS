@@ -9,9 +9,9 @@ settings…, `port/runtime/host/mu_settings_window.mm`, grouped as melee-unlocke
 | Status | Rows | Meaning |
 |---|---|---|
 | There | 231 | The Mac app already had it with a working effect (location in Notes). |
-| There, row added | 23 | The engine already honoured the key but nothing let the player change it; now a row. |
-| Added | 6 | New in this change, with its effect in the engine or launcher. |
-| Not added | 8 | Applies on the Mac but is not there yet (reason in Notes). |
+| There, row added | 24 | The engine already honoured the key but nothing let the player change it; now a row. |
+| Added | 13 | New in this change, with its effect in the engine or launcher. |
+| Not added | 0 | Applies on the Mac but is not there yet (reason in Notes). |
 | N/A | 98 | Cannot apply on the Mac (Windows APIs, NVIDIA, the Static Recomp, melee-unlocked-only network features, internal markers). Not shown. |
 | Excluded | 21 | Left out on purpose: YouGame, the BitTorrent Multiplayer Lobby, crash upload to melee-unlocked's relay. |
 
@@ -30,18 +30,18 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | Display = Borderless fullscreen (`fullscreen`) | Panel: Video > Display | There | Launcher Settings page > DISPLAY |
 | Display = Exclusive fullscreen (experimental) (`exclusivefullscreen`) | Panel: Video > Display | N/A | Windows-only (DXGI exclusive fullscreen) |
 | Widescreen (`truewidescreen`) | Panel: Video | There, row added | the engine read it with no row; now Settings window |
-| Widescreen shape (`truewsaspect`) | Panel: Video > Widescreen | Not added | True widescreen widens to 16:9 on the Mac (gx_looks_mac.cpp); 16:10 and a custom shape need the renderer's projection change for other ratios |
-| Custom shape (W:H) (`truewscustomw / truewscustomh`) | Panel: Video > Widescreen (Custom) | Not added | see Widescreen shape |
+| Widescreen shape (`truewsaspect`) | Panel: Video > Widescreen | Added | 16:9, 16:10, Custom and Fit the window: the widened projection is scaled by (73/60)/aspect (fe/looks_live.h true_aspect, gx_looks_mac.cpp), the picture takes that shape, FoD reflections follow (picture_widen); Settings window and panel. Replay captures at 16:9/16:10/21:9 differ as expected with 0 differing records |
+| Custom shape (W:H) (`truewscustomw / truewscustomh`) | Panel: Video > Widescreen (Custom) | Added | Custom shape width and height (1..100 each), Settings window and panel |
 | - (hidden migration marker) (`truewsfit`) | Panel: Video | N/A | migration marker |
 | - (hidden: old Slippi 16:9 Gecko code; migrated to True widescreen 16:9 at load) (`widescreen`) | Panel: Video | There | Launcher Settings page > DISPLAY; in-game panel > VIDEO > Display (Aspect ratio) |
 | Aspect ratio (`aspect`) | Panel: Video | There | in-game panel > VIDEO > Picture |
-| Window size (`window`) | Panel: Video | Not added | the Mac window is resizable and remembers full screen; fixed window sizes are not offered |
+| Window size (`window`) | Panel: Video | Added | settings.ini window WxH: the game window opens at that size (mu_play_main.cpp), still resizable; Follow window is the default. Log: window: 960x720 points |
 | Internal resolution (`scale`) | Panel: Video | There | Launcher Settings page > DISPLAY |
 | Anti-aliasing (`msaa / ssaa`) | Panel: Video | There | in-game panel > VIDEO > Picture (Anti-aliasing (MSAA), Quality preset); VIDEO > Display row hidden |
 | Anisotropic filtering (`anisotropy`) | Panel: Video | There | in-game panel > VIDEO > Display (Anisotropic filtering); VIDEO > Picture Quality preset |
 | Get mod looks (Install: Diet Melee / Animelee / Animelee x DBZ) (`-`) | Panel: Video > Get mod looks | N/A | Windows-only (xdelta3.exe tool, ShellExecute); hidden in YouGame app |
 | Look (`- (sets lightweight + look_* keys)`) | Panel: Video > Low-Detail Modes | There | in-game panel > GAME > Looks |
-| Crystal fighter colors (`- (look preset 5/6)`) | Panel: Video > Low-Detail Modes | Not added | Crystal colours belong to the Crystal mod look, which the Mac looks do not include |
+| Crystal fighter colors (`- (look preset 5/6)`) | Panel: Video > Low-Detail Modes | Added | with a Crystal look, switches between Crystal (original colours) and Crystal (player colours), presets 5 and 6: the Settings window's Look rows and the panel's Looks > Crystal fighter colours |
 | Visual effects (`effects`) | Panel: Video > Low-Detail Modes | There | in-game panel > GAME > Looks |
 | Lightweight (`lightweight`) | Panel: Video > Low-Detail Modes > Advanced lightweight levels | There | in-game panel > GAME > Looks |
 | Set up mod artwork (Diet and Crystal): Patch folder / Prepare mod artwork (`-`) | Panel: Video > Low-Detail Modes > Set up mod artwork | N/A | Windows-only (Browse dialog, xdelta3.exe) |
@@ -73,7 +73,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | Background (`arcade_backdrop`) | Panel: Video > Arcade look | There | in-game panel > VIDEO > Arcade look |
 | Background colour (`arcade_background_rgb`) | Panel: Video > Arcade look | There, row added | the engine read it with no row; now Settings window |
 | Grid colour (`arcade_grid_rgb`) | Panel: Video > Arcade look | There, row added | the engine read it with no row; now Settings window |
-| Arcade preset / Reset (`-`) | Panel: Video > Arcade look | Not added | convenience buttons that set the Arcade rows at once; each row is there |
+| Arcade preset / Reset (`-`) | Panel: Video > Arcade look | There, row added | the panel had them (Arcade look: every switch on / reset); now they also set the combo counter as upstream does, and the Settings window has the two buttons |
 | Graphics backend (`backend`) | Panel: Video | N/A | Windows-only (D3D12/D3D11) |
 | Upscaling (DLSS / XeSS / FSR) (`dlss`) | Panel: Video | N/A | Windows-only (DLSS/XeSS need D3D12; FSR D3D12/Vulkan Windows) |
 | Download Intel XeSS / Download AMD FSR (`-`) | Panel: Video | N/A | Windows-only (Intel/AMD DLLs); hidden in YouGame app |
@@ -193,7 +193,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | Room look (`arena/panel.txt field 1`) | Panel: Game > Online > Arena rooms | N/A | arena rooms (see above) |
 | Arena button (`arena/panel.txt field 3`) | Panel: Game > Online > Arena rooms | N/A | arena rooms (see above) |
 | Hide the room panels until the hand comes near (`arena/panel.txt field 2`) | Panel: Game > Online > Arena rooms | N/A | arena rooms (see above) |
-| Application ID (`discord_app_id`) | Panel: Game > Discord | Not added | the app reports to its own Discord application (slippi::discord::kApplicationId, with its artwork) |
+| Application ID (`discord_app_id`) | Panel: Game > Discord | Added | Added: launcher.ini discord_app_id (digits, up to 24) goes to the presence as MELEE_DISCORD_APP_ID; empty uses the app's own; Settings window > Game > Discord. mu-engine/tools/discord_app_id_test.sh. |
 | Discord presence (show what you are playing; friends can press Join) (`discordon`) | Panel: Game > Discord | Added | Row added: launcher.ini discord (the Mac's key) had no row; now Settings window > Game > Discord. |
 | Freeze Final Destination (`freeze_fd`) | Panel: Game > Stages | There | in-game panel > GAME > Stages |
 | Freeze Pokemon Stadium (offline only) (`stadium_frozen`) | Panel: Game > Stages | There | in-game panel > GAME > Stages |
@@ -238,7 +238,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | Controller rumble (`rumble`) | Panel: Controls | Added | Added: settings.ini rumble keeps every controller's motor still when off (host_shim.cpp input_rumble); each SDL pad keeps its own switch too. |
 | P1..P4 card > Change (what plays as this port) (`port0..port3`) | Panel: Controls > Players | There | the Mac's own: in game (Windows-only (XInput sources) upstream) |
 | - (hidden: HID box device name for its port) (`portname0..portname3`) | Panel: Controls > Players | N/A | Windows HID device names |
-| Plugged in but not playing > Play as Pn (`-`) | Panel: Controls | Not added | controller.<guid> port picks a fixed port, without a button yet |
+| Plugged in but not playing > Play as Pn (`-`) | Panel: Controls | Added | in-game CONTROLS > Plays as (First free port, P1..P4) for each controller: launcher.ini controller.<guid> port, taken at once (log: plays as P3 (its fixed port)) |
 | Profile (Default / named / New / Delete) (`activeprofile0..activeprofile20`) | Panel: Controls > device editor | There | per controller: in-game CONTROLS > Controller profiles (ControllerProfiles/*.profile) |
 | Use GameCube controller picture (`swpro_gc_picture`) | Panel: Controls > Switch controller | N/A | picture for melee-unlocked's own Switch Pro reader; SDL drives Switch pads on the Mac |
 | Keyboard bindings (click a button in the picture, right-click clears) (`key_<Action> (27 keys)`) | Panel: Controls > Keyboard | There | the Mac's own: in game (Windows-only (Win32 VK codes) upstream) |
@@ -332,7 +332,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | - (20XX Hack Pack menu choices: playlists, stage variants/page, training displays; set in-game) (`hp_settings`) | Panel: Mods | There | game's own menu (20XX TE / Hack Pack, in game) |
 | Random installed stage skin each match (`cosmetics profile.json: random_stage_skins`) | Panel: Mods > Cosmetic mods | There, row added | the engine read it with no row; now Settings window |
 | <pack>: N stage skins for M stages, in the random pick (`cosmetics profile.json: per stage pack random`) | Panel: Mods > Cosmetic mods | There, row added | the engine read it with no row; now Settings window |
-| Import / Refresh... / Add stage DAT... (Stage to replace) / Add portrait... (Fighter, Costume, Picture) / Refresh catalog (`-`) | Panel: Mods > Cosmetic mods | Not added | cosmetic import: copy skins into melee-unlocked/Cosmetics; pick them in game (Mods > Choose skins) |
+| Import / Refresh... / Add stage DAT... (Stage to replace) / Add portrait... (Fighter, Costume, Picture) / Refresh catalog (`-`) | Panel: Mods > Cosmetic mods | Added | Settings window > Mods > Cosmetic mods: Import… (costume and stage .dat files or a .zip of them), Add stage DAT… (Stage to replace), Open folder. Not here: Add portrait (the Mac skin picker shows names, not pictures) and Refresh (skins are read at each start) |
 | Use cosmetic profile (`cosmetics profile.json: enabled`) | Panel: Mods > Cosmetic mods | There, row added | the engine read it with no row; now Settings window |
 | Costume packs > Costume set (fill every slot a pack covers) (`cosmetics profile.json: pack set`) | Panel: Mods > Cosmetic mods | There, row added | the engine read it with no row; now Settings window |
 | Characters > <fighter> > <costume> variant (`cosmetics profile.json: per-costume selection`) | Panel: Mods > Cosmetic mods | There, row added | the engine read it with no row; now Settings window |

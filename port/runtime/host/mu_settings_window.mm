@@ -46,7 +46,7 @@ bool engine_has(const std::string& key) {
 }
 
 enum Store { E, L, S, B };              // settings.ini, launcher.ini, the launcher's choices, a community_codes bit
-enum Kind { TOGGLE, CHOICE, SLIDER, TEXT, PATH, NOTE };
+enum Kind { TOGGLE, CHOICE, SLIDER, TEXT, PATH, NOTE, BUTTONS };   // BUTTONS: titles are buttons, values their actions
 struct Row {
   const char* cat; const char* sec; const char* label; const char* key; Store store; Kind kind;
   std::vector<const char*> titles = {}, values = {};      // CHOICE
@@ -66,6 +66,13 @@ const std::vector<Row>& rows() {
      "Draws in-between pictures on a display faster than 60 Hz. The game itself still runs at 60."},
     {"Video", "Widescreen", "Widescreen (16:9 code)", "widescreen", S, TOGGLE},
     {"Video", "Widescreen", "True widescreen", "truewidescreen", E, TOGGLE, {}, {}, 0, 1, 1, 1, "", "0", "Widens the camera itself instead of stretching the 4:3 picture."},
+    {"Video", "Widescreen", "Widescreen shape", "truewsaspect", E, CHOICE, {"16:9", "16:10", "Custom", "Fit the window"}, {"0", "1", "2", "3"}, 0, 1, 1, 1, "", "0",
+     "With True widescreen: the shape the world is widened to, from 4:3 up to 64:27."},
+    {"Video", "Widescreen", "Custom shape width", "truewscustomw", E, SLIDER, {}, {}, 1, 100, 1, 1, "%.0f", "21"},
+    {"Video", "Widescreen", "Custom shape height", "truewscustomh", E, SLIDER, {}, {}, 1, 100, 1, 1, "%.0f", "9"},
+    {"Video", "Window size", "Window size", "window", E, CHOICE, {"Follow window", "640×480", "960×720", "1280×960", "1440×1080", "1600×1200", "1920×1440"},
+     {"follow", "640x480", "960x720", "1280x960", "1440x1080", "1600x1200", "1920x1440"}, 0, 1, 1, 1, "", "follow",
+     "The size the game's window opens at. It stays resizable."},
     {"Video", "Resolution and filtering", "Picture shape", "aspect", E, CHOICE, {"Auto", "73:60 (console)", "4:3", "16:9", "Stretched"}, {"0", "1", "2", "3", "4"}},
     {"Video", "Resolution and filtering", "Internal resolution", "scale", S, CHOICE, {"Auto", "1× (640×480)", "2×", "3×", "4×"}, {"0", "1", "2", "3", "4"}},
     {"Video", "Resolution and filtering", "Anti-aliasing (MSAA)", "msaa", L, CHOICE, {"Off", "2×", "4×", "8×"}, {"1", "2", "4", "8"}, 0, 1, 1, 1, "", "1"},
@@ -76,6 +83,11 @@ const std::vector<Row>& rows() {
     {"Video", "Picture", "Vibrance", "vibrance", E, SLIDER, {}, {}, 0, 2, 0.1, 100, "%.0f%%", "1"},
     {"Video", "Picture", "Sharpening", "sharpness", E, SLIDER, {}, {}, 0, 1, 0.1, 100, "%.0f%%", "0"},
     {"Video", "Picture", "Ambient occlusion", "ssao", E, SLIDER, {}, {}, 0, 1, 0.1, 100, "%.0f%%", "0"},
+    {"Video", "Get mod looks", "Look", "look", E, CHOICE, {"Off", "Light", "Lighter", "Diet Classic (mod)", "Diet 64 (mod)", "Crystal (original colours)", "Crystal (player colours)", "Wireframe", "Potato",
+     "64 Style (built-in)", "Silhouettes", "Classic Style (built-in)"}, {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"}, 0, 1, 1, 1, "", "",
+     "A preset sets every part below."},
+    {"Video", "Get mod looks", "Crystal fighter colours", "look_colours", E, CHOICE, {"Original mod colours", "Player colours (red, blue, yellow, green)"}, {"0", "1"}, 0, 1, 1, 1, "", "0",
+     "With the Crystal look: the mod's own colours, or each fighter in its port's colour."},
     {"Video", "Get mod looks", "Look of the fighters", "look_fighter", E, CHOICE, {"Textured", "64 style", "Flat colour", "White", "Posterize", "Wire"}, {"0", "1", "2", "3", "4", "5"}},
     {"Video", "Get mod looks", "Look of the stage", "look_stage", E, CHOICE, {"Textured", "64 style", "Flat colour", "White", "Posterize", "Wire"}, {"0", "1", "2", "3", "4", "5"}},
     {"Video", "Get mod looks", "Look of the menus", "look_menus", E, CHOICE, {"Textured", "64 style", "Flat colour", "White", "Posterize"}, {"0", "1", "2", "3", "4"}},
@@ -88,6 +100,7 @@ const std::vector<Row>& rows() {
      "Fewer details for slower Macs: each step drops more."},
     {"Video", "Low-detail modes", "Visual effects", "effects", E, CHOICE, {"Full", "Reduced", "Minimal", "No decorative particles"}, {"0", "1", "2", "3"}},
     {"Video", "Low-detail modes", "Low-poly fighters", "lowpoly", E, TOGGLE},
+    {"Video", "Arcade look", "Every Arcade row", "arcade", E, BUTTONS, {"Arcade preset", "Reset"}, {"arcade:on", "arcade:off"}},
     {"Video", "Arcade look", "Show hitboxes", "arcade_hitboxes", E, TOGGLE, {}, {}, 0, 1, 1, 1, "", "0", "Offline only."},
     {"Video", "Arcade look", "Projectile hitboxes", "arcade_projectile_hitboxes", E, TOGGLE},
     {"Video", "Arcade look", "Hitboxes behind fighters", "arcade_hitboxes_behind", E, TOGGLE},
@@ -156,6 +169,7 @@ const std::vector<Row>& rows() {
     {"Game", "Online", "Session trace beside replays", "session_trace", E, CHOICE, {"Off", "Marked matches", "Every match"}, {"0", "1", "2"}, 0, 1, 1, 1, "", "1"},
     {"Game", "Discord", "Discord presence", "discord", L, TOGGLE, {}, {}, 0, 1, 1, 1, "", "1", "Shows what you are playing in Discord, through the Discord app on this Mac."},
     {"Game", "Discord", "Show your rank", "discord_rank", L, TOGGLE, {}, {}, 0, 1, 1, 1, "", "1"},
+    {"Game", "Discord", "Application ID", "discord_app_id", L, TEXT, {}, {}, 0, 1, 1, 1, "", "", "Empty uses this app's own Discord application and its artwork. Digits only."},
     {"Game", "Replays", "Save every match", "savereplays", E, TOGGLE, {}, {}, 0, 1, 1, 1, "", "1"},
     {"Game", "Replays", "Compress replays (.slpz)", "compressreplays", E, TOGGLE},
     {"Game", "Replays", "Replay folder", "replaydir", L, PATH, {}, {}, 0, 1, 1, 1, "", ""},
@@ -256,9 +270,39 @@ const std::vector<Row>& rows() {
     // ---- MODS ----
     {"Mods", "Game mods", "20XX TE features with its save", "mod_te_enabled", E, TOGGLE, {}, {}, 0, 1, 1, 1, "", "1"},
     {"Mods", "Cosmetic mods", "Skins from the Cosmetics folder", "cosmetics", E, TOGGLE, {}, {}, 0, 1, 1, 1, "", "1", "Pick each fighter's skin in game under Mods > Choose skins."},
+    {"Mods", "Cosmetic mods", "Add skins", "cosmetics_import", E, BUTTONS, {"Import…", "Add stage DAT…", "Open folder"}, {"cos:import", "cos:stage", "cos:open"}, 0, 1, 1, 1, "", "",
+     "Import takes costume files (PlFxGr.dat), stage files (GrNBa.dat) or a .zip of them into the Cosmetics folder. Add stage DAT replaces the stage you pick."},
   };
   return r;
 }
+// melee-unlocked's Look presets as the engine has them (mu-engine/app/fe/looks_live.h presets(); keep the two in step):
+// Lightweight, fighters, stage, menus, sharp texels, port colours, background, visual effects.
+struct LookPreset { int lw, fighter, stage, menus, unfiltered, colours, background, effects; };
+const LookPreset kLooks[] = {{0, 0, 0, 0, 0, 0, 0, 0}, {1, 0, 0, 0, 0, 0, 0, 0}, {2, 0, 0, 0, 0, 0, 0, 0}, {2, 0, 0, 0, 0, 0, 1, 1},
+                             {1, 1, 1, 1, 1, 0, 0, 1}, {2, 2, 2, 4, 0, 0, 1, 2}, {2, 2, 2, 4, 0, 1, 1, 2}, {5, 5, 5, 0, 0, 0, 1, 2},
+                             {4, 3, 3, 0, 0, 1, 1, 2}, {1, 1, 1, 1, 1, 0, 0, 1}, {2, 3, 3, 0, 0, 1, 2, 2}, {2, 0, 0, 0, 0, 0, 1, 1}};
+const char* const kLookKeys[] = {"lightweight", "look_fighter", "look_stage", "look_menus", "look_unfiltered", "look_colours", "look_background", "effects"};
+int look_part(const LookPreset& p, int i) { const int v[] = {p.lw, p.fighter, p.stage, p.menus, p.unfiltered, p.colours, p.background, p.effects}; return v[i]; }
+int engine_int(const char* key) { return engine_has(key) ? std::atoi(host::engine_setting(key).c_str()) : 0; }
+int current_look() {
+  for (int i = 0; i < int(sizeof kLooks / sizeof kLooks[0]); ++i) {
+    bool same = true;
+    for (int k = 0; k < 8 && same; ++k) same = engine_int(kLookKeys[k]) == look_part(kLooks[i], k);
+    if (same) return i;
+  }
+  return -1;
+}
+// Cosmetics: the folder the engine serves skins from (fe/features/cosmetics.cpp: <app folder>/Cosmetics/Costumes and Stages).
+std::string cosmetics_dir() { return support() + "/melee-unlocked/Cosmetics"; }
+// A costume file is named for its slot (PlFxGr.dat), a stage file for its stage (GrNBa.dat), with an optional label after it.
+std::string skin_kind(NSString* name) {
+  NSString* n = name.lowercaseString;
+  if (![n hasSuffix:@".dat"]) return "";
+  if ([n hasPrefix:@"pl"]) return "Costumes";
+  if ([n hasPrefix:@"gr"]) return "Stages";
+  return "";
+}
+
 const std::vector<const char*> kCats = {"Video", "Audio", "Game", "Controls", "Overlays", "Customize", "Gecko codes", "Mods"};
 const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontroller", "dpad", "square.on.square", "paintbrush", "chevron.left.forwardslash.chevron.right", "shippingbox"};
 }  // namespace
@@ -270,6 +314,9 @@ const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontr
 @property(nonatomic) NSScrollView* scroll;
 @property(nonatomic) NSInteger category;
 @property(nonatomic) NSMutableArray<NSTextField*>* valueLabels;
+- (void)pressed:(NSButton*)sender;
+- (void)importSkins:(NSArray<NSURL*>*)urls stage:(const std::string&)target_stage;
+- (void)build;
 @end
 
 @interface MUFlipped : NSView
@@ -300,7 +347,9 @@ const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontr
       const unsigned long bits = std::strtoul(host::engine_setting("community_codes").c_str(), nullptr, 16);
       return (bits & r.bit) ? "1" : "0";
     }
-    case E: return engine_has(r.key) ? host::engine_setting(r.key) : std::string(r.def);
+    case E:
+      if (std::string(r.key) == "look") { const int i = current_look(); return i < 0 ? std::string("custom") : std::to_string(i); }
+      return engine_has(r.key) ? host::engine_setting(r.key) : std::string(r.def);
   }
   return r.def;
 }
@@ -326,7 +375,16 @@ const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontr
       host::set_engine_setting("community_codes", hex);
       break;
     }
-    case E: host::set_engine_setting(r.key, v); break;
+    case E:
+      if (std::string(r.key) == "look") {   // the preset's parts, as the engine's Look row saves them
+        const int i = std::atoi(v.c_str());
+        if (i >= 0 && i < int(sizeof kLooks / sizeof kLooks[0])) for (int k = 0; k < 8; ++k) host::set_engine_setting(kLookKeys[k], std::to_string(look_part(kLooks[i], k)));
+        [self build];
+        break;
+      }
+      host::set_engine_setting(r.key, v);
+      if (std::string(r.key) == "look_colours") [self build];   // the Look row follows
+      break;
   }
   host::log("settings: %s = %s", r.store == B ? (std::string("community_codes bit ") + std::to_string(r.bit)).c_str() : r.key, v.c_str());
 }
@@ -437,7 +495,7 @@ const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontr
           [pop addItemWithTitle:@(r.titles[i])];
           if (strcasecmp(r.values[i], v.c_str()) == 0) pick = NSInteger(i);
         }
-        if (pick < 0 && !v.empty()) { [pop addItemWithTitle:[NSString stringWithFormat:@"Other (%s)", v.c_str()]]; pick = pop.numberOfItems - 1; }
+        if (pick < 0 && !v.empty()) { [pop addItemWithTitle:v == "custom" ? @"Custom" : [NSString stringWithFormat:@"Other (%s)", v.c_str()]]; pick = pop.numberOfItems - 1; }
         [pop selectItemAtIndex:std::max<NSInteger>(pick, 0)];
         pop.action = @selector(changed:);
         control = pop;
@@ -479,6 +537,19 @@ const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontr
         break;
       }
       case NOTE: break;
+      case BUTTONS: {
+        CGFloat x = NSMaxX(cr);
+        for (size_t i = r.titles.size(); i-- > 0;) {
+          NSButton* b = [NSButton buttonWithTitle:@(r.titles[i]) target:self action:@selector(pressed:)];
+          [b sizeToFit];
+          x -= b.frame.size.width;
+          b.frame = NSMakeRect(x, y + 2, b.frame.size.width, b.frame.size.height);
+          b.identifier = @(r.values[i]);
+          [doc addSubview:b];
+          x -= 8;
+        }
+        break;
+      }
     }
     if (control) { control.tag = index; if (!control.target) control.target = self; [doc addSubview:control]; }
     y += rowH;
@@ -520,6 +591,78 @@ const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontr
   }
   [self set:*r to:v];
 }
+- (void)pressed:(NSButton*)sender {
+  const std::string act = sender.identifier.UTF8String;
+  if (act == "arcade:on" || act == "arcade:off") {   // upstream's set_all: every Arcade look row on (the grid) or off
+    const bool on = act == "arcade:on";
+    for (const char* k : {"arcade_hitboxes", "arcade_projectile_hitboxes", "arcade_hitboxes_behind", "arcade_camera_2d", "arcade_combo_counter"}) host::set_engine_setting(k, on ? "1" : "0");
+    host::set_engine_setting("arcade_backdrop", on ? "2" : "0");
+    host::log("settings: Arcade look %s", on ? "preset (every row on)" : "reset (every row off)");
+    [self build];
+    return;
+  }
+  NSFileManager* fm = NSFileManager.defaultManager;
+  NSString* root = @(cosmetics_dir().c_str());
+  if (act == "cos:open") {
+    for (NSString* sub in @[@"Costumes", @"Stages"]) [fm createDirectoryAtPath:[root stringByAppendingPathComponent:sub] withIntermediateDirectories:YES attributes:nil error:nil];
+    [NSWorkspace.sharedWorkspace openURL:[NSURL fileURLWithPath:root]];
+    return;
+  }
+  NSOpenPanel* panel = [NSOpenPanel openPanel];
+  panel.allowsMultipleSelection = act == "cos:import";
+  panel.allowedFileTypes = act == "cos:import" ? @[@"dat", @"zip"] : @[@"dat"];
+  panel.message = act == "cos:import" ? @"Choose skins: costume files (PlFxGr.dat), stage files (GrNBa.dat) or a .zip of them" : @"Choose the stage file to use";
+  if ([panel runModal] != NSModalResponseOK) return;
+  std::string target_stage;
+  if (act == "cos:stage") {   // "Stage to replace": the stage this file is served for
+    static const char* const kStages[][2] = {{"GrNBa", "Battlefield"}, {"GrNLa", "Final Destination"}, {"GrSt", "Yoshi's Story"}, {"GrIz", "Fountain of Dreams"},
+                                             {"GrOp", "Dream Land"}, {"GrPs", "Pokémon Stadium"}, {"GrCs", "Princess Peach's Castle"}, {"GrKg", "Kongo Jungle"},
+                                             {"GrCn", "Corneria"}, {"GrRc", "Rainbow Cruise"}, {"GrMc", "Mute City"}, {"GrBb", "Big Blue"}};
+    NSAlert* alert = [[NSAlert alloc] init];
+    alert.messageText = @"Stage to replace"; alert.informativeText = panel.URL.lastPathComponent;
+    NSPopUpButton* pop = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 260, 26) pullsDown:NO];
+    for (const auto& s : kStages) [pop addItemWithTitle:@(s[1])];
+    alert.accessoryView = pop;
+    [alert addButtonWithTitle:@"Add"]; [alert addButtonWithTitle:@"Cancel"];
+    if ([alert runModal] != NSAlertFirstButtonReturn) return;
+    target_stage = kStages[pop.indexOfSelectedItem][0];
+  }
+  [self importSkins:panel.URLs stage:target_stage];
+}
+// Copies skins into the Cosmetics folder: the .dat files given, or those inside a given .zip (unpacked with the system's
+// ditto). `target_stage` (Add stage DAT): the file is served for that stage, named "<stage> - <its name>.dat".
+- (void)importSkins:(NSArray<NSURL*>*)urls stage:(const std::string&)target_stage {
+  NSFileManager* fm = NSFileManager.defaultManager;
+  NSString* root = @(cosmetics_dir().c_str());
+  NSMutableArray<NSString*>* files = [NSMutableArray array];
+  NSString* scratch = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+  for (NSURL* url in urls) {
+    if ([url.pathExtension.lowercaseString isEqualToString:@"zip"]) {
+      NSTask* t = [NSTask launchedTaskWithExecutableURL:[NSURL fileURLWithPath:@"/usr/bin/ditto"] arguments:@[@"-x", @"-k", url.path, scratch] error:nil terminationHandler:nil];
+      [t waitUntilExit];
+      for (NSString* rel in [fm enumeratorAtPath:scratch]) if ([rel.pathExtension.lowercaseString isEqualToString:@"dat"]) [files addObject:[scratch stringByAppendingPathComponent:rel]];
+    } else [files addObject:url.path];
+  }
+  int added = 0, refused = 0;
+  for (NSString* f in files) {
+    NSString* name = f.lastPathComponent;
+    std::string kind = skin_kind(name);
+    if (!target_stage.empty()) { kind = "Stages"; name = [NSString stringWithFormat:@"%s - %@", target_stage.c_str(), name.stringByDeletingPathExtension]; name = [name stringByAppendingPathExtension:@"dat"]; }
+    if (kind.empty()) { ++refused; host::log("settings: %s is not a costume (Pl...dat) or stage (Gr...dat) file; not added", name.UTF8String); continue; }
+    NSString* dir = [root stringByAppendingPathComponent:@(kind.c_str())];
+    [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString* to = [dir stringByAppendingPathComponent:name];
+    [fm removeItemAtPath:to error:nil];
+    if ([fm copyItemAtPath:f toPath:to error:nil]) { ++added; host::log("settings: skin added: %s", to.UTF8String); }
+  }
+  [fm removeItemAtPath:scratch error:nil];
+  NSAlert* done = [[NSAlert alloc] init];
+  done.messageText = added ? [NSString stringWithFormat:@"%d skin%s added", added, added == 1 ? "" : "s"] : @"No skins added";
+  done.informativeText = refused ? [NSString stringWithFormat:@"%d file%s skipped: only costume (Pl…dat) and stage (Gr…dat) files are skins.", refused, refused == 1 ? "" : "s"]
+                                 : @"Pick them on the character and stage select, or in game under Mods > Choose skins.";
+  if (std::getenv("MELEE_NO_ALERTS")) host::log("settings: %s. %s", done.messageText.UTF8String, done.informativeText.UTF8String);
+  else [done runModal];
+}
 - (void)choosePath:(NSButton*)sender {
   const Row* r = [self rowFor:sender.tag];
   if (!r) return;
@@ -555,6 +698,16 @@ void mu_settings_window_run(LauncherSettings& settings, int category, const char
       [c.window setFrameOrigin:NSMakePoint(-20000, -20000)];
       [c.window orderFront:nil];
       std::printf("settings: window %ld\n", (long)c.window.windowNumber); std::fflush(stdout);
+      // Tests: import these skins (paths separated by ":"; MELEE_SETTINGS_IMPORT_STAGE=GrNBa for Add stage DAT) before the shot.
+      if (const char* import = std::getenv("MELEE_SETTINGS_IMPORT")) {
+        NSMutableArray<NSURL*>* urls = [NSMutableArray array];
+        for (NSString* p in [@(import) componentsSeparatedByString:@":"]) if (p.length) [urls addObject:[NSURL fileURLWithPath:p]];
+        const char* stage = std::getenv("MELEE_SETTINGS_IMPORT_STAGE");
+        [c importSkins:urls stage:stage ? stage : ""];
+      }
+      if (const char* press = std::getenv("MELEE_SETTINGS_PRESS")) {   // tests: press a button row (arcade:on, arcade:off)
+        NSButton* b = [[NSButton alloc] init]; b.identifier = @(press); [c pressed:b];
+      }
       if (const char* scroll = std::getenv("MELEE_SETTINGS_SCROLL")) [c.scroll.documentView scrollPoint:NSMakePoint(0, std::atof(scroll))];
       NSString* out = @(shot);
       const double wait = std::getenv("MELEE_SETTINGS_WAIT") ? std::atof(std::getenv("MELEE_SETTINGS_WAIT")) : 1.0;

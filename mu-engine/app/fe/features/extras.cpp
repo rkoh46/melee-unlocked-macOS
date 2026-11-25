@@ -14,6 +14,7 @@
 #include "features_internal.h"
 #include "frontend.h"
 #include "mu_host.h"
+#include "feature_calls.h"     // call_setting: the overlays module's arcade_combo_counter
 
 #include <atomic>
 #include <chrono>
@@ -36,6 +37,8 @@ void restart_press() {
 constexpr const char* kArcade[] = {"arcade_hitboxes", "arcade_projectile_hitboxes", "arcade_hitboxes_behind", "arcade_camera_2d", "arcade_backdrop"};
 void arcade_set(bool on) {
   for (const char* k : kArcade) settings_change(k, on ? (std::string(k) == "arcade_backdrop" ? "2" : "1") : "0");
+  // The combo counter too, as upstream's set_all: a key of the overlays module, set there and written here.
+  fe::features::call_setting("arcade_combo_counter", on ? "1" : "0"); fe::settings_write_key("arcade_combo_counter", on ? "1" : "0");
   say("options: Arcade look %s", on ? "preset: every switch on, the grid behind the stage" : "reset: every switch off");
 }
 constexpr const char* kCpuKeys[] = {"cpu_20xx", "cpu_tech", "cpu_getup", "cpu_di", "cpu_sdi", "cpu_notaunt", "cpu_lcancel", "cpu_nojab", "cpu_notransform"};
