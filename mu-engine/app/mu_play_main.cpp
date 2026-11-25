@@ -50,6 +50,7 @@
 #include <vector>
 
 extern "C" const uint8_t mu_embedded_game[], mu_embedded_game_end[];
+bool mu_disc_convert(std::string* iso, const std::string& own_folder);   // disc_convert.cpp: RVZ and WIA discs
 extern "C" int32_t mu_frontend_command(uint8_t, const uint8_t*, uint32_t, uint8_t*, uint32_t, uint32_t*);   // fe/mods.cpp
 
 namespace fs = std::filesystem;
@@ -371,6 +372,8 @@ int main(int argc, char** argv) {
   fs::create_directories(mu_dir / "Card A", ec);
   if (log_file.empty()) log_file = (mu_dir / "engine.log").string();
   host::mu_shim_open_log(log_file);
+  // A Dolphin RVZ or WIA image becomes the plain GALE01.iso once (disc_convert.cpp, melee-unlocked's disc_rvz.cpp).
+  if (!mu_disc_convert(&iso, mu_dir.string())) { std::fprintf(stderr, "the disc image %s cannot be used (engine.log says why)\n", iso.c_str()); return 2; }
   if (cache_dir.empty()) { cache_dir = (mu_dir / "shaders").string(); fs::create_directories(cache_dir, ec); }
   // Play mode: everything but the scripted runs (tests), which play exactly as the parity runner does.
   g_play = script.empty();

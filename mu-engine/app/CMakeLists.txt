@@ -174,6 +174,15 @@ target_include_directories(mu_gecko BEFORE PRIVATE "${FE}/gecko_shim")
 target_include_directories(mu_gecko PRIVATE "${MU_TREE}/port/runtime/host" "${MU_TREE}/sourceport/game/shim")
 target_compile_definitions(mu_gecko PRIVATE MELEE_NO_SLIPPI MNX_NO_FUNCTION_PATCHES)
 target_compile_options(mu_gecko PRIVATE -O2 -g -fno-strict-aliasing)
+# RVZ and WIA discs (disc_convert.cpp): melee-unlocked's disc_rvz.cpp and the bzip2 it vendors, from the fetched tree; LZMA from
+# the mod installer's LZMA SDK objects, Zstandard from mu_zstd.
+set(_mu_tp "${MU_TREE}/port/third_party")
+add_library(mu_rvz OBJECT "${MU_APPSRC}/disc_convert.cpp" "${MU_TREE}/port/app/disc_rvz.cpp" "${_mu_tp}/bzip2/blocksort.c" "${_mu_tp}/bzip2/huffman.c"
+  "${_mu_tp}/bzip2/crctable.c" "${_mu_tp}/bzip2/randtable.c" "${_mu_tp}/bzip2/compress.c" "${_mu_tp}/bzip2/decompress.c" "${_mu_tp}/bzip2/bzlib.c")
+set_target_properties(mu_rvz PROPERTIES CXX_STANDARD 17)
+target_include_directories(mu_rvz PRIVATE "${_mu_tp}" "${MU_TREE}/port/app")
+target_compile_definitions(mu_rvz PRIVATE BZ_EXPORT)
+target_compile_options(mu_rvz PRIVATE -O2 $<$<COMPILE_LANGUAGE:C>:-w>)
 set(_mu_fe_ui_sources "${FE}/app_menu.cpp" "${FE}/overlay_draw.cpp" "${FE_GEN}/proai/practice_menu.cpp" "${FE}/proai/practice_overlay.cpp")
 set_source_files_properties("${FE}/overlay_draw.cpp" PROPERTIES INCLUDE_DIRECTORIES "${FE};${FE_GEN};${DD}/host")
 set_source_files_properties("${FE}/controls.cpp" "${FE}/controls_files.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_TREE}/port/linux;${MU_TREE}/port/runtime/abi;${DD}/host;${MU_TREE}/port/runtime/host")
@@ -205,7 +214,7 @@ add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engi
   COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
 add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
 add_dependencies(melee_unlocked_mac mu_netplay_object)
-target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_jukebox mu_gecko mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
+target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_jukebox mu_gecko mu_rvz mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX" "-framework AudioToolbox" "-framework CoreAudio")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")
