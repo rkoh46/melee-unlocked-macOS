@@ -478,6 +478,22 @@ std::array<Category, 8> build_rows(bool in_game) {
     nn.hint = "In an online mode, skins that could change more than looks show as the standard ones, and a note says so for 15 seconds.";
     section(cats[4], "Notices").rows.push_back(nn);
   }
+  // MODS: the two packs built into the game, as upstream's MODS page says them (Training Mode CE, 20XX Tournament Edition).
+  {
+    Section& p = section(cats[7], "Built-in packs");
+    Row tm; tm.kind = Kind::Info; tm.label = std::string("Training Mode CE: ") + (fe::mods_tmce() ? "Loaded" : "Not loaded");
+    tm.text = fe::mods_tmce() ? (fe::mods_te_owned() ? "Open 1P Mode > Event Match to select a Training Mode CE exercise; its exercise controls, pause menu and "
+                                                       "on-screen displays (the Lab menu) stay inside the game. Both packs are loaded: 20XX TE options apply in VS; "
+                                                       "Training Mode CE exercises use their own rules."
+                                                     : "Open 1P Mode > Event Match to select a Training Mode CE exercise; its exercise controls, pause menu and "
+                                                       "on-screen displays (the Lab menu) stay inside the game.")
+                              : "Install Training Mode CE on the launcher's Mods page, press Use and start again.";
+    p.rows.push_back(tm);
+    Row te; te.kind = Kind::Info; te.label = std::string("20XX Tournament Edition: ") + (fe::mods_te_owned() ? "Loaded" : "Not loaded");
+    te.text = fe::mods_te_owned() ? "20XX TE's features, built into the game. Offline only. Its own menu: VS Mode > Tournament Melee."
+                                  : "Put your 20XX TE save (.gci) in a mod profile's folder and use that profile to turn on its native features.";
+    p.rows.push_back(te);
+  }
   // MODS: melee-unlocked's catalog through the app's mod installer (mu_mods.h), then the profile the next start loads.
   {
     std::string error;
