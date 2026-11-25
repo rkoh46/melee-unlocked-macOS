@@ -22,6 +22,7 @@
 #include <map>
 #include <mutex>
 #include <sstream>
+#include <sys/stat.h>
 
 namespace fe {
 Options options;
@@ -53,13 +54,37 @@ void write_kv(const std::string& path, const std::string& key, const std::string
   for (const auto& l : lines) out << l << "\n";
 }
 }  // namespace
+// The settings panel reads launcher.ini many times a frame (its appearance, the rows): the file is read again only when it
+// changed on disk (checked at most every half second) or after this process wrote it.
+namespace {
+std::map<std::string, std::string> g_ini_cache;
+bool g_ini_cached = false;
+std::chrono::steady_clock::time_point g_ini_checked;
+struct timespec g_ini_mtime{};
+const std::map<std::string, std::string>& ini_locked() {
+  const auto now = std::chrono::steady_clock::now();
+  if (g_ini_cached && now - g_ini_checked < std::chrono::milliseconds(500)) return g_ini_cache;
+  g_ini_checked = now;
+  struct stat st{};
+  const bool there = stat(launcher_ini().c_str(), &st) == 0;
+  if (g_ini_cached && there && st.st_mtimespec.tv_sec == g_ini_mtime.tv_sec && st.st_mtimespec.tv_nsec == g_ini_mtime.tv_nsec) return g_ini_cache;
+  g_ini_mtime = there ? st.st_mtimespec : timespec{};
+  g_ini_cache = read_kv(launcher_ini(), nullptr);
+  g_ini_cached = true;
+  return g_ini_cache;
+}
+}  // namespace
 std::string app_ini(const std::string& key, const std::string& fallback) {
   std::lock_guard<std::mutex> lock(g_ini_mutex);
-  const auto kv = read_kv(launcher_ini(), nullptr);
+  const auto& kv = ini_locked();
   const auto it = kv.find(key);
   return it == kv.end() ? fallback : it->second;
 }
-void app_ini_set(const std::string& key, const std::string& value) { std::lock_guard<std::mutex> lock(g_ini_mutex); write_kv(launcher_ini(), key, value); }
+void app_ini_set(const std::string& key, const std::string& value) {
+  std::lock_guard<std::mutex> lock(g_ini_mutex);
+  write_kv(launcher_ini(), key, value);
+  g_ini_cached = false;
+}
 namespace { std::atomic<bool> g_online{false}; }
 bool session_online() { return g_online.load(); }
 void set_session_online(bool online) { g_online.store(online); }

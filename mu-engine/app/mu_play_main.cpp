@@ -61,6 +61,9 @@ void mu_shim_retrace();
 void mu_shim_open_log(const std::string& path);
 }
 
+// ui/mu_panel.cpp: the menu sounds mixed into the game output, and what the session is doing (reminder, skins note).
+namespace fe::mu_ui { bool ui_sound_pending(); void ui_sound_mix(int16_t* rl, uint32_t frames, uint32_t rate); void note_session(bool fighting, bool online); }
+
 namespace {
 using Clock = std::chrono::steady_clock;
 std::atomic<bool> g_quit{false};
@@ -186,6 +189,7 @@ void on_frame(const MuStatePod& state, const linux_host::Counters& counters, voi
   info.retrace = counters.retraces; info.scene_major = state.scene_major; info.scene_minor = state.scene;
   info.match_frame = state.match_frame; info.fighting = fighting; info.online = online; info.state = &state;
   fe::features::call_retrace(info);
+  fe::mu_ui::note_session(fighting, online);   // the panel: the reminder hides in a match, the note about skins online
   if (g_restart_args.empty() && fe::features::call_take_restart(&g_restart_args)) {
     host::log("play: the game starts again with %zu more argument(s) (asked for by a feature module)", g_restart_args.size());
     linux_host::request_stop(0);
@@ -259,6 +263,10 @@ extern "C" int mu_frontend_pad_read(MuPadStatus out[4]) {
 }
 extern "C" void mu_frontend_pad_rumble(int32_t port, int32_t on) { host::input_rumble(port, on != 0); }
 extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
+  // The settings panel's menu sounds (ui/mu_panel.cpp, upstream's menusounds), mixed into this block of the game's output; the
+  // game's own samples are untouched.
+  static std::vector<int16_t> with_tick;
+  if (fe::mu_ui::ui_sound_pending()) { with_tick.assign(rl, rl + size_t(frames) * 2); fe::mu_ui::ui_sound_mix(with_tick.data(), frames, 32000); rl = with_tick.data(); }
   // The app's output takes the AI DMA layout: big-endian 16-bit samples, two per frame.
   static std::vector<uint8_t> be;
   be.resize(size_t(frames) * 4);

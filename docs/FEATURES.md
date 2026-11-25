@@ -252,7 +252,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Speed nudging for online time sync | host | active: Slippi's time-sync speed goes to the host's pacing and to the sound output's resampling ratio (audio_set_speed, the Switch's frontend/patches/0110 applied to port/runtime/host/audio_sdl.cpp); not run online |
 | Mono / Stereo | game image + host | in the engine |
 | Audio mode: shared, low latency, exclusive, ASIO; output device picker | host | active: the app's audio output (32 kHz, volume from the launcher) |
-| Menu sounds in the settings UI | renderer | not wired: the Switch's feat/ui3 panel (093c5c0) has them; its panel changes are not merged into the Mac's mu_panel.cpp yet |
+| Menu sounds in the settings UI | renderer | active: launcher.ini `menusounds` (AUDIO > Menu, off by default, as upstream): upstream's ticks (740 Hz for a move, 990 Hz when the panel or a page opens, 590 Hz when it closes) mixed into the game's output before the sound device (`mu_play_main.cpp` mu_frontend_audio, ui/mu_panel.cpp). `app_audio_test.sh ISO menusounds`: `settings: menu sound 2` as the panel opens on CUSTOMIZE, then `menu sound 1`; the recording's strongest 990 Hz share is at that second (0.022, against a median of 0.001; the tick is quiet, as upstream's) |
 
 ## 10. Saves
 
@@ -268,7 +268,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Feature | Side | Mac status |
 |---|---|---|
 | PC settings overlay | renderer | active: melee-unlocked's own panel code (VIDEO, AUDIO, GAME, CONTROLS, OVERLAYS, CUSTOMIZE, GECKO CODES, MODS) drawn with Dear ImGui on the Metal renderer; L + R + Start, F1 or Escape opens it; controller and keyboard navigation (`mu-engine/app/ui`) |
-| Settings appearances | renderer | partial: the Clean side style with melee-unlocked's palettes and accents; the other menu styles (Icon tiles, GD Melee, Radial, Wide tabs, Simple, the legacy menus), transparency and custom accent are on the Switch since 093c5c0 but not merged into the Mac's panel yet (an 844-line change to a file the Mac has diverged from) |
+| Settings appearances | renderer | active: every menu style of melee-unlocked's panel, drawn by its own code from the fetched tree (`ui/mu_ui_extract.py`): Clean side, Icon tiles, GD Melee (its kit pictures and font pages embedded at build time), Radial, Wide tabs, Simple, and the two legacy menus (Classic, Legacy Old; F11 switches when "Enable Legacy Menu" is on); each style's four palettes, Window transparency, Use custom accent with upstream's colour wheel, and upstream's style gallery (its six screenshots) on CUSTOMIZE, taken with the pointer or a controller (the panel now takes clicks and the scroll wheel, `ui/ui_metal.mm`); launcher.ini keys as upstream's (`overlaystyle`, `overlaypalette0..6`, `settingstransparency`, `menucustom`, `menuhue/menusat/menuval`, `legacymenu`, `legacymenustyle`). Screenshots: build/shots-ui/customize-clean.png, gallery.png, accent-wheel.png, transparency-accent.png, style1-home.png .. style5-video.png, style2-game.png, legacy-old.png, legacy-classic.png |
 | Settings search | renderer | active: melee-unlocked's search code in the panel |
 | Settings file | host | active: what the panel changes is saved to launcher.ini for the next start |
 | Pause menu on Esc | renderer | active: Escape opens the settings panel |
@@ -276,7 +276,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Frame counter and performance graph | renderer | active: settings.ini `showfps 1` (presented and game frames a second, simulation time) and `performance 1` (the last seconds of simulation time), the overlays module (fe/features/overlays.cpp, fe/overlay_draw.cpp); seen in a playback screenshot |
 | Player nicknames above fighters | renderer | wired: settings.ini `playernicknames 1` draws the netplay host's names over the fighters online (the overlays module); not run online on the Mac |
 | Controller input overlay | renderer | active: settings.ini `inputoverlay 1` with `inputoverlayvalues`, `inputoverlaystick`, `inputoverlayports`, `inputoverlayhideborder` (the overlays module); seen in a playback screenshot. Fixed place (no dragging) |
-| Note when skins are off online | renderer | not wired |
+| Note when skins are off online | renderer | active: launcher.ini `skin_online_notice` (on by default, OVERLAYS > Notices): once per visit to the online screens, for 15 seconds, when a picked skin is served as the standard costume there (fe/features/cosmetics.cpp `cosmetics_off_online`, upstream's draw_skin_online_notice); not seen online on the Mac |
 | Accessibility-type options | see sections 4, 8 | not wired |
 | Text size or colour-blind setting | n/a | upstream stub (does not exist) |
 | Logs | host | active: one timestamped session log per launch in ~/Library/Application Support/Dashdance/Logs (newest 50, latest.log), the engine's engine.log and engine.log.host in melee-unlocked/ |
@@ -406,8 +406,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A40 | Notices in Training | not wired; Switch: easy - text cards over the picture; macOS: easy |
 | A41 | Corner hint and intro | not wired; Switch: easy; macOS: easy |
 | A47 | Warm-up picture-in-picture window | not wired; Switch: hard - two game pictures at once (second process upstream); macOS: hard |
-| A51 | Menu styles | not wired; Switch: hard - large ImGui art port; macOS: hard. Low player value |
-| A53 | Radial wheel navigation | not wired; Switch: medium; macOS: medium |
+| A51 | Menu styles | active (Settings appearances, section 11) |
+| A53 | Radial wheel navigation | active: the Radial style's wheel, with the stick and the D-pad (settings_radial_nav from the fetched tree) |
 | A56 | "PC Settings" row in Melee's Options | not wired; Switch: medium - game image exposes the row; host must answer and open our menu; macOS: medium |
 | A57 | "Restart now" button | not wired; Switch: medium - app relaunch of the game program; macOS: easy |
 | A59 | Settings view memory | not wired; Switch: easy; macOS: easy |
