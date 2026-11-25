@@ -513,9 +513,16 @@ bool open_replay(const std::string& given) {
     pb = Playback{};
     return false;
   }
-  if (!profile.empty() && profile != mods_fingerprint())
-    say("replay: %s was recorded with mod content %.16s; this session has %s: it may not play as recorded", path.c_str(), profile.c_str(),
+  // As upstream's check_replay_content: a replay plays only with the content it was recorded with (other fighter or stage
+  // files play a different game from the same inputs); one without mod content in a session with mods gets a warning.
+  if (!profile.empty() && profile != mods_fingerprint()) {
+    say("replay: %s was recorded with mod content %.16s, but this session has %s; enable the same mods to play it", path.c_str(), profile.c_str(),
         mods_fingerprint().empty() ? "the retail game" : mods_fingerprint().substr(0, 16).c_str());
+    pb = Playback{};
+    return false;
+  }
+  if (profile.empty() && !mods_fingerprint().empty())
+    say("replay: %s records no mod content but mods are enabled; it may not play back as recorded", path.c_str());
   each_event(bytes, [&](uint8_t command, const uint8_t* p, size_t n) {
     if (command == 0x36 && pb.game_start.empty()) pb.game_start.assign(p, p + n);
     else if (command == 0x39) pb.game_end.assign(p, p + n);
@@ -559,7 +566,11 @@ bool open_replay(const std::string& given) {
   say("replay: %s, Slippi %s, frames %d..%d, stage %u, seed %08X, codes %08X (%zu others not native), options %08X %08X %08X, %zu post-frame records",
       path.c_str(), pb.game->GetVersionString().c_str(), pb.first, pb.last, unsigned(s->stage), s->randomSeed,
       pb.start.codes, unknown, pb.words[0], pb.words[1], pb.words[2], pb.post.size());
-  if (s->stage > 85) say("replay: stage %u is not in the standard game: this replay needs the mod it was recorded with", unsigned(s->stage));
+  if (s->stage > 85) {   // upstream's rule (launcher_replays.inl): a mod's stage would sit on a blank screen
+    say("replay: %s was recorded with a mod (stage %u is not in the standard game); it needs that mod to play", path.c_str(), unsigned(s->stage));
+    pb = Playback{};
+    return false;
+  }
   scan_coach();
   return true;
 }

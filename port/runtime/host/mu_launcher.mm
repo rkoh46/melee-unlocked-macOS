@@ -226,6 +226,7 @@ struct Card {
   std::string trace_summary;
 };
 __attribute__((weak)) Card read(const std::string&) { return {}; }
+__attribute__((weak)) int stage_of(const std::string&) { return -1; }
 }
 // The mod profile the engine loads at its next start: settings.ini's mod_profile (fe/settings.cpp reads it; the engine's
 // MODS page writes the same key).
@@ -300,6 +301,7 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 @property(nonatomic) NSInteger picked;
 @property(nonatomic) std::shared_ptr<mu_replay_stats::Card> card;
 @property(nonatomic) BOOL cardLoading;
+@property(nonatomic) NSString* replayNote;   // why a replay did not start (upstream's replay_status line)
 // The update check: this repository's branch on GitHub against the commit this app was built from (Info.plist MUBuildCommit).
 // Never melee-unlocked's own updater: this app is built from source, so an update is the install line run again.
 @property(nonatomic) NSString* updateText;
@@ -681,6 +683,7 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
     }
     y += 44;
   }
+  if (self.replayNote.length) text(self.replayNote, LR(CX, WIN_H - 84, CW, 30), f_small(), C_WARN, LEFT, 0, true);
   if (picking) [self paintCard:rows[size_t(self.picked)] y:58 + std::min<size_t>(3, rows.size()) * 44];
   else if (self.liveWatch) text(self.liveStatus ?: @"", LR(CX, 58 + 7 * 44 + 6, CW, 34), f_small(), C_DIM, LEFT, 0, true);
   [self button:@"replaysfolder" rect:LR(CX, WIN_H - 50, 166, 32) title:@"Open Replays folder" primary:NO enabled:YES];
@@ -932,6 +935,13 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 }
 // Replays play in the melee-unlocked engine (MeleeUnlockedEngine --replay), in its own window beside the launcher.
 - (void)watch:(NSString*)replay {
+  // upstream's rule (launcher_replays.inl): a match played on a mod's stage would sit on a blank screen; say so instead.
+  if (const int stage = mu_replay_stats::stage_of(replay.UTF8String); stage > 85) {
+    host::log("launcher: %s was recorded on stage %d, not in the standard game: not started", replay.UTF8String, stage);
+    self.replayNote = [NSString stringWithFormat:@"This replay was recorded with a mod (stage %d is not in the standard game). It needs that mod to play.", stage];
+    [self setNeedsDisplay:YES];
+    return;
+  }
   if (self.settings->iso.empty()) { host::mac_show_error("Choose your disc first", "Watching a replay needs the same disc image as playing."); return; }
   NSTask* task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:ns(host::engine_path())];

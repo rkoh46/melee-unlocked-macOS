@@ -28,6 +28,7 @@ static inline int localtime_s(std::tm* out, const time_t* t) { return localtime_
 
 namespace mu_replay_stats {
 namespace lr = launcher::replay;
+int stage_of(const std::string& path) { const lr::Info s = lr::inspect(path, false); return s.valid ? int(s.stage_id) : -1; }
 Card read(const std::string& path) {
   Card c;
   const lr::Info s = lr::inspect(path, true);

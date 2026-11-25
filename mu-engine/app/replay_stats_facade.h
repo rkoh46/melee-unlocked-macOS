@@ -17,4 +17,5 @@ struct Card {
   std::string trace_summary;
 };
 Card read(const std::string& path);   // slow (parses the whole file): call it off the main thread
+int stage_of(const std::string& path);   // the replay's stage id (-1: not a replay this reads); quick
 }  // namespace mu_replay_stats
