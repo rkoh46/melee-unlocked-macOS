@@ -150,7 +150,21 @@ static std::string melee_unlocked_engine_path() {
 
 // launcher.ini: what the dashboard chose, also rewritten at exit when the in-game menu changed something.
 static void save_launcher_ini(const fs::path& path, const host::LauncherSettings& settings) {
+  // Keys this file does not write (the melee-unlocked panel's appearance, the launcher's language, ...) are kept as they were.
+  static const char* const kOwn[] = {"iso", "widescreen", "online", "sharpness", "overlay", "overlay_scale", "scale", "anisotropy", "upscaler",
+                                     "vsync", "fullscreen", "volume", "hud", "online_delay", "discord", "discord_rank", "engine", "accent", "keyboard"};
+  std::vector<std::string> kept;
+  {
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+      const std::string key = line.substr(0, line.find('='));
+      if (key.empty() || line.find('=') == std::string::npos || key.rfind("controller.", 0) == 0) continue;
+      if (std::none_of(std::begin(kOwn), std::end(kOwn), [&](const char* k) { return key == k; })) kept.push_back(line);
+    }
+  }
   std::ofstream out(path, std::ios::trunc);
+  for (const std::string& line : kept) out << line << "\n";
   out << "iso=" << settings.iso << "\nwidescreen=" << (settings.widescreen ? 1 : 0) << "\nonline=" << (settings.online ? 1 : 0)
       << "\nsharpness=" << settings.sharpness << "\noverlay=" << settings.overlay_opacity << "\noverlay_scale=" << settings.overlay_scale
       << "\nscale=" << settings.scale << "\nanisotropy=" << settings.anisotropy << "\nupscaler=" << settings.upscaler << "\nvsync=" << (settings.vsync ? 1 : 0)
