@@ -1,0 +1,21 @@
+Playback's first-frame spawn correction only when the fighter is moved (resync, or a recorded spawn that is not where
+the boot put it): a menus-started match never gets it, and resetting the collision data of a fighter spawned in the
+air made frame -118 differ by one ulp (mumac, docs/MAC_FIXES.md #10).
+
+--- a/sourceport/game/shim/mu_replay.c
++++ b/sourceport/game/shim/mu_replay.c
+@@ -885,8 +885,12 @@ void mu_replay_input(Fighter* fp)
+             Fighter_TakeDamage_8006CC7C(fp, f[8] - fp->dmg.x1830_percent);
+         }
+     }
+-    /* Spawn correction on the first frame. */
+-    if (frame_index == FIRST_FRAME) {
++    /* Spawn correction on the first frame. mumac: only when the fighter is moved (resync, or a recorded spawn that is
++     * not where this boot put it). A match started from the menus never gets it, so where the playback's fighter
++     * already stands at the recorded spawn, resetting its collision data here (cur/last position and the step counter)
++     * only made the first EntryStart frame differ from the recording: a fighter spawned in the air (Onett's first spawn point)
++     * keeps the spawn ground check's -10/+10 offsets for its first air collision, which nudges y by one ulp. */
++    if (frame_index == FIRST_FRAME && (resync || fp->cur_pos.x != f[5] || fp->cur_pos.y != f[6])) {
+         CmSubject* box;
+         ftPartSetRotX(fp, 0, 0.0f);
+         fp->coll_data.cur_pos = fp->cur_pos;

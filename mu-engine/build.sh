@@ -30,7 +30,8 @@ build_game() {
     cmake -S build/mu-engine/mu/sourceport/game -B $b -G Ninja -DCMAKE_C_COMPILER=/usr/local/bin/gcc -DCMAKE_CXX_COMPILER=/usr/local/bin/g++ \
       -DCMAKE_BUILD_TYPE=Release -DMELEE_CPU_BASELINE=AVX2 -DYOUGAME_AGENT_TEST_HOOK=OFF -DYOUGAME_RANKED_BRANCH=ON -DMELEE_DOUBLES=OFF \
       "-DCMAKE_C_FLAGS='"$GAME_FLAGS"'" "-DCMAKE_CXX_FLAGS='"$GAME_FLAGS"'" >/dev/null
-    cmake --build $b --target melee_game -j "$(nproc)" | tail -2
+    cmake --build $b --target melee_game -j "$(nproc)" > $b/build.log 2>&1 || { grep -E "error|FAILED" -A3 $b/build.log | head -30; exit 1; }
+    tail -1 $b/build.log
     cp $b/melee_game.so build/mu-engine/out/melee_game.so
     cp $b/melee_game.snapexcl build/mu-engine/out/melee_game.snapexcl
     # The Gecko lists recordings carry (melee-unlocked'"'"'s own generator; replay metadata only).
