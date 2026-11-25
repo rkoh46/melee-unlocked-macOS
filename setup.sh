@@ -26,13 +26,13 @@ step "Command Line Tools"
 xcode-select -p >/dev/null 2>&1 || { echo "installing the Command Line Tools (a dialog will open)…"; xcode-select --install || true; fail "re-run ./setup.sh once the Command Line Tools have finished installing."; }
 unset DEVELOPER_DIR
 
-step "Homebrew packages (cmake ninja python)"
+step "Homebrew packages (cmake ninja python rust)"
 if ! command -v brew >/dev/null; then
   echo "Homebrew is not installed; installing it (https://brew.sh)…"
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
-for pkg in cmake ninja python; do brew list --versions "$pkg" >/dev/null 2>&1 || brew install "$pkg"; done
+for pkg in cmake ninja python rust; do brew list --versions "$pkg" >/dev/null 2>&1 || brew install "$pkg"; done
 
 step "Docker (melee-unlocked's game is compiled with GCC 15 in a Linux container)"
 command -v docker >/dev/null 2>&1 || fail "Docker is not installed. Install OrbStack (https://orbstack.dev) or Docker Desktop, start it, and run this again."
