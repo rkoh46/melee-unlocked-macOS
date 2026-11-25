@@ -202,7 +202,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Controller input to the game | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | GameCube adapter | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | Adapter polling-rate readout | host + renderer | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
-| Xbox, DualShock 4, DualSense, Switch Pro, Joy-Con, generic HID pads | host | not wired |
+| Xbox, DualShock 4, DualSense, Switch Pro, Joy-Con, generic HID pads | host | active through SDL3's gamepad support in the app's controller path (mapping on the panel's CONTROLS page); not tried with each pad |
 | Keyboard | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | Remapping | host + renderer | active: the panel's CONTROLS page (the app's remap, and the bindings page of fe/controls.cpp) |
 | Controller profiles | host | active: fe/controls.cpp profiles (ControllerProfiles folder), on the CONTROLS page |
@@ -305,11 +305,11 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | "What's new" | launcher | not wired |
 | Launcher languages | launcher | not wired |
 | Launcher colour and rail picture | launcher | active: launcher colour wheel |
-| Mods page | launcher | not wired: Mods page has the folder; the catalog installer comes with the shared library |
-| Mods catalog | launcher + external | not wired: Mods page has the folder; the catalog installer comes with the shared library |
+| Mods page | launcher | active: the launcher's Mods page lists, installs and removes mods with the shared installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp), and Use picks a profile for an offline start |
+| Mods catalog | launcher + external | active: melee-unlocked's mods-catalog-2.json from the fetched tree, installed by the shared installer (`mu-engine/tools/mod_install_test.sh`) |
 | Melee 3D | launcher | not wired |
-| Replay library | launcher | partial: Replay Viewer lists games; Watch uses the classic engine's playback build |
-| Replay stats | launcher | partial: Replay Viewer lists games; Watch uses the classic engine's playback build |
+| Replay library | launcher | partial: the launcher's Replays page lists the games and Watch plays one in the melee-unlocked engine (`--replay`, the replays module with its viewer); no library page of its own |
+| Replay stats | launcher | partial: the replays module's coach tips are logged at playback (fe/features/replay_coach_glue.cpp); no stats page |
 | Watch live | launcher | not wired |
 | Multiplayer Lobby | launcher + external | not wired |
 | Hosted lobby service | launcher | not wired |
