@@ -1,3 +1,0 @@
-Dear ImGui v1.92.8
-https://github.com/ocornut/imgui/tree/v1.92.8
-MIT license: LICENSE.txt

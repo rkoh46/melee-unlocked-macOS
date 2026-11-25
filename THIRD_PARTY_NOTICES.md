@@ -1,15 +1,16 @@
 # Licences and third-party notices
 
-Dashdance is distributed under the GNU General Public License, version 2 or (at your option) any later version
-(GPL-2.0-or-later). The full text is in [LICENSE](LICENSE). This page lists what the project is built from, the licence
+melee-unlocked-macOS (which grew out of Dashdance) is distributed under the GNU General Public License. Its own code is
+version 2 or (at your option) any later version (GPL-2.0-or-later); the app as built includes melee-unlocked's engine, which
+is GPL-3.0-or-later, so builds are distributed under GPL-3.0. The full GPLv2 text is in [LICENSE](LICENSE). This page lists what the project is built from, the licence
 each part carries, and the evidence for it, so the licensing can be checked rather than taken on trust. It was compiled
 from the upstream repositories on 2026-09-14. It is a factual record, not legal advice.
 
 ## The project itself
 
-| Source | What Dashdance uses | Licence | Evidence |
+| Source | What this project uses | Licence | Evidence |
 |---|---|---|---|
-| [Hero88go/melee-unlocked](https://github.com/Hero88go/melee-unlocked) | The fork's base: the recompiler, runtime and HLE layers (pinned in `tools/port_source_pins.json`) | GPL-2.0-or-later | Its README, section "License": "GPL-2.0-or-later." |
+| [Hero88go/melee-unlocked](https://github.com/Hero88go/melee-unlocked) | The fork's base (commit `b8360b1`): the GX decoder and host layers in `port/runtime` that the app's renderer and input still use. The static recompiler it started from was removed | GPL-2.0-or-later | Its README at that commit, section "License": "GPL-2.0-or-later." |
 | [Hero88go/melee-unlocked](https://github.com/Hero88go/melee-unlocked) v1.0.5 (commit `67868aa`) | The melee-unlocked engine (`mu-engine/`): its native game (the Melee decompilation's C, built from source at build time) and its headless host services, fetched by `mu-engine/fetch.sh` and changed only by the build-time patches in `mu-engine/patches`; nothing from it is committed | GPL-3.0-or-later (builds with the melee-unlocked engine are therefore GPL-3.0) | Its README, section "License": "GPL-3.0-or-later, starting with 0.8.5"; its `LICENSE` is the GPLv3 text. |
 | Melee-NX-NetPlay (same author as this fork) | `mu-engine/runner` (ELF loader, runner, rollback store, netplay host), `mu-engine/fetch.sh`, the patches `0001`-`0004`, `0011` and `decomp-0001`-`0003`, the mod installer (`mu-engine/modinstall`, `mu-engine/tools/mod_install_test.*`), the replays module (`mu-engine/app/replays.cpp`) and Slippi menu files (`mu-engine/app/slippi_menus.cpp`), the reference digests and `mu-engine/tools`, its Slippi 3.7.0 netplay (`mu-engine/net`: files of its `port/runtime/hle` and `port/runtime/host/md5.h`, its ENet changes, its `patches/net-0001`-`0012`), `mu-engine/net_sources.sh`, `tools/mac/mock_matchmaking_ws.py`, `tools/mac/mock_slippi_http.py`, the controller scripts in `mu-engine/tests/online`, adapted from its `experiments/native-engine`; `port/runtime/host/input_script.cpp` and `.h` (`@rearm`) from its `port/`; the looks (`mu-engine/app/fe/looks_live.h`, `fe/features/looks.cpp`, and `mu-engine/app/gx_looks_mac.cpp` adapted from its `frontend/patches/0116-gx-looks.patch`, which adapts melee-unlocked's GPL-2.0-or-later look rules), skins (`fe/features/cosmetics.cpp`, which compiles melee-unlocked's pack_skin_rule and skeleton checks from the fetched tree at build time) and `mu-engine/patches/0013` (its `patches/0007`) | GPL-3.0-or-later | Its source files carry `SPDX-License-Identifier: GPL-3.0-or-later`. |
 | [xdelta](https://github.com/jmacd/xdelta) 3.1.0 (Joshua P. MacDonald) | The DJW secondary decoder in `mu-engine/modinstall/mi_vcdiff.cpp` (from Melee-NX-NetPlay) is adapted from its `xdelta3/xdelta3-djw.h` and `xdelta3-second.h`; the rest of the VCDIFF decoder is written from RFC 3284; no xdelta3 program is shipped or run | GPL-2.0-or-later, used here under GPL-3.0-or-later | The files' headers at tag v3.1.0: "either version 2 of the License, or (at your option) any later version". |
@@ -28,43 +29,29 @@ from the upstream repositories on 2026-09-14. It is a factual record, not legal 
 | [libmelee](https://github.com/altf4/libmelee) | Randall's positions on Yoshi's Story, as the table melee-unlocked generated (`port/runtime/hle/phillip_randall.h`), compiled from the fetched tree | LGPL-3.0 (GPL-3.0 compatible) | The generated header: "from libmelee's melee.stages.randall_position (LGPL-3.0, https://github.com/altf4/libmelee)". |
 | [zstd](https://github.com/facebook/zstd) 1.5.7 | The copy melee-unlocked vendors (`port/third_party/zstd`), compiled into the engine for `.slpz` replays; not committed | BSD-3-Clause (or GPL-2.0) | Its `LICENSE` (BSD) and the fetched tree's `SOURCES.txt`. |
 | Dolphin's free DSP coefficient table | melee-unlocked's `port/slippi_sys/GC/dsp_coef.bin`, embedded at build time for the options module's DSP low-pass setting; not committed | GPL-2.0-or-later | melee-unlocked's `docs/licenses/dsp-coefficients.txt`. |
-| [Dolphin](https://github.com/dolphin-emu/dolphin) | Ports: GX register layouts and shader generation (`gx_regs.h`, `gx_shader.cpp`), AX audio (`ax_ucode.cpp`), memory-card layout | GPL-2.0-or-later | Ported files carry `SPDX-License-Identifier: GPL-2.0-or-later` (for example `VideoCommon/PixelShaderGen.cpp`, `VideoCommon/BPMemory.h`, `Core/HW/DSPHLE/UCodes/AX.cpp`). Its COPYING says the repository as a whole "is compatible with the GPLv3 license". |
-| [Slippi Ishiiruka](https://github.com/project-slippi/Ishiiruka) | Ports: the Slippi EXI device, netplay, matchmaking, user record, savestates and playback (`exi_slippi.*`, `slippi_net.*`, `slippi_online.*`, `slippi_playback.*`); SlippiLib (`port/third_party/slippilib`, from `Externals/SlippiLib`); the Sys files in `port/slippi_sys` (from `Data/Sys`) | GPL-2.0-or-later | Its Readme: "licensed under the terms of the GNU General Public License, version 2 or later (GPLv2+)". Source headers such as `EXI_DeviceSlippi.cpp` and `SlippiNetplay.cpp`: "Licensed under GPLv2+". |
-| [Slippi Dolphin](https://github.com/project-slippi/dolphin) | The playback Sys files in `port/slippi_sys_playback` | GPL-2.0-or-later, per file | Same COPYING and SPDX scheme as Dolphin. |
-| [slippi-rust-extensions](https://github.com/project-slippi/slippi-rust-extensions) | A C++ port of the jukebox (`jukebox.cpp`); the Discord presence follows [pull request 36](https://github.com/project-slippi/slippi-rust-extensions/pull/36), which is not merged | GPL-2.0, no version stated | The repository ships the GPLv2 text as `LICENSE`; neither its README nor any crate's `Cargo.toml` states a version. Section 9 of GPLv2: "If the Program does not specify a version number of this License, you may choose any version ever published by the Free Software Foundation." |
+| [Dolphin](https://github.com/dolphin-emu/dolphin) | Ports: GX register layouts and shader generation (`gx_regs.h`, `gx_shader.cpp`) | GPL-2.0-or-later | Ported files carry `SPDX-License-Identifier: GPL-2.0-or-later` (for example `VideoCommon/PixelShaderGen.cpp`, `VideoCommon/BPMemory.h`). Its COPYING says the repository as a whole "is compatible with the GPLv3 license". |
+| [Slippi Ishiiruka](https://github.com/project-slippi/Ishiiruka) | Ports: netplay, matchmaking and the user record in the engine's netplay object (`mu-engine/net/hle`, through Melee-NX-NetPlay); the GameFiles in `port/slippi_sys` (from `Data/Sys`) | GPL-2.0-or-later | Its Readme: "licensed under the terms of the GNU General Public License, version 2 or later (GPLv2+)". Source headers such as `EXI_DeviceSlippi.cpp` and `SlippiNetplay.cpp`: "Licensed under GPLv2+". |
+| [slippi-rust-extensions](https://github.com/project-slippi/slippi-rust-extensions) | The Discord presence (`port/runtime/hle/discord_rpc.cpp`) follows [pull request 36](https://github.com/project-slippi/slippi-rust-extensions/pull/36), which is not merged | GPL-2.0, no version stated | The repository ships the GPLv2 text as `LICENSE`; neither its README nor any crate's `Cargo.toml` states a version. Section 9 of GPLv2: "If the Program does not specify a version number of this License, you may choose any version ever published by the Free Software Foundation." |
 
 ## Components under other licences
 
-| Component | Where | Licence | In the Apple apps? |
+| Component | Where | Licence | In the app? |
 |---|---|---|---|
-| [SDL 3](https://github.com/libsdl-org/SDL) | Built from Aurora's vendored copy | zlib | Yes |
-| [Aurora](https://github.com/encounter/aurora) (commit 749d6ee) | Build tooling that provides SDL | MIT | Its SDL only |
+| [SDL 3](https://github.com/libsdl-org/SDL) 3.4.10 | Fetched and built from source by `port/CMakeLists.txt` (pinned by SHA-256) | zlib | Yes |
 | [ENet](https://github.com/lsalzman/enet) | `port/third_party/enet`; Melee-NX-NetPlay's changed `enet.h`, `peer.c` and `protocol.c` in `mu-engine/net/enet` | MIT, see its `LICENSE` | Yes |
 | [nlohmann/json](https://github.com/nlohmann/json) 3.4.0 | `port/third_party/nlohmann/json.hpp` | MIT, notice in the header | Yes |
-| [hps_decode](https://github.com/DarylPinto/hps_decode) 0.3.0 | The HPS/DSP-ADPCM decoding that `jukebox.cpp` ports, via slippi-rust-extensions | MIT | Yes (as a port) |
 | [VirtualFriend](https://github.com/agg23/virtualfriend) | The on-screen controller layout and touch model in `window_sdl.cpp` are adapted from it | MIT | Yes (as an adaptation) |
-| [ControllerOverlays](https://github.com/datkat21/ControllerOverlays) | The GameCube controller artwork in `port/app/art/controller` | GPL-3.0 | Yes |
-| [Dear ImGui](https://github.com/ocornut/imgui) | `port/third_party/imgui` | MIT, see its `LICENSE.txt` | No, Windows build only |
-| [NVIDIA Streamline](https://github.com/NVIDIAGameWorks/Streamline) | `port/third_party/streamline` | MIT, see its `license.txt` | No, Windows build only |
-
-**ControllerOverlays** ships the GPLv3 text without a version statement; section 14 of GPLv3 then lets recipients choose
-any published version. Builds that include the artwork are distributed under GPL-3.0, which the rest of the project's
-GPL-2.0-or-later licence permits.
-
-**NVIDIA Streamline** is MIT, except the NSight Perf SDK files its `license.txt` names (`sl_nvperf.h`, `sl_nvperf.dll`),
-which fall under NVIDIA's separate NSight Perf SDK licence. Dashdance uses neither, so `sl_nvperf.h`, which came in with
-the upstream fork, was removed.
 
 ## Not in this repository
 
-- **doldecomp/melee.** The build reads a checkout of [doldecomp/melee](https://github.com/doldecomp/melee) for function names
-  and generates an animation interpreter from its `fobj.c` and `spline.c` (`tools/generate_fobj_host.py`). That repository
-  publishes no licence. The generated code is created in your build folder and compiled into your own build; it is not
-  committed here.
+- **doldecomp/melee.** melee-unlocked's game is the [doldecomp/melee](https://github.com/doldecomp/melee) decompilation's C
+  (melee-unlocked's pinned submodule), compiled at build time in your own build folder; that repository publishes no licence,
+  and none of it is committed here.
 - **Super Smash Bros. Melee.** Nintendo and HAL Laboratory own the game. This repository contains none of its code or data;
-  every build is made from a disc image the player supplies. The files in `port/slippi_sys` are Slippi's own code list,
-  code handler and patches, as distributed in Slippi Ishiiruka.
-- **Trademarks.** Slippi is a trademark of its authors. The Dashdance name, icon and mark are original to this project.
+  the game runs from a disc image the player supplies. The files in `port/slippi_sys` are Slippi's own menu files and
+  patches, as distributed in Slippi Ishiiruka.
+- **Trademarks.** Slippi is a trademark of its authors. melee-unlocked's name, icon and launcher artwork are melee-unlocked's,
+  converted from the fetched tree when the app is packaged and never committed.
 
 ## AI-assisted development
 
@@ -79,19 +66,20 @@ that a human may select, arrange or modify AI-generated material in a way that i
 
 What that means here:
 
-- The licence covers every part of Dashdance that is protected by copyright. That includes the upstream code above, which
+- The licence covers every part of this project that is protected by copyright. That includes the upstream code above, which
   people wrote, and the human selection, arrangement and modification in this project.
 - Parts that are purely AI-generated may not be protected at all. Nobody, this project included, can restrict their use
   with a licence.
 - That does not make the project public domain. Code derived from the GPL sources above stays under the GPL, and anyone
-  who distributes Dashdance or a modified version must follow the GPL for it.
+  who distributes it or a modified version must follow the GPL for it.
 - Anthropic's [commercial terms](https://www.anthropic.com/legal/commercial-terms) assign to the customer whatever rights
   Anthropic has in outputs; they do not create copyright where the law recognises none.
 
 ## Notice texts
 
-The MIT and zlib licences require their notices to be kept. ENet, Dear ImGui, nlohmann/json and Streamline keep theirs in
-`port/third_party`. The others, which are not otherwise present in this repository:
+The MIT and zlib licences require their notices to be kept. ENet and nlohmann/json keep theirs in `port/third_party`; the
+app bundle carries the licences of what the engine compiles in from the fetched melee-unlocked tree (Source Sans 3, Dear
+ImGui, zstd). The others, which are not otherwise present in this repository:
 
 ### VirtualFriend
 
@@ -117,58 +105,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-```
-
-### hps_decode
-
-```
-MIT License
-
-Copyright (c) 2023 Daryl Pinto
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### Aurora
-
-```
-The MIT License
-
-Copyright (c) 2022 Luke Street
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 ```
 
 ### SDL

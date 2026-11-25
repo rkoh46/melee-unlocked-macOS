@@ -68,7 +68,6 @@ void catalog_poll() {
   else log_line("mods: the refreshed catalog (" + from + ") was refused: " + error + "; the built-in one stays");
 }
 }
-bool available() { return true; }
 void configure(const std::string& mods_dir, const std::string& disc_path) {
   if (g_manager && g_manager->config().disc_path == disc_path && g_mods_dir == mods_dir) return;
   if (g_manager && g_manager->busy()) return;

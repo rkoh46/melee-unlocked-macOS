@@ -24,11 +24,11 @@ POST_FIELDS = [
     ("anim", 0x4C, ">I"), ("hit_by_instance", 0x50, ">H"), ("instance", 0x52, ">H"),
 ]
 
-# Common action state names (ftCo_MS_*), read from the decomp's enum when it is checked out.
+# Common action state names (ftCo_MS_*), read from the decomp's enum in the fetched melee-unlocked tree (mu-engine/fetch.sh).
 def _load_state_names():
     import re
     names = {}
-    forward = Path(__file__).resolve().parents[2] / "deps/melee/src/melee/ft/kinds/ftCommon/forward.h"
+    forward = Path(__file__).resolve().parents[2] / "build/mu-engine/mu/sourceport/extern/melee/src/melee/ft/kinds/ftCommon/forward.h"
     if not forward.exists():
         return names
     text = forward.read_text()

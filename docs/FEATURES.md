@@ -34,15 +34,15 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Rollback savestates | host | active: the hot-page store with macOS write tracking (580 rollbacks, net check equal, in the loopback rollback test) |
 | Slippi account | host | active: the app's own sign-in file, or the Slippi Launcher's when the app has none |
 | Matchmaking | host + external | active: the app's matchmaking client (ENet); tested against the loopback stand-in only |
-| Online input delay | host | active: the launcher's setting (1-4, or the in-game menu's larger value) is passed to the engine |
+| Online input delay | host | active: the launcher's setting (Auto or 1-4, or the in-game menu's larger value) is passed to the engine |
 | Time sync, frame advance/skip | host | active (the app's netplay; frame-rate nudges go to the host's pacing) |
 | Desync detection and notice | game image + host | active: the game's checksum comparison (0 desync messages in the tests) |
 | Player drop handling (3.7.0) | game image + host | partial: Slippi 3.7.0 despawn frames in the ONLINE_INPUTS reply; not tested with a real drop |
 | Slippi input suggestions (3.7.0) | host | active: sent and used (net-0001). The netplay object's sampler thread reads the local controller about a thousand times a second through the app's input path (mu_play_main.cpp suggest_read: adapter, SDL gamepads, keyboard, remap and controller setup on their own filter lane; nothing while the settings panel holds the controllers), never at the same time as the game's poll; settings.ini `input_suggestions` (on by default, as upstream). Loopback test from the game's menus with the scripts playing (`MU_SCRIPT_PLAYS=1 MU_SUGGEST_LEAD_MS=8 app_online_menus_test.sh`): `input suggestions: sent and used`, 6 and 4 sent, the other side `6 replies predicted from one`, net check equal, 0 desync messages. Not yet played against a real opponent |
-| Version gate | host | active: the engine's netplay reports Slippi 3.7.0 (Melee-NX-NetPlay's 3.7.0 netplay: the WebSocket queue, appVersion 3.7.0 in the join) and says so when Slippi names a newer release; loopback queue stand-in: `join ... appVersion 3.7.0`. The legacy engine (port/runtime/hle) is still 3.6.4, which Slippi's service now refuses |
+| Version gate | host | active: the engine's netplay reports Slippi 3.7.0 (Melee-NX-NetPlay's 3.7.0 netplay: the WebSocket queue, appVersion 3.7.0 in the join) and says so when Slippi names a newer release; loopback queue stand-in: `join ... appVersion 3.7.0`. |
 | Replay recording (.slp) | game image + host | active: every match, offline and online (`mu-engine/app/replays.cpp`) |
 | Compressed replays (.slpz) | host | active: settings.ini compressreplays 1 (melee-unlocked's zstd) |
-| Replay playback | game image + host | active: `--replay` and the launcher's Watch, through the replays module (`fe/features/replays.cpp`); a replay without a code list plays as Vanilla. Recordings with codes (online, offline play mode) and vanilla recordings started from the menus play back with 0 differing post-frame records (online loopback games: 6844 and 13120 equal; vanilla play-mode recordings of parity_vs_onett and vs4_busy: 14648 and 29296 equal, after mu-engine/patches/0014, docs/MAC_FIXES.md #10). Recordings made by the legacy engine (Dashdance) are not exact: one from 2026-10-09 differs from frame 2336 on |
+| Replay playback | game image + host | active: `--replay` and the launcher's Watch, through the replays module (`fe/features/replays.cpp`); a replay without a code list plays as Vanilla. Recordings with codes (online, offline play mode) and vanilla recordings started from the menus play back with 0 differing post-frame records (online loopback games: 6844 and 13120 equal; vanilla play-mode recordings of parity_vs_onett and vs4_busy: 14648 and 29296 equal, after mu-engine/patches/0014, docs/MAC_FIXES.md #10). Recordings made by the earlier static-recompilation engine (Dashdance, removed) are not exact: one from 2026-10-09 differs from frame 2336 on |
 | Replay viewer controls | host + renderer | active: Start/Z pause, D-pad seek and step, L speed, R fast forward, X/Y tips (the replays module, drawn by `fe/overlay_draw.cpp`) |
 | Replay takeover | game image + host | active: A takes over (the replays module) |
 | Replay coach tips | game image + host + renderer | active: melee-unlocked's coach (replay_coach.cpp from the fetched tree) through the replays module |
@@ -211,7 +211,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Box controllers | host | active: fe/controls.cpp box mode (melee-unlocked's box_melee.h) |
 | PhobGCC settings on a stock controller | host + renderer | partial: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) with its own calibration; melee-unlocked's PhobGCC filter on the adapter's raw reports (the Switch's phob.cpp and patches/0123) is not ported yet |
 | PhobScope and Phob Check | renderer + host | not wired |
-| "Play as P2/P3/P4" | host + renderer | active in the app's form: a controller's fixed port in its configuration (input_config, the launcher's controller pages; window_sdl.cpp gives fixed ports first) |
+| "Play as P2/P3/P4" | host + renderer | active in the app's form: a controller's fixed port in its configuration (input_config, the panel's CONTROLS page; window_sdl.cpp gives fixed ports first) |
 | Rumble and its switch | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | Button chords | host | active: Start + D-pad Down/Up + Z (ui/chords_mac.cpp, melee-unlocked's settings_chord.h) |
 | Background input | host | active: settings.ini `background_input` (on by default, as upstream) with a row on the panel's Game page; off, every controller port reads neutral while another window has focus (port/runtime/host/window_sdl.cpp); the keyboard only counts with focus either way. Not tried by hand |
@@ -279,7 +279,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Note when skins are off online | renderer | active: launcher.ini `skin_online_notice` (on by default, OVERLAYS > Notices): once per visit to the online screens, for 15 seconds, when a picked skin is served as the standard costume there (fe/features/cosmetics.cpp `cosmetics_off_online`, upstream's draw_skin_online_notice); not seen online on the Mac |
 | Accessibility-type options | see sections 4, 8 | not wired |
 | Text size or colour-blind setting | n/a | upstream stub (does not exist) |
-| Logs | host | active: one timestamped session log per launch in ~/Library/Application Support/Dashdance/Logs (newest 50, latest.log), the engine's engine.log and engine.log.host in melee-unlocked/ |
+| Logs | host | active: the engine's engine.log (the session before as engine.prev.log) and engine.log.host, and the launcher's launcher.log, in ~/Library/Application Support/Dashdance/melee-unlocked/ |
 | Trace-mark keys | host | not wired |
 | Frame capture burst | renderer | not wired |
 | One-frame glitch detector | renderer | not wired |
@@ -292,7 +292,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Feature | Side | Mac status |
 |---|---|---|
 | Play page | launcher | active: melee-unlocked's Play page in the Mac launcher (port/runtime/host/mu_launcher.mm): disc, Game Build, PLAY, version and update line, Slippi account, mods |
-| Engine picker | launcher | active: the Play page's Game Build row (Source Port, Static Recomp (Legacy), Vanilla) |
+| Engine picker | launcher | active: the Play page's Game Build row (Source Port, Vanilla); the earlier static-recompilation engine was removed |
 | CPU build auto-pick | launcher | not wired (left out: the Mac app is built from source) |
 | Disc check | launcher + host | active: the launcher's Play page has a Disc line from the image's header (game code GALE01, revision 2 = NTSC 1.02; another revision, another game or a compressed image is named with what is needed), and the engine checks the disc again at start (`disc: retail NTSC 1.02, ...`); online the disc MD5 goes in game reports. No full MD5 check in the launcher |
 | RVZ and WIA conversion | launcher | active: a Dolphin RVZ or WIA disc chosen in the launcher becomes GALE01.iso once when the engine starts (beside it, or in the engine's folder when that one cannot be written): melee-unlocked's disc_rvz.cpp and its bzip2 from the fetched tree, checked GameCube GALE01 first, written as .part then renamed (`mu-engine/app/disc_convert.cpp`, as the Switch's app.cpp). `mu-engine/tools/rvz_check.sh` runs upstream's own test and fixtures on this Mac: 46 checks, 0 failures. Progress goes to engine.log only (no window while it converts) |
@@ -341,7 +341,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M11 | Auto delay from a pre-match ping | not wired; easy / easy |
 | M12 | Opponent's automatic L-cancel announced | partial: between Melee-NX-NetPlay and Mac builds the build message says whether each player offers it and the log names it (net-0011); nothing on the select; not with a Slippi 3.7.0 peer |
 | M13 | Keyboard key names in prompts | not wired; not applicable on Switch (no keyboard on the console) / easy on macOS |
-| M14 | Legacy replays (no stored code list) | not wired; easy / easy (map the legacy list to `MU_REPLAY_CODE_*`; the static engine serves bytes) |
+| M14 | Legacy replays (no stored code list) | not wired; easy (map the legacy list to `MU_REPLAY_CODE_*`) |
 | M15 | Slippi 3.7.0 rank, MMR and bot flags in replays | not wired; easy / easy |
 | M16 | Player drop read by own frames (sub-item) | not wired; easy / easy |
 | M17 | Slow first frame is not "gone" | active (mu-engine/net, net-0007): 30 s before the other player's first online frame, Slippi's 7 s after. online_loopback_test.sh with `MU_B_ENV=MELEE_NET_TEST_SLOW_FIRST_FRAME_MS=12000`: side a waited 714 retraces (12 s) at frame 8, no drop, net check equal |
@@ -376,7 +376,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M21 | GPU-driver attribution in crash reports | not wired; easy: name Metal/AGX frames |
 | M22 | Crashed-start recovery | not wired; medium: same idea for the Metal pipeline cache |
 | M23 | Frame generation off after a Streamline crash | not wired; n/a |
-| M24 | Game thread priority and timer resolution | not wired; easy: real-time thread policy (Dashdance has one) |
+| M24 | Game thread priority and timer resolution | not wired; easy: a real-time thread policy (the render thread already has one) |
 | M25 | Diagnostic summary lines | not wired; easy |
 | M26 | Launcher logs | not wired; easy |
 | M27 | Shared disc memory outside the game folder | not wired; easy |
@@ -388,10 +388,10 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M33 | Alt+Enter fullscreen toggle | active: Control-Command-F (the Mac's shortcut) and Alt+Return toggle full screen, and the green button works as everywhere; the panel's Fullscreen row follows the window and launcher.ini keeps it |
 | M34 | "Reset CPU training options" button | not wired; easy |
 | M35 | Lobby state files | not wired; medium |
-| M36 | Release start scripts | not wired; n/a (Dashdance has its own playback app) |
+| M36 | Release start scripts | not applicable (the launcher starts the engine; Watch plays replays) |
 | M37 | Source build from the launcher's Build tab | not wired; n/a |
 | M38 | Environment variables not in FEATURES | not wired; n/a |
-| M39 | Release versioning rule | not wired; easy, if Dashdance compares versions |
+| M39 | Release versioning rule | not wired; the launcher's update check compares commits, not versions |
 | M40 | Mods: GitHub API fallback, cancel, progress, free-space check | partial: the shared installer cancels, reports progress and checks free space; no GitHub API fallback |
 | M41 | Lobby: clock-skew warning, "Copy code" fallback | not wired; easy |
 
@@ -417,7 +417,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A67 | Engine-only and experimental rules | not wired; Switch: easy (n/a mostly: one engine); macOS: easy |
 | A71 | `widescreen` key | not wired; Switch: easy - doc fix |
 | A72 | Retired keys | not wired; doc only |
-| B7 | Restart game from the panel | not wired; Switch: easy - relaunch the app's game process or re-enter play mode from the in-game menu; macOS: easy - Dashdance already restarts the game loop from its dashboard |
+| B7 | Restart game from the panel | not wired; Switch: easy - relaunch the app's game process or re-enter play mode from the in-game menu; macOS: easy - the engine already starts itself again for the replay viewer's Watch |
 | B33b | Arcade preset / Reset buttons | not wired; Switch: easy - menu row setting five existing keys; macOS: easy - same in the dashboard/in-game menu |
 | B62 | Audio latency and underrun read-out | not wired; Switch: easy - audout queue depth and an underrun counter from the app's audio path; macOS: easy - AVAudioEngine/CoreAudio IO buffer and dropout count |
 | B71 | Per-mod-disc random stage-skin pool | not wired; Switch: medium - needs the stage-skin store (FEATURES: imports not wired) first; macOS: medium - same store, then a list row |
@@ -425,7 +425,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | B78 | Fighter move-sound replacement | not wired; Switch: medium - SSM bank swap through the disc overlay, after imports exist; macOS: medium - same |
 | B111 | Press a button to pick the controller to edit; duplicate-pad detection | not wired; Switch: easy - libnx HID gives per-pad states; duplicates rarely occur (no Steam); macOS: easy - GameController framework, and duplicates do occur (Steam Input) |
 | B113 | Driver-conflict notices | not wired; Switch: n/a - no competing drivers; macOS: easy - report IOKit exclusive-access failure on the adapter |
-| B115 | Reset GameCube adapter | not wired; Switch: easy - close and reopen the usb:hs interface, resend 0x13; macOS: easy - re-open the IOKit interface (Dashdance's gc_adapter_iokit.cpp) |
+| B115 | Reset GameCube adapter | not wired; Switch: easy - close and reopen the usb:hs interface, resend 0x13; macOS: easy - re-open the IOKit interface (port/runtime/host/gc_adapter_iokit.cpp) |
 | C2 | Four looks: "Main Menu bars", "Side rails", "Character select slots", "HUD strip" (+ "Window (mouse and keyboard)") | not wired; Switch: medium - pure 2D drawing, needs gradient quads and the game font; macOS: medium - same |
 | C3 | Melee's own font from main.dol | not wired; Switch: easy - read dol data, upload one 1024x288 RGBA texture; macOS: easy - same into the glyph atlas |
 | C4 | GameCube button glyph legends | not wired; Switch: easy; macOS: easy |
@@ -470,9 +470,9 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | F95 | `MU_AARCH64` auto-detect from CMAKE_SYSTEM_PROCESSOR | not wired; Helps both: easy. |
 | F96 | Console-compatible image window: linker script keeps game addresses low (32-bit slots, `mu_addr32_failed` panic), ELF checks, LP64 long overlay | not wired; Switch: hard, NRO/NSO loader and ASLR must place the image and arena in low 4 GB (or this repo's existing approach). macOS: hard, Mach-O has no linker script; needs -segaddr / pagezero tricks or a custom loader. |
 | F97 | `YOUGAME_RANKED_BRANCH` ON, `YOUGAME_AGENT_TEST_HOOK` OFF, `MU_MATH_AUDIT` OFF, `MU_UI_PREVIEWS` (MELEE_TEST_UI) | not wired; Switch/macOS: set ranked OFF; easy. |
-| G28 | Slippi "DynamicsFix" (Required) | not wired; Switch: none (in the image); macOS recomp: easy (Dashdance's Slippi code set already applies C209E090) |
+| G28 | Slippi "DynamicsFix" (Required) | not wired; Switch: none (in the image); macOS: none (in the image, as on the Switch) |
 | G29 | Slippi "NanaDeterminism" | not wired; as G28 |
-| G63 | KO stars counted when the results screen is skipped | not wired; Switch: none (in the image); macOS recomp: easy (Slippi's "CSS KO Stars") |
-| G64 | Fresh card folder: save created without prompts; YouGame card confirm | not wired; Switch: none (in the image); macOS recomp: easy (an HLE card answer) |
+| G63 | KO stars counted when the results screen is skipped | not wired; Switch: none (in the image); macOS: none (in the image, as on the Switch) |
+| G64 | Fresh card folder: save created without prompts; YouGame card confirm | not wired; Switch: none (in the image); macOS: none (in the image, as on the Switch) |
 | G103 | Experimental deferred native sound | not wired; Switch/macOS: skip (an upstream experiment) |
 

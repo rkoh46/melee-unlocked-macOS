@@ -1,22 +1,26 @@
 #!/bin/zsh
-# Packages the macOS build as "Dashdance.app" (ad-hoc signed). Nothing from the
-# game enters the bundle: only the executable and the vendored Slippi Sys folder.
+# Packages the macOS build as melee-unlocked-macOS.app (ad-hoc signed): the launcher (the bundle's main program), the
+# melee-unlocked engine next to it (MeleeUnlockedEngine), the Slippi GameFiles the engine's Slippi menus read, and
+# melee-unlocked's launcher artwork and icon converted from the fetched tree. Nothing from the game enters the bundle.
 # Usage: tools/package_macos_app.sh <build-dir> <output-dir>
-# APP_NAME=DashDance2 packages a side-by-side copy under its own name and bundle identifier
-# (it shares Dashdance's settings, sign-in and replays in ~/Library/Application Support/Dashdance).
+# APP_NAME=<name> packages a side-by-side copy under its own name and bundle identifier (it shares the settings, sign-in and
+# replays in ~/Library/Application Support/Dashdance).
 set -euo pipefail
 ROOT="${0:A:h:h}"
 BUILD="${1:?build dir}"
 OUT="${2:?output dir}"
 VERSION="$(head -n1 "$ROOT/VERSION")"
-APP_NAME="${APP_NAME:-Dashdance}"
+APP_NAME="${APP_NAME:-melee-unlocked-macOS}"
 APP="$OUT/$APP_NAME.app"
-EXE="$BUILD/port/melee_port_mac"
-[[ -x "$EXE" ]] || { echo "missing $EXE; build target melee_port_mac first" >&2; exit 1; }
+EXE="$BUILD/port/melee_launcher_mac"
+MU_EXE="$BUILD/mu-engine/app/MeleeUnlockedEngine"
+MU_TREE="$ROOT/build/mu-engine/mu"
+[[ -x "$EXE" ]] || { echo "missing $EXE; build target melee_launcher_mac first" >&2; exit 1; }
+[[ -x "$MU_EXE" ]] || { echo "missing $MU_EXE; build target melee_unlocked_mac first" >&2; exit 1; }
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 sed "s/@VERSION@/$VERSION/g" "$ROOT/port/app/macos/Info.plist" > "$APP/Contents/Info.plist"
-if [[ "$APP_NAME" != "Dashdance" ]]; then
+if [[ "$APP_NAME" != "melee-unlocked-macOS" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" -c "Set :CFBundleDisplayName $APP_NAME" \
     -c "Set :CFBundleIdentifier app.dashdance.macos.${APP_NAME:l}" "$APP/Contents/Info.plist"
 fi
@@ -24,86 +28,27 @@ fi
 if COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)"; then
   /usr/libexec/PlistBuddy -c "Add :MUBuildCommit string $COMMIT" "$APP/Contents/Info.plist"
 fi
-cp "$EXE" "$APP/Contents/MacOS/Dashdance"
+cp "$EXE" "$APP/Contents/MacOS/melee-unlocked-macOS"
+cp "$MU_EXE" "$APP/Contents/MacOS/MeleeUnlockedEngine"
 cp -R "$ROOT/port/slippi_sys" "$APP/Contents/Resources/slippi_sys"
-# Replay playback: the game translated with Slippi's playback codes, a second executable the dashboard starts for
-# "Watch this game". PLAYBACK_BUILD names its build directory (default: <build-dir>-playback); without it the app
-# still works and says replays are not part of the build.
-PLAYBACK_EXE="${PLAYBACK_BUILD:-$BUILD-playback}/port/melee_port_mac"
-if [[ -x "$PLAYBACK_EXE" ]]; then
-  cp "$PLAYBACK_EXE" "$APP/Contents/MacOS/DashdancePlayback"
-  cp -R "$ROOT/port/slippi_sys_playback" "$APP/Contents/Resources/slippi_sys_playback"
-  # The replay code list the playback build was translated with (Slippi's codes, not game data): the app compares a
-  # replay's own list with it and turns resync on when they differ.
-  [[ -f "$ROOT/build/playback-codes/gecko_list.bin" ]] && cp "$ROOT/build/playback-codes/gecko_list.bin" "$APP/Contents/Resources/playback_codes.bin"
-  echo "playback: bundled $PLAYBACK_EXE"
-else
-  echo "playback: no $PLAYBACK_EXE, replays will not play in this bundle"
-fi
-# The melee-unlocked engine (mu-engine/app): the executable the dashboard starts when that engine is chosen. Without it
-# the app plays the classic engine only and says so.
-MU_EXE="$BUILD/mu-engine/app/MeleeUnlockedEngine"
-if [[ -x "$MU_EXE" ]]; then
-  cp "$MU_EXE" "$APP/Contents/MacOS/MeleeUnlockedEngine"
-  echo "melee-unlocked engine: bundled $MU_EXE"
-  # melee-unlocked's launcher artwork (the MU mark, Bailey), converted from the fetched tree; never committed.
-  python3 -I "$ROOT/tools/mu_launcher_art.py" "$ROOT/build/mu-engine/mu/port/app" "$APP/Contents/Resources/mu-art" >/dev/null
-  # The engine embeds Source Sans 3 (the settings panel's fonts): its SIL Open Font License travels with it.
-  cp "$ROOT/build/mu-engine/mu/port/runtime/gx/ui_sources/gd_melee/assets/kit/SourceSans3-OFL.md" "$APP/Contents/Resources/mu-art/SourceSans3-OFL.md"
-  # The licences of what else the engine compiles in from the fetched tree: Dear ImGui (MIT) and zstd (BSD-3-Clause).
-  cp "$ROOT/build/mu-engine/mu/port/third_party/imgui/LICENSE.txt" "$APP/Contents/Resources/mu-art/imgui-LICENSE.txt"
-  cp "$ROOT/build/mu-engine/mu/port/third_party/zstd/LICENSE" "$APP/Contents/Resources/mu-art/zstd-LICENSE.txt"
-  # melee-unlocked's launcher translations (lang/*.txt, GPL-2.0-or-later) for the launcher's Language button; never committed.
-  mkdir -p "$APP/Contents/Resources/mu-lang" && cp "$ROOT/build/mu-engine/mu/lang/"*.txt "$APP/Contents/Resources/mu-lang/"
-  cp "$ROOT/mu-engine/app/whats-new.txt" "$APP/Contents/Resources/whats-new.txt"   # the launcher's What's new
-else
-  echo "melee-unlocked engine: no $MU_EXE, this bundle plays the classic engine only"
-fi
-cp "$ROOT/port/app/icons/AppIcon.icon/Assets/glyph.png" "$APP/Contents/Resources/AppMark.png"   # the hero mark in the dashboard
-cp -R "$ROOT/port/app/art/controller" "$APP/Contents/Resources/controller"                        # controller editor artwork
-# App icon: the Icon Composer bundle (the Dashdance mark as a glass layer over violet) compiled by
-# actool into Assets.car + AppIcon.icns, so macOS 26 renders it as Liquid Glass. Older toolchains fall
-# back to the flat 1024px master.
-# actool lives in Xcode, not in the Command Line Tools; point at Xcode for this one step when it is installed.
-# A side-by-side copy gets an orange icon so the two apps can be told apart in the Dock and Finder.
-ICON_SRC="$ROOT/port/app/icons/AppIcon.icon"
-if [[ "$APP_NAME" != "Dashdance" ]]; then
-  ICON_SRC="$(mktemp -d)/AppIcon.icon"
-  cp -R "$ROOT/port/app/icons/AppIcon.icon" "$ICON_SRC"
-  sed -i '' 's/"linear-gradient": \[[^]]*\]/"linear-gradient": ["srgb:1.00000,0.62000,0.10000,1.00000", "srgb:0.80000,0.27000,0.00000,1.00000"]/' "$ICON_SRC/icon.json"
-fi
-# With the melee-unlocked engine the app wears melee-unlocked's own icon (melee_unlocked.ico from the fetched tree,
-# converted above), not Dashdance's.
-MU_ICON="$APP/Contents/Resources/mu-art/melee_unlocked.png"
-if [[ -f "$MU_ICON" ]]; then
-  ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
-  for size in 16 32 128 256 512; do
-    sips -z $size $size "$MU_ICON" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    sips -z $((size*2)) $((size*2)) "$MU_ICON" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-  /usr/libexec/PlistBuddy -c "Delete :CFBundleIconName" "$APP/Contents/Info.plist" 2>/dev/null || true
-  echo "icon: melee-unlocked's icon from the fetched tree"
-elif true; then
-ACTOOL_DEV="${DEVELOPER_DIR:-}"; [[ -z "$ACTOOL_DEV" && -d /Applications/Xcode.app/Contents/Developer ]] && ACTOOL_DEV=/Applications/Xcode.app/Contents/Developer
-if [[ -n "$ACTOOL_DEV" ]] && DEVELOPER_DIR="$ACTOOL_DEV" xcrun --find actool >/dev/null 2>&1 && DEVELOPER_DIR="$ACTOOL_DEV" xcrun actool "$ICON_SRC" --compile "$APP/Contents/Resources" \
-     --output-format human-readable-text --warnings --errors --output-partial-info-plist "$(mktemp)" --app-icon AppIcon \
-     --include-all-app-icons --enable-on-demand-resources NO --development-region en --target-device mac \
-     --minimum-deployment-target 26.0 --platform macosx >/dev/null 2>&1 && [[ -f "$APP/Contents/Resources/AppIcon.icns" ]]; then
-  echo "icon: Icon Composer bundle compiled with actool"
-else
-  ICONSET="$(mktemp -d)/AppIcon.iconset"
-  mkdir -p "$ICONSET"
-  # Without Xcode the orange tint above is never compiled, so the side-by-side copy uses the orange master instead.
-  MASTER="$ROOT/port/app/icons/AppIcon-1024.png"
-  [[ "$APP_NAME" != "Dashdance" ]] && MASTER="$ROOT/port/app/icons/AppIcon-orange-1024.png"
-  for size in 16 32 128 256 512; do
-    sips -z $size $size "$MASTER" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    sips -z $((size*2)) $((size*2)) "$MASTER" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-fi
-fi
+# melee-unlocked's launcher artwork (the MU mark, Bailey) and icon, converted from the fetched tree; never committed.
+python3 -I "$ROOT/tools/mu_launcher_art.py" "$MU_TREE/port/app" "$APP/Contents/Resources/mu-art" >/dev/null
+# The engine embeds Source Sans 3 (the settings panel's fonts): its SIL Open Font License travels with it.
+cp "$MU_TREE/port/runtime/gx/ui_sources/gd_melee/assets/kit/SourceSans3-OFL.md" "$APP/Contents/Resources/mu-art/SourceSans3-OFL.md"
+# The licences of what else the engine compiles in from the fetched tree: Dear ImGui (MIT) and zstd (BSD-3-Clause).
+cp "$MU_TREE/port/third_party/imgui/LICENSE.txt" "$APP/Contents/Resources/mu-art/imgui-LICENSE.txt"
+# melee-unlocked's launcher translations (lang/*.txt, GPL-2.0-or-later) for the launcher's Language button; never committed.
+mkdir -p "$APP/Contents/Resources/mu-lang" && cp "$MU_TREE/lang/"*.txt "$APP/Contents/Resources/mu-lang/"
+cp "$ROOT/mu-engine/app/whats-new.txt" "$APP/Contents/Resources/whats-new.txt"   # the launcher's What's new
+cp "$MU_TREE/port/third_party/zstd/LICENSE" "$APP/Contents/Resources/mu-art/zstd-LICENSE.txt"
+# The app icon: melee-unlocked's own (melee_unlocked.ico from the fetched tree, converted above).
+ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
+for size in 16 32 128 256 512; do
+  sips -z $size $size "$APP/Contents/Resources/mu-art/melee_unlocked.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
+  sips -z $((size*2)) $((size*2)) "$APP/Contents/Resources/mu-art/melee_unlocked.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+rm -rf "${ICONSET:h}"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - --deep "$APP"
 codesign --verify --deep --strict "$APP"

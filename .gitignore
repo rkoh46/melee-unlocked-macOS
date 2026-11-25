@@ -1,45 +1,20 @@
 backups/
-/runtime/
 reports/
 build/
 *.log
 __pycache__/
-dependencies/
-
-/port/generated/
-/port/generated_playback/
-/build-review/
-/melee/
-/slippi/
-shadercache/
-replays/
-
-/port-settings.ini
-/port-settings.ini.tmp
-
-# Streamline runtime binaries are copied from the SDK zip; keep headers/libs/docs only
-/port/third_party/streamline/bin/
-
-# Packaged releases (tools/package_release.py)
-/release/
-
-# Port run-time user data (memory card, Slippi user folder)
-/User/
-/melee_port.log
 
 # Private working notes, never published
 HANDOFF_*.md
 NOTE_FOR_*.md
 
-# Re-include the app icon folder: a common global ignore ("Icon?" for Finder icon files) would otherwise hide it on case-insensitive disks.
-!port/app/icons/
-!port/app/icons/**
-
-# Local dependencies fetched by setup.sh (doldecomp checkout, the DOL extracted from your own disc): never committed.
+# The earlier static-recompilation engine's local inputs (a decomp checkout, the DOL from your own disc): setup.sh removes them.
 deps/
 
 dist/
-port/scripts/*.ungated
 
-# Local disc location (setup.sh)
+# Local disc location (install.sh)
 .disc-path
+
+# mu-runner's default output folder (when run from the repository root)
+mu-native-out/
