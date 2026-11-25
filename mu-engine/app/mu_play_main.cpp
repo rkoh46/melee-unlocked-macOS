@@ -22,6 +22,7 @@
 #include "audio.h"
 #include "app/game_menu.h"     // ui/app/game_menu.h: the menu interface melee-unlocked's panel (ui/mu_panel.cpp) implements
 #include "frontend.h"
+#include "gfx_live.h"
 #include "fe_mac.h"
 #include "ui_metal.h"
 #include "gx_core.h"
@@ -31,6 +32,7 @@
 #include "window.h"
 
 #include <IOKit/pwr_mgt/IOPMLib.h>
+#include <SDL3/SDL_keycode.h>
 #include <mach-o/dyld.h>
 #include <algorithm>
 #include <atomic>
@@ -221,6 +223,7 @@ void tables_hook(MuHostApi* host, MuGameApi* game) {
 } // namespace
 
 namespace mu_looks { const gx::LookHooks* hooks(); }   // gx_looks_mac.cpp
+namespace mu_gfx { const gx::PostHooks* hooks(); void report(); }   // gfx/effects_mac.mm
 namespace fe {
 std::function<void(host::RuntimeSettings&)> mac_menu_initial;
 std::function<void(const host::RuntimeSettings&, host::MenuChange)> mac_menu_apply;
@@ -503,6 +506,23 @@ int main(int argc, char** argv) {
   // melee-unlocked's looks (fe/features/looks.cpp settings, mu-engine/app/gx_looks_mac.cpp rules): play mode only, so the
   // scripted reference runs draw exactly the game's picture.
   if (g_play) gx::metal_set_look_hooks(mu_looks::hooks());
+  // The picture effects (gfx/effects_mac.mm, fe/features/graphics.cpp): texture packs, menu videos, shader presets, captures,
+  // the glitch detector, SSAO and the Lab view. Play mode only, as the looks; Ctrl+F2 captures 90 frames, Ctrl+F3 the Lab view.
+  if (g_play) {
+    gx::metal_set_post_hooks(mu_gfx::hooks());
+    fe::gfx::apply_renderer = [backend, &gfx](float ssao, int, float, float) {
+      std::lock_guard<std::mutex> lock(gfx_mutex);
+      if (gfx.ssao == ssao) return;
+      gfx.ssao = ssao; gx::metal_set_options(backend, gfx);
+    };
+    host::window_set_key_hook([](int key, int mods) {
+      if (!(mods & (SDL_KMOD_CTRL))) return false;
+      if (key == SDLK_F2) { fe::gfx::live().capture_request.store(90); host::log("capture: Ctrl+F2, the next 90 presented frames"); return true; }
+      if (key == SDLK_F3) { auto& l = fe::gfx::live(); l.lab_view.store(!l.lab_view.load()); fe::gfx::changed(); fe::settings_change("labview", l.lab_view.load() ? "1" : "0");
+                            host::log("lab view: %s (Ctrl+F3)", l.lab_view.load() ? "on" : "off"); return true; }
+      return false;
+    });
+  }
   host::window_input_init();
   // --play-script: a controller script in melee-unlocked's format (the parity scripts': @scene major:minor latched once
   // seen, @match on the game's match frame), fed through the app's input path so the menu and the chords see it. A script
@@ -648,6 +668,7 @@ int main(int argc, char** argv) {
     fe::app_ini_set("keyboard", host::keyboard_map().serialize());
   }
   if (g_play) fe::mac_controls_save();
+  if (g_play) { mu_gfx::report(); gx::metal_set_post_hooks(nullptr); host::window_set_key_hook(nullptr); fe::gfx::apply_renderer = nullptr; }
   delete backend;
   host::window_destroy();
   if (!g_restart_args.empty()) {   // the replay viewer's Watch: the game takes a replay only at boot, so this program starts again

@@ -445,6 +445,8 @@ void* window_create(int w, int h, const wchar_t* title, bool visible) {
 }
 
 void window_set_message_callback(MessageCallback cb) { g_message = std::move(cb); }
+namespace { KeyHook g_key_hook; }
+void window_set_key_hook(KeyHook hook) { g_key_hook = std::move(hook); }
 void window_input_capture(bool capture) { g_capture.store(capture); }
 bool window_ui_gamecube_pad(PadState& pad) { std::lock_guard<std::mutex> lock(g_ui_mutex); pad = g_ui_pad; return g_ui_gamecube; }
 void window_set_resize_callback(ResizeCallback cb) { g_resize = std::move(cb); }
@@ -463,6 +465,7 @@ void window_pump() {
       case SDL_EVENT_WINDOW_FOCUS_LOST: g_focused.store(false); break;
       case SDL_EVENT_MOUSE_MOTION: case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_WHEEL: g_pointer_moved_ms = SDL_GetTicks(); break;
       case SDL_EVENT_KEY_DOWN:
+        if (g_key_hook && !event.key.repeat && g_key_hook((int)event.key.key, (int)event.key.mod)) break;
         if (event.key.key == SDLK_RETURN && (event.key.mod & SDL_KMOD_ALT) && !event.key.repeat) g_fullscreen_toggle.store(true);
         // The Mac's own full-screen shortcut (Control-Command-F), as the View menu has it.
         if (event.key.key == SDLK_F && (event.key.mod & SDL_KMOD_GUI) && (event.key.mod & SDL_KMOD_CTRL) && !event.key.repeat) g_fullscreen_toggle.store(true);

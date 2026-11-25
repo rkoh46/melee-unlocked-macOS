@@ -1,0 +1,21 @@
+The one-frame glitch detector on the Mac (melee-unlocked's flicker_scan.cpp, compiled from the fetched tree by gfx/gen_gfx.sh):
+its flicker/ pictures go to the engine's folder in Application Support instead of the working folder.
+--- a/port/runtime/gx/flicker_scan.cpp
++++ b/port/runtime/gx/flicker_scan.cpp
+@@ -25,11 +25,13 @@
+ }
+ 
+ void write_trio(const float* a, const float* b, const float* c, const char* kind, uint64_t n, uint32_t frame) {
+-  CreateDirectoryA("flicker", nullptr);
++  // melee-unlocked-macOS (gfx/patches/0132): flicker/ in the engine's folder in Application Support, not the working folder.
++  const std::string folder = (mu_gfx_folder() / "flicker").string();
++  CreateDirectoryA(folder.c_str(), nullptr);
+   const float* trio[3] = {a, b, c};
+   for (int k = 0; k < 3; ++k) {
+-    char path[160];
+-    std::snprintf(path, sizeof path, "flicker/%s%03llu_%u_%s.ppm", kind, (unsigned long long)n, frame,
++    char path[1200];
++    std::snprintf(path, sizeof path, "%s/%s%03llu_%u_%s.ppm", folder.c_str(), kind, (unsigned long long)n, frame,
+                   k == 0 ? "1prev" : k == 1 ? "2BAD" : "3next");
+     write_grid(trio[k], path);
+   }

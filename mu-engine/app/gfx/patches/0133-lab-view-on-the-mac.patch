@@ -1,0 +1,62 @@
+The Lab view on the Mac (melee-unlocked's lab_view.cpp, compiled from the fetched tree by gfx/gen_gfx.sh): the silhouette
+packs' folder (Lab/ in the engine's folder in Application Support), the picture's shape and the room-window flag come from
+gfx/lab_mac.cpp, not melee-unlocked's host::options and window.
+--- a/port/runtime/gx/lab_view.cpp	2026-11-24 23:10:58
++++ b/port/runtime/gx/lab_view.cpp	2026-11-24 23:10:58
+@@ -11,6 +11,11 @@
+ #include "host.h"
+ #include "window.h"
+ #include "imgui.h"
++// melee-unlocked-macOS (gfx/patches/0133): the silhouette packs' folder, the picture's shape and the room window flag from
++// the Mac engine (gfx/lab_mac.cpp) instead of melee-unlocked's host::options and window.
++std::string mu_lab_dir();
++bool mu_lab_spectate();
++float mu_lab_picture_aspect();
+ #include "earcut/mapbox/earcut.hpp"
+ #include <algorithm>
+ #include <array>
+@@ -144,12 +149,12 @@
+ std::string g_notice;
+ 
+ std::shared_ptr<Pack> load_pack(int id) {
+-  const std::string path = host::options.lab_dir + "/" + std::to_string(id) + ".lab";
++  const std::string path = mu_lab_dir() + "/" + std::to_string(id) + ".lab";
+   FILE* f = std::fopen(path.c_str(), "rb");
+   if (!f) {
+     host::log("lab: no silhouettes for character %d (%s)", id, path.c_str());
+     // The packs are a download of their own: ask the host for them once.
+-    if (auto handler = g_missing_handler.load()) if (!g_missing_reported.exchange(true)) handler(host::options.lab_dir);
++    if (auto handler = g_missing_handler.load()) if (!g_missing_reported.exchange(true)) handler(mu_lab_dir());
+     return nullptr;
+   }
+   std::vector<uint8_t> b;
+@@ -923,9 +928,9 @@
+   g_camera.frame = f.number;
+   float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
+   bool any = false;
+-  // The room's match window (a small window, host::options.spectate): the whole stage always in frame,
++  // The room's match window (a small window, mu_lab_spectate()): the whole stage always in frame,
+   // widened for a player off it; a KO'd player is not followed. Elsewhere Slippi Lab's own camera.
+-  const bool wide = host::options.spectate;
++  const bool wide = mu_lab_spectate();
+   for (const auto& port : f.players) {
+     if (!port[0].present || (wide && port[0].action <= 11)) continue;   // KO'd (the Dead states) or asleep
+     any = true;
+@@ -1339,7 +1344,7 @@
+   // from the slot's left with the percent under them, further right. The name, which the game does
+   // not show there, goes under the percent. Slippi Lab's colours and outlined type.
+   // The game's picture as the window shows it (73:60 for Melee's own, wider with a widescreen code).
+-  const float aspect = std::clamp(host::window_picture_aspect(), 1.0f, 2.5f);
++  const float aspect = std::clamp(mu_lab_picture_aspect(), 1.0f, 2.5f);
+   const float ph = std::min(h, w / aspect), pw = ph * aspect, left = (w - pw) / 2, top = (h - ph) / 2;
+   auto at = [&](float xf, float yf) { return ImVec2(left + pw * xf, top + ph * yf); };
+   const float fit = ph / 600.0f;
+@@ -1412,7 +1417,7 @@
+   const float area_h = std::max(height * 0.5f, height - std::max(0.0f, g_bottom_reserve.load(std::memory_order_relaxed)));
+   const float fit = std::min(width / 730.0f, area_h / 600.0f);
+   float cam_x = g_camera.cx, cam_y = g_camera.cy;
+-  if (host::options.spectate) {   // the match window's view stays inside the stage's blast zones (beyond them is empty grid)
++  if (mu_lab_spectate()) {   // the match window's view stays inside the stage's blast zones (beyond them is empty grid)
+     const StageShape* bz = nullptr;
+     for (const StageShape& st : stages()) if (st.id == info.stage) bz = &st;
+     const float px = g_camera.scale * fit;

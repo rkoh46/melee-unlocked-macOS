@@ -40,6 +40,10 @@ void metal_set_present_loop(PresentLoop loop, std::function<bool()> active) { pr
 void metal_set_ui_pass(UiPass pass) { std::lock_guard<std::mutex> lock(ui_pass_mutex()); ui_pass() = std::move(pass); }
 std::atomic<const LookHooks*> g_look_hooks{nullptr};
 void metal_set_look_hooks(const LookHooks* hooks) { g_look_hooks.store(hooks, std::memory_order_release); }
+std::atomic<const PostHooks*> g_post_hooks{nullptr};
+std::atomic<bool> g_drop_textures{false};
+void metal_set_post_hooks(const PostHooks* hooks) { g_post_hooks.store(hooks, std::memory_order_release); }
+void metal_drop_textures() { g_drop_textures.store(true, std::memory_order_release); }
 namespace {
 
 constexpr int FRAME_SLOTS = 3;
@@ -118,8 +122,24 @@ float4 picture(float4 col, constant C& c, float2 screen) {
   }
   return float4(saturate(rgb), col.a);
 }
+// Screen-space ambient occlusion (melee-unlocked's present-pass ao(): eight neighbours two texels away, nearer by more than a
+// bias darken the pixel), from the EFB depth (reversed: 1 is near). k = strength 0..1; 0 reads nothing.
+float ssao(depth2d<float> dep, float2 uv, float k) {
+  if (k <= 0.0) return 1.0;
+  int2 sz = int2(dep.get_width(), dep.get_height());
+  int2 p = clamp(int2(uv * float2(sz)), int2(0), sz - 1);
+  float d = dep.read(uint2(p));
+  if (d <= 0.00001) return 1.0;
+  float bias = max(0.0015, d * 0.012), occ = 0.0;
+  for (int y = -1; y <= 1; ++y)
+    for (int x = -1; x <= 1; ++x) {
+      if (x == 0 && y == 0) continue;
+      occ += dep.read(uint2(clamp(p + int2(x, y) * 2, int2(0), sz - 1))) > d + bias ? 1.0 : 0.0;
+    }
+  return saturate(1.0 - occ * 0.125 * k);
+}
 float2 crt_warp(float2 uv01, float k) { float2 d = uv01 * 2.0 - 1.0; d *= 1.0 + k * 0.06 * dot(d.yx, d.yx); return d * 0.5 + 0.5; }
-fragment float4 blit_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d<float> src [[texture(0)]], sampler samp [[sampler(0)]]) {
+fragment float4 blit_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d<float> src [[texture(0)]], depth2d<float> dep [[texture(1)]], sampler samp [[sampler(0)]]) {
   float2 screen = (i.uv - c.rect.zw) / max(c.rect.xy, float2(1e-6));   // 0..1 over the picture
   float2 uv = i.uv;
   if (c.pic.w > 0.0 && c.look.y >= 2.0) {
@@ -128,6 +148,7 @@ fragment float4 blit_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d
     uv = w * c.rect.xy + c.rect.zw; screen = w;
   }
   float4 col = downsample(src, samp, c, uv);
+  col.rgb *= ssao(dep, uv, c.box.z);   // box.z: SSAO strength (0 off)
   if (c.sharp.z <= 0.0) return picture(col, c, screen);
   float2 step = c.sharp.xy * max(c.box.xy, float2(1.0));
   float3 n = src.sample(samp, i.uv + float2(0, -step.y)).rgb, s = src.sample(samp, i.uv + float2(0, step.y)).rgb;
@@ -137,7 +158,7 @@ fragment float4 blit_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d
   float peak = -1.0 / mix(8.0, 5.0, saturate(c.sharp.z));
   float3 wgt = amp * peak;
   float3 r = (col.rgb + (n + s + w + e) * wgt) / (1.0 + 4.0 * wgt);
-  return picture(float4(saturate(r), col.a), c, screen);
+  return picture(float4(saturate(r), col.a), c, screen);   // col already has the SSAO term
 }
 struct ClearC { float4 color; float depth; float pad0, pad1, pad2; };
 struct ClearO { float4 pos [[position]]; };
@@ -349,7 +370,7 @@ class MetalBackend final : public Backend {
     td.storageMode = MTLStorageModePrivate;
     efb_color_ = [device_ newTextureWithDescriptor:td];
     MTLTextureDescriptor* dd = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float width:efb_w_ height:efb_h_ mipmapped:NO];
-    dd.usage = MTLTextureUsageRenderTarget;
+    dd.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;   // read by SSAO and the picture effects (PostHooks)
     dd.storageMode = MTLStorageModePrivate;
     efb_depth_ = [device_ newTextureWithDescriptor:dd];
     efb_needs_clear_ = true;
@@ -436,6 +457,7 @@ class MetalBackend final : public Backend {
     [enc setVertexBytes:&bc length:sizeof bc atIndex:0];
     [enc setFragmentBytes:&bc length:sizeof bc atIndex:0];
     [enc setFragmentTexture:efb_color_ atIndex:0];
+    [enc setFragmentTexture:efb_depth_ atIndex:1];
     [enc setFragmentSamplerState:blit_sampler_ atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [enc endEncoding];
@@ -449,6 +471,11 @@ class MetalBackend final : public Backend {
     return true;
   }
 
+  // wait_idle from inside submit, which already holds one frame slot.
+  void wait_idle_held() {
+    for (int i = 0; i < FRAME_SLOTS - 1; ++i) dispatch_semaphore_wait(frame_semaphore_, DISPATCH_TIME_FOREVER);
+    for (int i = 0; i < FRAME_SLOTS - 1; ++i) dispatch_semaphore_signal(frame_semaphore_);
+  }
   void wait_idle() {
     for (int i = 0; i < FRAME_SLOTS; ++i) dispatch_semaphore_wait(frame_semaphore_, DISPATCH_TIME_FOREVER);
     for (int i = 0; i < FRAME_SLOTS; ++i) dispatch_semaphore_signal(frame_semaphore_);
@@ -679,11 +706,35 @@ class MetalBackend final : public Backend {
     auto ec = efb_copies_.find(t.addr);
     if (ec != efb_copies_.end() && ec->second.texture) { ec->second.last_used = frame_counter_; return ec->second.texture; }
     if (!t.data) return nil;
+    const PostHooks* post = g_post_hooks.load(std::memory_order_acquire);
+    if (post && post->dynamic && post->dynamic_wanted && post->dynamic_wanted())   // a menu video in place of this texture
+      if (void* dyn = post->dynamic((__bridge void*)device_, (__bridge void*)command_, t)) return (__bridge id<MTLTexture>)dyn;
     const uint32_t meta[] = {t.width, t.height, t.format, t.mip_levels, t.tlut_format, uint32_t(mark & 7)};
     const uint64_t key = t.data->hash ^ hash_bytes(meta, (mark & 7) ? sizeof meta : sizeof meta - sizeof meta[0]);
     auto it = textures_.find(key);
     if (it != textures_.end()) { it->second.last_used = frame_counter_; return it->second.texture; }
     host::SimCostScope texture_cost(host::SIM_TEXTURE);
+    // A texture pack's replacement (PostHooks::replace): uploaded with its own levels in place of the game's; a look's
+    // surface treatment still wins (it draws no texture detail anyway).
+    if (!(mark & 7) && post && post->replace) {
+      std::vector<std::vector<uint8_t>> levels; uint32_t w = 0, h = 0;
+      if (post->replace(t, levels, &w, &h) && !levels.empty() && w && h && levels[0].size() >= size_t(w) * h * 4) {
+        TextureEntry e;
+        e.width = w; e.height = h; e.levels = (uint32_t)levels.size(); e.last_used = frame_counter_;
+        MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:w height:h mipmapped:e.levels > 1];
+        td.mipmapLevelCount = e.levels; td.usage = MTLTextureUsageShaderRead; td.storageMode = MTLStorageModeShared;
+        e.texture = [device_ newTextureWithDescriptor:td];
+        uint32_t lw = w, lh = h;
+        for (uint32_t l = 0; l < e.levels; ++l) {
+          if (levels[l].size() < size_t(lw) * lh * 4) break;
+          [e.texture replaceRegion:MTLRegionMake2D(0, 0, lw, lh) mipmapLevel:l withBytes:levels[l].data() bytesPerRow:lw * 4];
+          lw = std::max(1u, lw / 2); lh = std::max(1u, lh / 2);
+        }
+        id<MTLTexture> tex = e.texture;
+        textures_[key] = std::move(e);
+        return tex;
+      }
+    }
     // A look's treated texture (metal_set_look_hooks): level 0 decoded, treated (flat colour, white, posterize, 64 x 64)
     // and uploaded alone, as melee-unlocked uploads a treated copy.
     const LookHooks* look = g_look_hooks.load(std::memory_order_acquire);
@@ -987,6 +1038,7 @@ class MetalBackend final : public Backend {
       [enc setVertexBytes:&bc length:sizeof bc atIndex:0];
       [enc setFragmentBytes:&bc length:sizeof bc atIndex:0];
       [enc setFragmentTexture:efb_color_ atIndex:0];
+      [enc setFragmentTexture:efb_depth_ atIndex:1];
       [enc setFragmentSamplerState:blit_sampler_ atIndex:0];
       [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
       [enc endEncoding];
@@ -1001,6 +1053,48 @@ class MetalBackend final : public Backend {
     }
   }
 
+  // The presented picture as the present pass draws it (picture options, sharpening, SSAO), at its own size, for a capture.
+  id<MTLTexture> final_picture(const PostFrame& pf) {
+    id<MTLTexture> src = (__bridge id<MTLTexture>)pf.color;
+    if (!src || !pf.w || !pf.h) return nil;
+    if (!final_tex_ || final_tex_.width != pf.w || final_tex_.height != pf.h) {
+      MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:pf.w height:pf.h mipmapped:NO];
+      td.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead; td.storageMode = MTLStorageModePrivate;
+      final_tex_ = [device_ newTextureWithDescriptor:td];
+    }
+    const float sw = (float)src.width, sh = (float)src.height;
+    const bool efb = src == efb_color_;
+    BlitConstants bc{{pf.w / sw, pf.h / sh, pf.x / sw, pf.y / sh}, {1.0f / sw, 1.0f / sh, std::clamp(opts_.sharpness, 0.0f, 1.0f), 0.0f},
+                     {1, 1, efb ? std::clamp(opts_.ssao, 0.0f, 1.0f) : 0.0f, 0}};
+    if (opts_.brightness != 1.0f || opts_.contrast != 1.0f || opts_.vibrance != 1.0f || opts_.filter >= 2 || opts_.crt > 0) {
+      bc.pic[0] = opts_.brightness; bc.pic[1] = opts_.contrast; bc.pic[2] = opts_.vibrance; bc.pic[3] = 1.0f;
+      bc.look[0] = (float)opts_.filter; bc.look[1] = (float)opts_.crt; bc.look[2] = opts_.crt_curve; bc.look[3] = (float)pf.h;
+    }
+    MTLRenderPassDescriptor* rp = [MTLRenderPassDescriptor renderPassDescriptor];
+    rp.colorAttachments[0].texture = final_tex_;
+    rp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+    rp.colorAttachments[0].storeAction = MTLStoreActionStore;
+    id<MTLRenderCommandEncoder> enc = [command_ renderCommandEncoderWithDescriptor:rp];
+    [enc setViewport:MTLViewport{0, 0, (double)pf.w, (double)pf.h, 0, 1}];
+    [enc setRenderPipelineState:blit_copy_];
+    [enc setVertexBytes:&bc length:sizeof bc atIndex:0];
+    [enc setFragmentBytes:&bc length:sizeof bc atIndex:0];
+    [enc setFragmentTexture:src atIndex:0];
+    [enc setFragmentTexture:efb_depth_ atIndex:1];
+    [enc setFragmentSamplerState:blit_sampler_ atIndex:0];
+    [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    [enc endEncoding];
+    return final_tex_;
+  }
+  PostFrame post_frame(const EfbCopy& c) const {
+    PostFrame pf;
+    pf.device = (__bridge void*)device_; pf.command_buffer = (__bridge void*)command_;
+    pf.color = (__bridge void*)efb_color_; pf.depth = (__bridge void*)efb_depth_;
+    pf.x = std::min<uint32_t>(c.src_x * scale_, efb_w_); pf.y = std::min<uint32_t>(c.src_y * scale_, efb_h_);
+    pf.w = std::min<uint32_t>(c.src_w * scale_, efb_w_ - pf.x); pf.h = std::min<uint32_t>(c.src_h * scale_, efb_h_ - pf.y);
+    pf.out_w = pf.w; pf.out_h = pf.h; pf.scale = scale_; pf.frame = frames_presented_;
+    return pf;
+  }
   bool present_efb(const EfbCopy& c) {
     end_pass();
     // A second XFB copy in the same frame re-renders into the drawable already acquired.
@@ -1012,7 +1106,15 @@ class MetalBackend final : public Backend {
     const float aspect = output_aspect();
     const host::GameRect gr = host::window_game_rect(ww, wh, aspect);   // shared with the touch layout and the letterbox artwork
     const float vw = gr.w, vh = gr.h;
-    const bool fx = fx_present(c, gr);   // MetalFX reconstructs into fx_out_ before this pass
+    // A picture effect's output (PostHooks::picture, a shader preset) is drawn in place of the EFB region.
+    const PostHooks* post = g_post_hooks.load(std::memory_order_acquire);
+    id<MTLTexture> effect = nil;
+    if (post && post->picture) {
+      PostFrame pf = post_frame(c);
+      pf.out_w = (uint32_t)std::lround(vw); pf.out_h = (uint32_t)std::lround(vh);
+      effect = (__bridge id<MTLTexture>)post->picture(pf);
+    }
+    const bool fx = !effect && fx_present(c, gr);   // MetalFX reconstructs into fx_out_ before this pass
     MTLRenderPassDescriptor* rp = [MTLRenderPassDescriptor renderPassDescriptor];
     rp.colorAttachments[0].texture = drawable.texture;
     rp.colorAttachments[0].loadAction = again ? MTLLoadActionLoad : MTLLoadActionClear;
@@ -1023,7 +1125,9 @@ class MetalBackend final : public Backend {
     BlitConstants bc{{(float)c.src_w / EFB_WIDTH, (float)c.src_h / EFB_HEIGHT, (float)c.src_x / EFB_WIDTH, (float)c.src_y / EFB_HEIGHT},
                      {1.0f / std::max((float)efb_w_, 1.0f), 1.0f / std::max((float)efb_h_, 1.0f), std::clamp(opts_.sharpness, 0.0f, 1.0f), 0.0f},
                      {1, 1, 0, 0}};
-    if (fx) {
+    if (effect) {
+      bc = {{1, 1, 0, 0}, {1.0f / std::max<float>(effect.width, 1), 1.0f / std::max<float>(effect.height, 1), 0.0f, 0.0f}, {1, 1, 0, 0}};
+    } else if (fx) {
       // Composite the reconstructed content 1:1 (the scaler owns the sharpening).
       bc = {{1, 1, 0, 0}, {1.0f / fx_out_w_, 1.0f / fx_out_h_, 0.0f, 0.0f}, {1, 1, 0, 0}};
     } else {
@@ -1035,11 +1139,13 @@ class MetalBackend final : public Backend {
       bc.pic[0] = opts_.brightness; bc.pic[1] = opts_.contrast; bc.pic[2] = opts_.vibrance; bc.pic[3] = 1.0f;
       bc.look[0] = (float)opts_.filter; bc.look[1] = (float)opts_.crt; bc.look[2] = opts_.crt_curve; bc.look[3] = vh;
     }
-    if (opts_.filter == 1 && !fx) { bc.box[0] = std::max(bc.box[0], 2.0f); bc.box[1] = std::max(bc.box[1], 2.0f); }   // area: a wider box
+    if (opts_.filter == 1 && !fx && !effect) { bc.box[0] = std::max(bc.box[0], 2.0f); bc.box[1] = std::max(bc.box[1], 2.0f); }   // area: a wider box
+    if (!fx && !effect) bc.box[2] = std::clamp(opts_.ssao, 0.0f, 1.0f);   // SSAO reads the EFB depth at the picture's uv
     [enc setRenderPipelineState:blit_present_];
     [enc setVertexBytes:&bc length:sizeof bc atIndex:0];
     [enc setFragmentBytes:&bc length:sizeof bc atIndex:0];
-    [enc setFragmentTexture:(fx ? fx_out_ : efb_color_) atIndex:0];
+    [enc setFragmentTexture:(effect ? effect : fx ? fx_out_ : efb_color_) atIndex:0];
+    [enc setFragmentTexture:efb_depth_ atIndex:1];
     [enc setFragmentSamplerState:blit_sampler_ atIndex:0];
     [enc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     draw_overlay(enc, ww, wh);
@@ -1053,6 +1159,7 @@ class MetalBackend final : public Backend {
     [enc endEncoding];
     drawable_ = drawable;
     fx_presented_ = fx;
+    effect_presented_ = effect;
     last_present_ = c;
     return true;
   }
@@ -1252,7 +1359,11 @@ class MetalBackend final : public Backend {
       draws_this_frame_ = 0;
       fx_presented_ = false;
       if (async_compile_) drain_ready();
+      if (g_drop_textures.exchange(false, std::memory_order_acq_rel)) { wait_idle_held(); textures_.clear(); host::log("metal: game textures dropped (texture packs changed)"); }
       command_ = [queue_ commandBuffer];
+      effect_presented_ = nil;
+      const PostHooks* post = g_post_hooks.load(std::memory_order_acquire);
+      if (post && post->begin_frame) post->begin_frame(frame);
       drawable_ = nil;
       bool presented = false;
       // The look rules (metal_set_look_hooks), decided per draw on this thread.
@@ -1260,6 +1371,13 @@ class MetalBackend final : public Backend {
       const bool look_on = look && look->begin_frame && look->decide && look->begin_frame(frame);
       for (const FrameCommand& cmd : frame.commands) {
         if (cmd.kind == FrameCommand::Draw) {
+          if (post && post->before_draw) {   // a picture effect's layer under this draw (a menu video)
+            ensure_efb_pass();
+            if (post->before_draw(frame, size_t(&cmd - frame.commands.data()), frame.draws[cmd.index], (__bridge void*)device_, (__bridge void*)encoder_, efb_w_, efb_h_, scale_)) {
+              bound_pipeline_ = nil; bound_depth_ = nil; bound_cull_ = -1;
+              [encoder_ setVertexBuffer:vertex_ring_[slot_].buffer offset:0 atIndex:0];
+            }
+          }
           if (look_on) {
             LookDecision decision;
             look->decide(frame, cmd.index, frame.draws[cmd.index], &decision);
@@ -1274,6 +1392,18 @@ class MetalBackend final : public Backend {
             else {   // nothing presented (a hidden window): the UI still runs its frame, so it animates and answers input
               std::lock_guard<std::mutex> lock(ui_pass_mutex());
               if (ui_pass()) ui_pass()(nullptr, nullptr, nullptr, (int)(c.src_w * scale_), (int)(c.src_h * scale_));
+            }
+            // The picture effects' look at the presented picture (captures, the glitch detector), before the clear.
+            if (shown) {
+              const PostHooks* post = g_post_hooks.load(std::memory_order_acquire);
+              if (post && post->presented) {
+                end_pass();
+                PostFrame pf = post_frame(c);
+                if (effect_presented_) { pf.color = (__bridge void*)effect_presented_; pf.x = pf.y = 0; pf.w = pf.out_w = (uint32_t)effect_presented_.width; pf.h = pf.out_h = (uint32_t)effect_presented_.height; }
+                else if (fx_presented_ && fx_out_) { pf.color = (__bridge void*)fx_out_; pf.x = pf.y = 0; pf.w = pf.out_w = fx_out_w_; pf.h = pf.out_h = fx_out_h_; }
+                if (post->wants_final && post->wants_final()) pf.final_color = (__bridge void*)final_picture(pf);
+                post->presented(pf);
+              }
             }
             // Snapshot the presented EFB before the game's clear erases it:
             // encoding this after the loop reads the cleared EFB (all-black
@@ -1324,6 +1454,7 @@ class MetalBackend final : public Backend {
                     [penc setVertexBytes:&pb length:sizeof pb atIndex:0];
                     [penc setFragmentBytes:&pb length:sizeof pb atIndex:0];
                     [penc setFragmentTexture:source atIndex:0];
+                    [penc setFragmentTexture:efb_depth_ atIndex:1];
                     [penc setFragmentSamplerState:blit_sampler_ atIndex:0];
                     [penc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
                     [penc endEncoding];
@@ -1509,6 +1640,8 @@ class MetalBackend final : public Backend {
   uint32_t capture_w_ = 0, capture_h_ = 0;
   uint64_t capture_number_ = 0;
   bool capture_bgra_ = false, fx_presented_ = false;
+  id<MTLTexture> effect_presented_ = nil;   // this frame's picture came from PostHooks::picture
+  id<MTLTexture> final_tex_ = nil;          // PostFrame::final_color
   std::unordered_map<PsoKey, id<MTLRenderPipelineState>, PsoKeyHash> pipelines_;
   std::unordered_map<uint64_t, id<MTLFunction>> vs_functions_, ps_functions_;
   std::unordered_map<uint32_t, id<MTLDepthStencilState>> depth_states_;

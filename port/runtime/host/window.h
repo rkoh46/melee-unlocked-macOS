@@ -6,6 +6,10 @@
 namespace host {
 using MessageCallback = std::function<bool(void*, uint32_t, uintptr_t, intptr_t)>;
 void window_set_message_callback(MessageCallback cb);
+// A key pressed in the game's window (not a repeat): SDL keycode and modifier bits; true when the hook used it (the
+// melee-unlocked engine's Ctrl+F2 capture and Ctrl+F3 Lab view). Window thread.
+using KeyHook = std::function<bool(int key, int mods)>;
+void window_set_key_hook(KeyHook hook);
 void window_input_capture(bool capture);
 struct PadState;
 bool window_ui_gamecube_pad(PadState& pad);

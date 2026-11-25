@@ -1,0 +1,32 @@
+Texture packs on the Mac (melee-unlocked's texture_pack.cpp, compiled from the fetched tree by gfx/gen_gfx.sh): the packs,
+Load/Textures/GALE01 and the dump folder are in the engine's folder in Application Support (gfx_host_shim.h mu_gfx_folder),
+not beside the program. The few Win32 names left are answered by gfx/shim/windows.h. prefetch_join() waits for the
+prefetch thread when the engine stops (upstream ends the process without destructors; here a joinable thread aborts).
+--- a/port/runtime/gx/texture_pack.cpp
++++ b/port/runtime/gx/texture_pack.cpp
+@@ -150,15 +150,9 @@
+ constexpr uint64_t MAX_IMAGE_BYTES = 64ull * 1024 * 1024;
+ constexpr uint64_t MAX_INDEX_FILES = 500000;
+ 
+-std::filesystem::path exe_directory() {
+-#ifdef __APPLE__
+-  return std::filesystem::current_path();  // user-owned texture packs and dumps
+-#endif
+-  wchar_t buffer[32768];
+-  DWORD n = GetModuleFileNameW(nullptr, buffer, (DWORD)std::size(buffer));
+-  if (!n || n >= std::size(buffer)) return std::filesystem::path(".");
+-  return std::filesystem::path(std::wstring(buffer, n)).parent_path();
+-}
++// melee-unlocked-macOS (mu-engine/app/gfx/patches/0130): the engine's own folder in Application Support, where the player's
++// TexturePacks, Load/Textures/GALE01 and Dump folders are (gfx/effects_mac.mm mu_gfx_folder).
++std::filesystem::path exe_directory() { return mu_gfx_folder(); }
+ 
+ // Dolphin looks in Load/Textures/<GameID> and falls back to the three character region free ID
+ // (HiresTextures.cpp:123 GetTextureDirectory). Packs are shipped both ways, so honour both.
+@@ -988,3 +982,6 @@
+ }
+ 
++// melee-unlocked-macOS (gfx/patches/0130): the prefetch thread, joined before the engine exits (gfx/effects_mac.mm report).
++void prefetch_join() { if (g_prefetch.joinable()) g_prefetch.join(); }
++
+ }  // namespace gx::texpack

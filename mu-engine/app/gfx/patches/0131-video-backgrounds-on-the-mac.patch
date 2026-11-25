@@ -1,0 +1,33 @@
+Menu video backgrounds and border art on the Mac (melee-unlocked's video_background.cpp, compiled from the fetched tree by
+gfx/gen_gfx.sh): its non-Windows path, with linux_media's VideoReader and load_picture answered by AVFoundation and ImageIO
+(gfx/media_apple.mm); its folders in the engine's folder in Application Support; the app's host.h.
+--- a/port/runtime/gx/video_background.cpp
++++ b/port/runtime/gx/video_background.cpp
+@@ -4,7 +4,7 @@
+ #include "video_background.h"
+ #include "video_background_learning.h"
+ #include "video_background_style.h"
+-#include "../host/host.h"
++#include "host.h"   // melee-unlocked-macOS (gfx/patches/0131): the app's host.h, with gfx_host_shim.h pre-included
+ #include <windows.h>
+ #ifdef _WIN32
+ #include <mfapi.h>
+@@ -41,15 +41,9 @@
+ namespace gx::video_bg {
+ namespace {
+ 
+-std::filesystem::path exe_directory() {
+-#ifdef __APPLE__
+-  return std::filesystem::current_path();  // writable media folders belong to the selected profile
+-#endif
+-  wchar_t path[32768]{};
+-  DWORD n = GetModuleFileNameW(nullptr, path, (DWORD)std::size(path));
+-  if (!n || n >= std::size(path)) return std::filesystem::current_path();
+-  return std::filesystem::path(path).parent_path();
+-}
++// melee-unlocked-macOS (gfx/patches/0131): VideoBackgrounds and Borders in the engine's folder in Application Support
++// (gfx/effects_mac.mm mu_gfx_folder); the decoder is linux_media's VideoReader, on AVFoundation (gfx/media_apple.mm).
++std::filesystem::path exe_directory() { return mu_gfx_folder(); }
+ 
+ // The folders players drop media into. Under the YouGame app the program folder is read-only (the
+ // sandbox grants it read and execute only), so they live in the game's data folder (YOUGAME_DATA).

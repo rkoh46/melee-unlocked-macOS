@@ -20,6 +20,8 @@
 #include <cmath>
 #include <mutex>
 
+void mu_gfx_imgui_draw(int width, int height) __attribute__((weak));   // gfx/lab_mac.cpp: the Lab view, under everything else
+
 namespace {
 id<MTLDevice> g_device = nil;
 bool g_ready = false;
@@ -70,6 +72,7 @@ void ui_frame(void* encoder, void* pass, void* command_buffer, int w, int h) {
   feed_mouse(io, scale);
   if (pass) ImGui_ImplMetal_NewFrame((__bridge MTLRenderPassDescriptor*)pass);
   ImGui::NewFrame();
+  if (mu_gfx_imgui_draw) mu_gfx_imgui_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));
   fe::overlay_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));   // the feature modules' overlays, the replay viewer, the Practice menu
   fe::mu_ui::panel_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));
   ImGui::Render();

@@ -220,6 +220,30 @@ set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEn
 # mu_panel.cpp asks for the Practice menu weakly (the Switch's features/proai.cpp): absent, its row is left out.
 target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi")
 
+# The engine's picture effects (mu-engine/app/gfx, gx::PostHooks on the Metal renderer): melee-unlocked's texture packs,
+# menu video backgrounds, one-frame glitch detector and Lab view compiled from the fetched tree (gfx/gen_gfx.sh, its patches
+# 013x), the Mac's AVFoundation/ImageIO media decoding for them (gfx/media_apple.mm), shader presets through librashader's
+# Metal runtime loaded at run time (its MPL-2.0 headers from the fetched tree), capture bursts. Settings:
+# fe/features/graphics.cpp.
+set(GFX "${MU_APPSRC}/gfx")
+set(GFX_GEN "${CMAKE_CURRENT_BINARY_DIR}/gen/gfx")
+execute_process(COMMAND bash "${GFX}/gen_gfx.sh" "${MU_TREE}" "${GFX_GEN}" RESULT_VARIABLE _gfx_rc)
+if(NOT _gfx_rc EQUAL 0)
+  message(FATAL_ERROR "melee-unlocked engine: gfx/gen_gfx.sh could not take its files from ${MU_TREE}")
+endif()
+file(GLOB _gfx_patches "${GFX}/patches/*.patch")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${GFX}/gen_gfx.sh" ${_gfx_patches})
+set(_gfx_mu_sources "${GFX_GEN}/texture_pack.cpp" "${GFX_GEN}/video_background.cpp" "${GFX_GEN}/flicker_scan.cpp" "${GFX_GEN}/lab_view.cpp")
+set(_gfx_includes "${GFX}/shim" "${GFX_GEN}" "${FE}" "${DD}/gx" "${DD}/host" "${DD}/ppc" "${MU_TREE}/port/third_party" "${MU_TREE}/port/linux"
+  "${MU_TREE}/port/runtime/abi" "${IMGUI}" "${MU_TREE}/port/runtime/gx")
+set_source_files_properties(${_gfx_mu_sources} PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes}"
+  COMPILE_OPTIONS "-include;${GFX}/shim/gfx_host_shim.h;-Wno-deprecated-declarations;-Wno-unused-function;-Wno-unused-variable")
+set_source_files_properties("${GFX}/lab_mac.cpp" PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes}")
+set_source_files_properties("${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes};${MU_TREE}/port/third_party/librashader"
+  COMPILE_OPTIONS "-fobjc-arc")
+target_sources(melee_unlocked_mac PRIVATE ${_gfx_mu_sources} "${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" "${GFX}/lab_mac.cpp")
+target_link_libraries(melee_unlocked_mac PRIVATE "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework ImageIO")
+
 # The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page, linked into the launcher
 # (melee_launcher_mac) as objects. melee-unlocked's catalog and the LZMA SDK decoders come from the fetched tree at build time.
 file(READ "${MU_TREE}/mods-catalog-2.json" _catalog)

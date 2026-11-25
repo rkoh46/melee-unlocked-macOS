@@ -176,7 +176,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Costume, stage and effect imports | host + renderer | partial (fe/features/cosmetics.cpp from the Switch): costume and stage files copied to `~/Library/Application Support/Dashdance/melee-unlocked/Cosmetics/Costumes` and `Stages` are skins; the mod discs in the launcher's Mods folder add theirs. No import window, effect variants, pause screens or portraits |
 | Skin cycling on the select screens | game image + host | active offline: L / R on a picked costume (command 0xF9), X / Y on a highlighted stage (0xFB), the title demo's memory check (0xFC); picks kept in Cosmetics/selection.txt; settings.ini `cosmetics 0` turns it off. Not tried by hand on the Mac yet |
 | Voice mods | host + game image | engine option, no setting |
-| Texture packs | renderer | not wired |
+| Texture packs | renderer | active: melee-unlocked's texture_pack.cpp compiled from the fetched tree (mu-engine/app/gfx, gx::PostHooks::replace on the Metal renderer): Dolphin's tex1_ names and XXH64 hashes, packs in `melee-unlocked/TexturePacks/<pack>` or `Load/Textures/GALE01`, mip levels, per-pack switches (`texpackoff`), prefetch (`prefetchtextures`) and texture dumping (`dumptextures`) into `Dump/Textures/GALE01`; Picture rows and an Open the TexturePacks folder row. mu-engine/tools/app_graphics_test.sh texpack: the game's own textures dumped, a 250-texture pack made from them (colours inverted), 255 of 255 drawn textures replaced (build/gfx-shots/texture-pack-and-video-background.png). Display only |
 | Game music | game image | active: the game's own music through the app's sound output |
 | Music volume | host / game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Custom music packs / jukebox | host | active: settings.ini `musicpacks 1` (off by default) and the AUDIO page's "Use custom music (next start)": the game hands its songs to melee-unlocked's jukebox.cpp (compiled from the fetched tree, `mu-engine/app/fe/patches/0118`, `mu-engine/patches/0015`; `fe/features/audio.cpp` from the Switch), which plays the disc's HPS or a file of the same name from `melee-unlocked/MusicPacks/audio/` (or a folder of them, a random pick per start): MP3, OGG, WAV, FLAC through minimp3, stb_vorbis, dr_wav and dr_flac (fetched at pinned commits with SHA-256 checks by `mu-engine/fetch.sh`), M4A/AAC, ALAC, AIFF and CAF through AudioToolbox (`fe/media_decode.cpp`; `mu-engine/tools/music_decode_test.sh`: 9 of 9). Tracks.txt and README.txt are written into the folder. `mu-engine/tools/app_audio_test.sh packs` (a hidden start driven into a VS match on Onett; SDL's disk driver records the output): `jukebox: music pack picked .../onetto+onetto2/tone.m4a` when the match starts, and a 440 Hz tone in every second of the recording from then on (26 seconds, 22..47); earlier runs picked the main menu's tone.flac from `menu01+...` (36 seconds); `off`: no tone. Music only, played locally (allowed online, as upstream) |
@@ -188,11 +188,11 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Arcade look: 2D camera | game image offline; renderer online | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Arcade look: combo counter | renderer | active: the overlays |
 | 2D-style m-ex build | game image | engine option, no setting |
-| Lab view | renderer | not wired |
-| Looping video backgrounds | renderer | not wired |
+| Lab view | renderer | active: melee-unlocked's lab_view.cpp compiled from the fetched tree (gfx/patches/0133), fed from the game image's geometry snapshot (mu_look_snapshot_v1, items, extras) each retrace and drawn in the engine's ImGui pass: settings.ini `labview`, `look_lab_fighters` (silhouettes, stick figures, capsules, blobs), `look_lab_stage`, `lab_colour_*`, Ctrl+F3, Picture rows. mu-engine/tools/app_graphics_test.sh lab: stick figures and capsules on Onett (build/gfx-shots/lab-view-stick-capsule.png). The silhouette packs (Lab/*.lab, upstream's own download) are not fetched; without them the silhouette look draws markers |
+| Looping video backgrounds | renderer | active: melee-unlocked's video_background.cpp compiled from the fetched tree, frames decoded by AVFoundation (H.264/HEVC MP4, gfx/media_apple.mm): `VideoBackgrounds/css.mp4` and `sss.mp4`, the learned backdrop texture replaced (PostHooks::dynamic) and the character select's full-screen layer inserted where upstream puts it (PostHooks::before_draw); settings.ini `videobackgrounds`, Picture rows. mu-engine/tools/app_graphics_test.sh video: an ffmpeg test pattern behind the character select (picture as above). The stage select's slot not tried |
 | Border art | renderer | active: the overlays (a .bmp in the Borders folder) |
 | Built-in CRT look | renderer | active: settings.ini crt_filter 1/2 and crt_curve, drawn in the Metal present pass; off by default |
-| RetroArch shader presets | renderer | not wired |
+| RetroArch shader presets | renderer | partial: wired as melee-unlocked does it, through librashader loaded at run time, here its Metal runtime (librashader.h/librashader_ld.h from the fetched tree, gfx/effects_mac.mm): `.slangp` presets under `melee-unlocked/Shaders`, settings.ini `shaderpreset`, Picture rows with the status line; the EFB region is the preset's source and its output is presented. No librashader.dylib is built or shipped (it is Rust; no toolchain here): without one the row says librashader.dylib is missing (mu-engine/tools/app_graphics_test.sh shader). Not run with a library |
 | Easter egg | renderer + game image | not wired: the Switch has melee-unlocked's character select egg now (its egg.cpp, 3a90423); not copied to the Mac yet |
 
 ## 7. Controllers
@@ -230,7 +230,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Anisotropic filtering | renderer | active: the panel's texture filtering row |
 | Sharpening | renderer | active: settings.ini sharpness (the present pass's sharpening) |
 | Brightness, contrast, vibrance | renderer | active: settings.ini brightness / contrast / vibrance, in the Metal present pass; off by default |
-| Screen-space ambient occlusion | renderer | not wired |
+| Screen-space ambient occlusion | renderer | active: melee-unlocked's present-pass ambient occlusion (eight neighbours of the EFB depth) in the Metal present shader, settings.ini `ssao` 0..1 and a Picture row, off by default. mu-engine/tools/app_graphics_test.sh ssao: 2.3% of pixels darker at contact edges (build/gfx-shots/ssao-off-on.png) |
 | Window size, borderless and exclusive fullscreen | renderer | active: the app's Metal renderer and launcher settings |
 | Graphics backend picker | renderer | not applicable: one renderer on the Mac (Metal) |
 | DLSS, DLAA, XeSS, FSR upscaling | renderer | not applicable on the Mac (PC vendor libraries) |
@@ -281,8 +281,8 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Text size or colour-blind setting | n/a | upstream stub (does not exist) |
 | Logs | host | active: the engine's engine.log (the session before as engine.prev.log) and engine.log.host, and the launcher's launcher.log, in ~/Library/Application Support/Dashdance/melee-unlocked/ |
 | Trace-mark keys | host | not wired |
-| Frame capture burst | renderer | not wired |
-| One-frame glitch detector | renderer | not wired |
+| Frame capture burst | renderer | active: Ctrl+F2 (or the Picture row) writes the next 90 presented frames, picture options and SSAO applied, to `melee-unlocked/capture/blink_NNNNN.ppm` from GPU readbacks finished off the render thread (gfx/effects_mac.mm); `MELEE_CAPTURE_BURST=FRAME,COUNT` for tests. mu-engine/tools/app_graphics_test.sh capture: 90 pictures |
+| One-frame glitch detector | renderer | active: melee-unlocked's flicker_scan.cpp compiled from the fetched tree on a 64 x 64 reduction of every presented picture read back from the GPU (no stall), settings.ini `flickerscan`, a Picture row; hits logged and their three grids written to `melee-unlocked/flicker/`. mu-engine/tools/app_graphics_test.sh glitch: an injected bright block at presented frame 1650 reported (`MELEE_TEST_GLITCH_AT`); the game's own one-frame effects (the GO text) are reported too, as upstream |
 | Frame time CSV, simulation time CSV, latency trace | host / renderer | partial, in this app's own form: `--digest` CSVs, the `[frame N] ... sim:` log lines, `MELEE_METAL_LATENCY=1` |
 | Scripted runs | host | active: `--script` (the reference scripts, digests) and `--play-script` (play mode through the app's input path) |
 | Benchmark mode | n/a | upstream stub (does not exist in the game) |
@@ -301,7 +301,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Update check and one-click update | launcher + host + external | partial: the launcher's Play page compares the commit the app was built from (Info.plist MUBuildCommit, written by tools/package_macos_app.sh) with this repository's branch on GitHub (rkoh46/melee-unlocked-macOS, never melee-unlocked's updater) and says "N newer changes on GitHub" with How to update (the install line again) or "up to date"; `MELEE_UPDATE_CHECK=0` turns it off. No one-click update (the app is built from source) |
 | Version rollback | launcher | not wired (left out: the Mac app is built from source) |
 | Optional part downloads | launcher + host + external | not wired |
-| Lab view and Pro AI asset downloads | host + external | not wired |
+| Lab view and Pro AI asset downloads | host + external | partial: Pro AI downloads are active (Fight a pro); the Lab view's silhouette packs are not downloaded (the stick figure, capsule and blob looks need none) |
 | "What's new" | launcher | partial: the Play page's What's new link opens this repository's change list (docs/PR.md) |
 | Launcher languages | launcher | not wired: the Switch's home screen uses melee-unlocked's lang/ tables (mu_lang.cpp); the Mac launcher is AppKit and has none yet |
 | Launcher colour and rail picture | launcher | active: launcher colour wheel |
