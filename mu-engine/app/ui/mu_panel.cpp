@@ -1,7 +1,7 @@
-// melee-unlocked's in-game settings panel on the Switch, in place of the app's own menu (game_menu.cpp, no longer built).
+// melee-unlocked's in-game settings panel (from Melee-NX-NetPlay's Switch frontend), in place of the app's own menu.
 //
-// The look is melee-unlocked's, drawn by its own code: its ImGui panel in the "Clean side" appearance (menu style 0, its
-// default), from the fetched tree at build time (scripts/mu_ui_extract.py -> gen/mu_ui): pc_settings_visuals.inl (the
+// The look is melee-unlocked's, drawn by its own code: its ImGui panel in each of its menu styles (Clean side, its default;
+// Icon tiles, GD Melee, Radial, Wide tabs, Simple; the legacy Classic and Old menus), from the fetched tree at build time (scripts/mu_ui_extract.py -> gen/mu_ui): pc_settings_visuals.inl (the
 // rows, toggles, combos, sliders, section headers, footer chips, Quit game button), the Clean category list and title
 // shards, the slide-in motion, the page entrance and smooth scroll of pc_settings.cpp, its ImGui style, the controller
 // feed of settings_imgui_input.h and the focus bookkeeping of settings_page_navigation.h. The same eight categories
@@ -47,9 +47,16 @@ bool mu_phob_menu_feed(host::PadState pads[4]) __attribute__((weak));
 #include <map>
 #include <mutex>
 #include <set>
+#include <sstream>
 #include <string>
+#include <strings.h>
 #include <sys/stat.h>
+#include <thread>
 #include <vector>
+#include <zlib.h>
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
 
 // ---- melee-unlocked's panel code (gen/mu_ui), with the few names it uses from the rest of its program ----
 namespace host::test_env { inline const char* getenv(const char*) { return nullptr; } }   // its test hooks: none here
@@ -64,14 +71,21 @@ namespace host { enum class CaptureDevice { None, Keyboard, Pad, Adapter }; }   
 #include "settings_page_navigation.h"
 #include "settings_imgui_input.h"
 #include "settings_search.h"
+#include "radial_navigation.h"
 #include "motion.h"
+namespace fe::mu_ui { void* gd_texture(const std::string& name); }   // below: the GD Melee kit's pictures, decoded on first use
 namespace gx {
 #include "mu_settings_state.inc"
 std::atomic<float> g_frame_ui_scale{1.0f};
-// The GD Melee kit's pictures (the GD look, menu style 2) are not drawn: its picture and font atlases stay unloaded.
-struct ImTextureData { ImTextureID GetTexRef() const { return ImTextureID(0); } };
-static std::string ui_source_asset_path(const char*, const char*) { return {}; }
-static ImTextureData* cosmetic_preview(const std::string&) { return nullptr; }
+// The GD Melee kit's pictures and font pages (menu style 2): the embedded PNGs of its assets/kit folder (build.sh sync).
+struct ImTextureData { void* texture = nullptr; ImTextureID GetTexRef() const { return ImTextureID(reinterpret_cast<uintptr_t>(texture)); } };
+static std::string ui_source_asset_path(const char* source, const char* name) { return std::string(source) + "/" + name; }
+static ImTextureData* cosmetic_preview(const std::string& path) {
+  static std::map<std::string, ImTextureData> cache;
+  auto it = cache.find(path);
+  if (it == cache.end()) it = cache.emplace(path, ImTextureData{fe::mu_ui::gd_texture(path)}).first;
+  return it->second.texture ? &it->second : nullptr;
+}
 static bool g_menu_style_gallery_open = false;
 static void draw_settings_icon(int index, ImVec2 p, ImU32 color);   // mu_panel_parts.inc (pc_settings.cpp has it first)
 #include "gd_text.inl"
@@ -82,8 +96,18 @@ static void draw_settings_icon(int index, ImVec2 p, ImU32 color);   // mu_panel_
 // melee-unlocked's fonts and launcher art, embedded by build.sh sync (gen/embedded.S).
 extern "C" const uint8_t mu_ui_font_black[], mu_ui_font_black_end[], mu_ui_font_bold[], mu_ui_font_bold_end[];
 extern "C" const uint8_t mu_ui_bailey[], mu_ui_bailey_end[], mu_ui_mark[], mu_ui_mark_end[];
+#define MU_GD_ASSET(n) extern "C" const uint8_t mu_gd_##n[], mu_gd_##n##_end[];
+#include "gd_assets.inc"
+#undef MU_GD_ASSET
 
-namespace fe::features { __attribute__((weak)) bool practice_menu_chord(int port); }
+namespace fe {
+void egg_watch_pads(const host::PadState pads[4]);   // egg.cpp: melee-unlocked's character select easter egg
+void egg_draw(float x0, float y0, float x1, float y1, double time);
+}
+namespace fe::features {
+__attribute__((weak)) bool practice_menu_chord(int port);   // features/proai.cpp: the Practice menu
+__attribute__((weak)) uint32_t cosmetics_off_online(uint32_t* stages);   // features/cosmetics.cpp: skins served standard online
+}
 #include "feature_hooks.h"
 namespace fe::features {   // features/gecko.cpp: the player's Gecko codes (GECKO CODES > Your codes)
 __attribute__((weak)) std::vector<GeckoRow> gecko_rows();
@@ -229,7 +253,7 @@ void remap_next_locked() { ++g_step; g_step_frames = 0; g_step_armed = false; if
 void queue(Action a) { std::lock_guard<std::mutex> lock(g_mutex); g_actions.push_back(std::move(a)); }
 
 // ---- render thread: the rows of each category, read from the model every frame ----
-enum class Kind { Toggle, Choice, Slider, Stepper, Action, Info };
+enum class Kind { Toggle, Choice, Slider, Stepper, Action, Info, Gallery, Swatches, Wheel };
 struct Row {
   std::string label, text, hint;
   Kind kind = Kind::Info;
@@ -256,8 +280,12 @@ void place(const std::string& page, int* cat, std::string* title) {
     {"Picture", 0, "Picture"}, {"Game options", 2, "Game"}, {"Picture and HUD", 2, "HUD"}, {"Community codes", 2, "Community codes"},
     {"Computer players", 2, "Computer players"}, {"Game", 2, "Input"}, {"Online", 2, "Online"}, {"Training", 2, "Training"},
     {"Replays", 2, "Replays"}, {"Overlays", 4, "Overlays"}, {"Mods", 7, "Game mods"}, {"Controller setup", 3, "Controller setup"},
-    {"Controller bindings", 3, "Controller bindings"}, {"PhobGCC", 3, "PhobGCC"}, {"Controller profiles", 3, "Controller profiles"}, {"Audio", 1, "Output"}};
+    {"Controller bindings", 3, "Controller bindings"}, {"Controller profiles", 3, "Controller profiles"}, {"Audio", 1, "Output"}, {"PhobGCC", 3, "PhobGCC (GameCube adapter)"},
+    {"Skins", 7, "Choose skins"}};
   for (const P& p : table) if (page == p.page) { *cat = p.cat; *title = p.title; return; }
+  static const char* const kCategories[8] = {"VIDEO", "AUDIO", "GAME", "CONTROLS", "OVERLAYS", "CUSTOMIZE", "GECKO CODES", "MODS"};
+  for (int i = 0; i < 8; ++i)   // a category by its name (MELEE_MENU_PAGE=CUSTOMIZE): its first section
+    if (strcasecmp(page.c_str(), kCategories[i]) == 0) { *cat = i; title->clear(); return; }
   *cat = 2; *title = page;
 }
 // Single rows of a page that melee-unlocked keeps on another page (its AUDIO page has the music and voices, its GECKO CODES
@@ -273,6 +301,7 @@ bool place_row(const std::string& label, int* cat, std::string* title) {
     {"Console low-pass on voices (next start)", 1, "Music and sound"}, {"Use custom music (next start)", 1, "Music and sound"},
     // melee-unlocked's VIDEO page has the Arcade look section
     {"Show hitboxes", 0, "Arcade look"}, {"Projectile hitboxes", 0, "Arcade look"}, {"Hitboxes behind fighters", 0, "Arcade look"},
+    {"Lossless adapter lag test (next start only)", 0, "Advanced"},
     {"2D camera", 0, "Arcade look"}, {"Grid behind the stage", 0, "Arcade look"}, {"Combo counter (offline)", 0, "Arcade look"}};
   for (const P& p : table) if (label == p.label) { *cat = p.cat; *title = p.title; return true; }
   return false;
@@ -397,15 +426,60 @@ std::array<Category, 8> build_rows(bool in_game) {
     Section& t = section(cats[2], "Training");
     t.rows.insert(t.rows.begin(), p);
   }
-  // CUSTOMIZE: the panel's own colour (melee-unlocked's palettes for this appearance) and the home screen's accent.
+  // CUSTOMIZE (upstream's page 5): the menu style, its palette, the window's transparency, the custom accent, the legacy
+  // menu; and the launcher's accent.
   {
+    const auto ini = [](const char* key, int fallback, int low, int high) {
+      const std::string v = fe::app_ini(key, "");
+      return v.empty() ? fallback : std::clamp(std::atoi(v.c_str()), low, high);
+    };
+    const auto ini_act = [](const std::string& key) { Action a{Act::Ini}; a.key = key; return a; };
     Section& c = section(cats[5], "Appearance");
-    Action a{Act::Ini}; a.key = "mu_palette";
-    c.rows.push_back(choice("Color palette for this appearance", std::clamp(std::atoi(fe::app_ini("mu_palette", "0").c_str()), 0, 3),
-                            {"Pink (classic)", "Cyan", "Orange", "Purple"}, a));
-    Action h{Act::Ini}; h.key = "mu_accent";
-    c.rows.push_back(choice("Launcher color", std::clamp(std::atoi(fe::app_ini("mu_accent", "0").c_str()), 0, 5),
-                            {"Purple (default)", "Blue", "Green", "Amber", "Red", "Pink"}, h));
+    const int style = ini("overlaystyle", 0, 0, 5);
+    // Upstream's CUSTOMIZE page on a PC, with the pointer: "Choose menu style..." and the current style's screenshot open the
+    // gallery of the six styles (Kind::Gallery), the palette is four swatches (Kind::Swatches), the custom accent a colour
+    // wheel (Kind::Wheel). The controller reaches each of them too (the gallery's pictures and the swatches are buttons).
+    Row ms; ms.kind = Kind::Gallery; ms.label = "Menu style"; ms.value = style; ms.action = ini_act("overlaystyle");
+    static const char* const kHints[6] = {"Pink side panel; settings slide in beside the live game", "Rounded, dimensional settings tiles",
+                                          "GD Melee's slanted navigation and matching setting rows", "Controller-first radial category navigation",
+                                          "Wide category tabs with live settings pages", "Compact settings layout"};
+    ms.hint = kHints[style];
+    c.rows.push_back(ms);
+    const std::string pkey = "overlaypalette" + std::to_string(style);
+    Row pal; pal.kind = Kind::Swatches; pal.label = "Color palette"; pal.low = style;
+    pal.value = ini(pkey.c_str(), style == 0 ? ini("mu_palette", 0, 0, 3) : 0, 0, 3);
+    pal.action = ini_act(pkey);
+    pal.hint = style == 2 ? "Classic Gold is GD Melee's original palette." : "Each layout remembers its own color choice.";
+    c.rows.push_back(pal);
+    c.rows.push_back(slider("Window transparency", ini("settingstransparency", 0, 0, 65), 0, 65, 5, "%d%%", ini_act("settingstransparency")));
+    const bool custom = ini("menucustom", 0, 0, 1) != 0;
+    c.rows.push_back(toggle("Use custom accent", custom, ini_act("menucustom")));
+    Row wheel; wheel.kind = Kind::Wheel; wheel.label = "Show colour picker";
+    wheel.value = ini("menuhue", 333, 0, 359); wheel.low = ini("menusat", 84, 0, 100); wheel.high = ini("menuval", 96, 0, 100);
+    c.rows.push_back(wheel);
+    Section& l = section(cats[5], "Legacy menu");
+    Row lg = toggle("Enable Legacy Menu", ini("legacymenu", 0, 0, 1) != 0, ini_act("legacymenu"));
+    lg.hint = "F11 switches between this menu and the selected legacy menu. Both menus edit the same settings.";
+    l.rows.push_back(lg);
+    Action la = ini_act("legacymenustyle"); la.text = "7,6";
+    l.rows.push_back(choice("Legacy menu", ini("legacymenustyle", 7, 6, 7) == 6 ? 1 : 0, {"Legacy Old (v0.6.6)", "Legacy New"}, la));
+    Section& h = section(cats[5], "Launcher");
+    Action ha{Act::Ini}; ha.key = "mu_accent";
+    h.rows.push_back(choice("Launcher color", std::clamp(std::atoi(fe::app_ini("mu_accent", "0").c_str()), 0, 5),
+                            {"Purple (default)", "Blue", "Green", "Amber", "Red", "Pink"}, ha));
+  }
+  // AUDIO: the panel's menu sounds; OVERLAYS: the note about skins online (upstream's rows on those pages).
+  {
+    const auto ini_on = [](const char* key, int fallback) { const std::string v = fe::app_ini(key, ""); return v.empty() ? fallback != 0 : v != "0"; };
+    Action m{Act::Ini}; m.key = "menusounds";
+    Row ms = toggle("Menu sounds", ini_on("menusounds", 0), m);
+    ms.hint = "A short tick when you move through the settings, and when a page opens or closes.";
+    section(cats[1], "Menu").rows.push_back(ms);
+    // The "Settings: F1" reminder is the Overlays page's row (settings.ini settingsreminder, fe/overlay_draw.cpp).
+    Action n{Act::Ini}; n.key = "skin_online_notice";
+    Row nn = toggle("Show the note when skins are off online", ini_on("skin_online_notice", 1), n);
+    nn.hint = "In an online mode, skins that could change more than looks show as the standard ones, and a note says so for 15 seconds.";
+    section(cats[4], "Notices").rows.push_back(nn);
   }
   // MODS: melee-unlocked's catalog through the app's mod installer (mu_mods.h), then the profile the next start loads.
   {
@@ -464,11 +538,9 @@ std::array<Category, 8> build_rows(bool in_game) {
     {0, "Graphics backend", "One renderer on the Mac: Metal."},
     {0, "RetroArch shader presets, texture packs, animated menu backgrounds", "Not wired on the Mac yet."},
     {1, "WASAPI exclusive, ASIO, output device", "macOS has one audio path (Core Audio through SDL, to the system's output): Auto and Low latency are above."},
-    {1, "Menu sounds", "Not wired on the Mac yet."},
     {2, "YouGame", "Left out: melee-unlocked's own online service."},
     {3, "Keyboard and HID controller editors, PhobGCC menu", "The launcher's controller pages edit them; the rows above cover each controller."},
     {4, "Controller overlay placement (dragging)", "The overlays have fixed places."},
-    {5, "Menu styles (Dashboard, GD Melee, Radial, Wide, Simple, legacy), custom accent wheel, transparency", "The Clean side style only (melee-unlocked's default)."},
     {6, "Add, edit or import a code here", "Not wired on the Mac engine yet: put codes in GeckoCodes.ini (above)."},
     {6, "Codes that inject PowerPC (C2) or rewrite game functions", "The Source Port runs no PowerPC, and this engine does not rewrite the game's code yet."},
   };
@@ -509,6 +581,8 @@ void feed_imgui(const host::PadState pads[4]) {
     if (m.button == 0 && std::abs(m.stick_x) < 30 && std::abs(m.stick_y) < 30) g_armed = true;
     else m = Merged{};
   }
+  g_state.settings_stick_x = int8_t(std::clamp(m.stick_x, -128, 127));   // the radial wheel's stick
+  g_state.settings_stick_y = int8_t(std::clamp(m.stick_y, -128, 127));
   gx::settings_input::gamepad(ImGui::GetIO(), m);
 }
 
@@ -543,6 +617,70 @@ int stepper(const Row& r) {
   return dir;
 }
 
+// upstream's menu style picker (pc_settings.cpp, CUSTOMIZE > Menu style): "Choose menu style..." and the current style's
+// screenshot open "Menu styles", the six screenshots in a grid; a click (or A) picks one and closes it.
+void style_gallery(const Row& r) {
+  static constexpr const char* kNames[6] = {"Clean side", "Icon tiles", "GD Melee", "Radial", "Wide tabs", "Simple"};
+  static constexpr const char* kImages[6] = {"clean-side.png", "icon-tiles.png", "gd-melee.png", "radial.png", "wide-tabs.png", "simple.png"};
+  const int current = std::clamp(r.value, 0, 5);
+  ImGui::TextUnformatted("Menu style");
+  ImGui::TextDisabled("Choose a picture to change the menu layout.");
+  if (gx::settings_widgets::Button("Choose menu style...", ImVec2(-1.0f, 30.0f))) { ImGui::OpenPopup("Menu styles"); gx::g_menu_style_gallery_open = true; }
+  if (gx::ImTextureData* preview = gx::cosmetic_preview(gx::ui_source_asset_path("menu_previews", kImages[current]))) {
+    if (gx::settings_widgets::ImageButton("##current_menu_style", preview->GetTexRef(), ImVec2(160.0f, 120.0f))) {
+      ImGui::OpenPopup("Menu styles"); gx::g_menu_style_gallery_open = true;
+    }
+  }
+  static bool test_opened = false;
+  if (!test_opened && std::getenv("MELEE_TEST_STYLE_GALLERY")) { ImGui::OpenPopup("Menu styles"); gx::g_menu_style_gallery_open = true; test_opened = true; }
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  ImGui::SetNextWindowSize(ImVec2(std::min(820.0f, display.x - 24.0f), std::min(570.0f, display.y - 20.0f)), ImGuiCond_Appearing);
+  ImGui::SetNextWindowPos(ImVec2(display.x * .5f, display.y * .5f), ImGuiCond_Appearing, ImVec2(.5f, .5f));
+  if (ImGui::BeginPopupModal("Menu styles", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) {
+    ImGui::TextUnformatted("Choose a menu style");
+    ImGui::TextDisabled("Each picture shows the current in-game layout.");
+    ImGui::Spacing();
+    const float available = ImGui::GetContentRegionAvail().x, gap = ImGui::GetStyle().ItemSpacing.x;
+    const int per_row = std::clamp(int((available + gap) / (204.0f + gap)), 1, 4);
+    const float card_w = (available - gap * (per_row - 1)) / per_row;
+    const float image_w = std::min(card_w - 12.0f, 195.0f), image_h = image_w * 0.75f, card_h = image_h + 34.0f;
+    for (int style = 0; style < 6; ++style) {
+      if (style % per_row) ImGui::SameLine(0.0f, gap);
+      ImGui::PushID(style);
+      const bool pressed = gx::settings_hit_button("##appearance_picture", ImVec2(card_w, card_h));
+      const bool hovered = ImGui::IsItemHovered() || ImGui::IsItemFocused();
+      const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+      ImDrawList* draw = ImGui::GetWindowDrawList();
+      draw->AddRectFilled(a, b, IM_COL32(15, 24, 38, 250), 7.0f);
+      const ImVec2 image_min(a.x + (card_w - image_w) * 0.5f, a.y + 6.0f), image_max(image_min.x + image_w, image_min.y + image_h);
+      if (gx::ImTextureData* preview = gx::cosmetic_preview(gx::ui_source_asset_path("menu_previews", kImages[style]))) {
+        draw->AddImage(preview->GetTexRef(), image_min, image_max);
+      } else {
+        draw->AddRectFilled(image_min, image_max, IM_COL32(9, 16, 28, 255));
+        draw->AddText(ImVec2(image_min.x + 8, image_min.y + 8), IM_COL32(220, 228, 239, 255), "Preview unavailable");
+      }
+      const std::string pal = fe::app_ini("overlaypalette" + std::to_string(style), "0");
+      const ImU32 accent = gx::settings_accent_for(style, std::clamp(std::atoi(pal.c_str()), 0, 3));
+      draw->AddText(ImVec2(a.x + 9, image_max.y + 7), IM_COL32(239, 245, 252, 255), kNames[style]);
+      if (current == style || hovered) draw->AddRect(a, b, current == style ? accent : IM_COL32(232, 239, 248, 180), 7.0f, 0, current == style ? 2.0f : 1.2f);
+      if (pressed) {
+        if (current != style) { Action act = r.action; act.value = style; queue(act); }
+        ImGui::CloseCurrentPopup();
+        gx::g_menu_style_gallery_open = false;
+      }
+      ImGui::PopID();
+    }
+    ImGui::Spacing();
+    if (gx::settings_widgets::Button("Close", ImVec2(110.0f, 26.0f)) || ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false)) {
+      ImGui::CloseCurrentPopup();
+      gx::g_menu_style_gallery_open = false;
+    }
+    ImGui::EndPopup();
+  } else {
+    gx::g_menu_style_gallery_open = false;
+  }
+}
+
 void draw_row(const Row& r) {
   ImGui::BeginDisabled(!r.enabled);
   g_row_id = 0;
@@ -556,7 +694,10 @@ void draw_row(const Row& r) {
       std::vector<const char*> items;
       for (const auto& n : r.names) items.push_back(n.c_str());
       int v = std::clamp(r.value, 0, int(items.size()) - 1);
-      if (gx::settings_combo(r.label.c_str(), &v, items.data(), int(items.size())) && v != r.value) { Action a = r.action; a.value = v; queue(a); }
+      // GD Melee's combo shows its own short names for a row called "Aspect ratio" (upstream's five aspects): the app's
+      // two-value row keeps its own names there under another label.
+      const char* label = gx::g_settings_form_style == 2 && r.label == "Aspect ratio" ? "Picture aspect" : r.label.c_str();
+      if (gx::settings_combo(label, &v, items.data(), int(items.size())) && v != r.value) { Action a = r.action; a.value = v; queue(a); }
       break;
     }
     case Kind::Slider: {
@@ -601,6 +742,45 @@ void draw_row(const Row& r) {
       if (ImGui::IsItemFocused()) ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetColorU32(ImGuiCol_NavCursor), 4.0f, 0, 1.5f);
       ImGui::PopID();
       gx::settings_row_end(row);
+      break;
+    }
+    case Kind::Gallery: style_gallery(r); break;
+    case Kind::Swatches: {
+      // upstream: "Color palette", four swatches of the layout's accents; the chosen one framed.
+      ImGui::TextUnformatted(r.label.c_str());
+      for (int i = 0; i < 4; ++i) {
+        if (i) ImGui::SameLine(0.0f, 10.0f);
+        ImGui::PushID(i);
+        const bool clicked = gx::settings_widgets::ColorButton("##palette_swatch", ImGui::ColorConvertU32ToFloat4(gx::settings_accent_for(r.low, i)),
+                                                               ImGuiColorEditFlags_NoTooltip, ImVec2(40.0f, 24.0f));
+        const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+        if (r.value == i) ImGui::GetWindowDrawList()->AddRect(a, b, IM_COL32(242, 246, 252, 220), 4.0f, 0, 1.5f);
+        if (clicked && r.value != i) { Action act = r.action; act.value = i; queue(act); }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Palette %d", i + 1);
+        ImGui::PopID();
+      }
+      break;
+    }
+    case Kind::Wheel: {
+      // upstream: collapsed by default ("the full wheel is large and most players never open it"); a change switches the
+      // custom accent on. Kept as hue, saturation and brightness in launcher.ini (menuhue, menusat, menuval).
+      static const bool test_open = std::getenv("MELEE_TEST_ACCENT_WHEEL") != nullptr;   // screenshot aid: kept open
+      if (test_open) ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+      if (gx::settings_widgets::TreeNode(r.label.c_str())) {
+        float rgb[3];
+        ImGui::ColorConvertHSVtoRGB(r.value / 360.0f, r.low / 100.0f, r.high / 100.0f, rgb[0], rgb[1], rgb[2]);
+        ImGui::SetNextItemWidth(std::min(220.0f, ImGui::GetContentRegionAvail().x));
+        if (gx::settings_widgets::ColorPicker3("##menu_accent_wheel", rgb, ImGuiColorEditFlags_PickerHueWheel | ImGuiColorEditFlags_NoSidePreview |
+                                                                               ImGuiColorEditFlags_NoInputs)) {
+          float h, s, v;
+          ImGui::ColorConvertRGBtoHSV(rgb[0], rgb[1], rgb[2], h, s, v);
+          const int hue = std::clamp(int(std::lround(h * 360.0f)) % 360, 0, 359), sat = int(std::lround(s * 100.0f)), val = int(std::lround(v * 100.0f));
+          for (const auto& [key, value] : {std::pair<const char*, int>{"menuhue", hue}, {"menusat", sat}, {"menuval", val}, {"menucustom", 1}}) {
+            Action act{Act::Ini}; act.key = key; act.value = value; act.b = 1; queue(act);   // b: quiet (a drag sends one per frame)
+          }
+        }
+        ImGui::TreePop();
+      }
       break;
     }
   }
@@ -656,15 +836,369 @@ void draw_remap(int w, int h) {
   ImGui::End();
 }
 
+// ---- the panel's appearance (melee-unlocked's CUSTOMIZE page: menu style, palette, transparency, custom accent, legacy menu) ----
+// launcher.ini keys with upstream's names (port-settings.ini there): overlaystyle 0..5, overlaypalette0..6, settingstransparency
+// 0..65, menucustom and menuhue/menusat/menuval (its colour wheel as three sliders: no pointer on a controller), legacymenu and
+// legacymenustyle (6 Legacy New, 7 Legacy Old), menusounds, settingsreminder, skin_online_notice.
+struct Appearance { int style = 0, palette = 0, transparency = 0; bool custom = false; ImVec4 accent{0.96f, 0.15f, 0.52f, 1}; };
+int ini_int(const char* key, int fallback, int low, int high) {
+  const std::string v = fe::app_ini(key, "");
+  return v.empty() ? fallback : std::clamp(std::atoi(v.c_str()), low, high);
+}
+bool g_legacy = false;               // the legacy presentation (the home screen's Settings with Legacy Menu on, or F11)
+Appearance read_appearance() {
+  Appearance a;
+  a.style = ini_int("overlaystyle", 0, 0, 5);
+  if (g_legacy) a.style = ini_int("legacymenustyle", 7, 6, 7);
+  // Style 0 kept the app's earlier key (mu_palette) before every style had its own.
+  a.palette = ini_int(("overlaypalette" + std::to_string(std::min(a.style, 6))).c_str(), a.style == 0 ? ini_int("mu_palette", 0, 0, 3) : 0, 0, 3);
+  a.transparency = ini_int("settingstransparency", 0, 0, 65);
+  a.custom = ini_int("menucustom", 0, 0, 1) != 0;
+  float r, g, b;
+  ImGui::ColorConvertHSVtoRGB(ini_int("menuhue", 333, 0, 359) / 360.0f, ini_int("menusat", 84, 0, 100) / 100.0f, ini_int("menuval", 96, 0, 100) / 100.0f, r, g, b);
+  a.accent = ImVec4(r, g, b, 1);
+  return a;
+}
+constexpr const char* kStyleNames[8] = {"Clean side", "Icon tiles", "GD Melee", "Radial", "Wide tabs", "Simple", "Classic", "Legacy Old"};
+bool& detail_flag(int style) {
+  static bool always = true;
+  switch (style) {
+    case 0: return g_state.clean_detail_open;
+    case 1: return g_state.dashboard_detail_open;
+    case 2: return g_state.gd_detail_open;
+    case 3: return g_state.radial_detail_open;
+    case 4: return g_state.wide_detail_open;
+    default: always = true; return always;   // Simple and the legacy styles: the categories and a page side by side
+  }
+}
+bool has_home(int style) { return style <= 3; }
+const char* home_item_id(int style) { return style == 0 ? "##clean_category" : style == 1 ? "##toy_tile" : style == 2 ? "##gd_category" : nullptr; }
+
+// Menu sounds (upstream audio.cpp's mix_ui_sound): a short decaying sine, mixed into the game's own output by play_io.cpp.
+std::atomic<int> g_ui_sound{0};
+std::atomic<bool> g_in_match{false}, g_online_now{false};
+
+// The panel's windows (itself and its children) get the transparency after they are built, as upstream scales the
+// draw data's alpha (pc_settings.cpp, after ImGui::Render): here only the panel's own lists.
+void apply_transparency(int percent, int foreground_from) {
+  if (percent <= 0) return;
+  const float k = 1.0f - percent / 100.0f;
+  auto scale = [&](ImDrawList* list, int from) {
+    for (int i = from; i < list->VtxBuffer.Size; ++i) {
+      ImDrawVert& v = list->VtxBuffer[i];
+      const uint32_t alpha = (v.col >> IM_COL32_A_SHIFT) & 0xFF;
+      v.col = (v.col & ~IM_COL32_A_MASK) | (uint32_t(std::lround(alpha * k)) << IM_COL32_A_SHIFT);
+    }
+  };
+  ImGuiWindow* panel = ImGui::FindWindowByName("PC settings");
+  ImGuiWindow* legacy = ImGui::FindWindowByName("PC settings###legacy_old_settings");
+  for (ImGuiWindow* w : GImGui->Windows)
+    if (w->Active && (w->RootWindow == panel || (legacy && w->RootWindow == legacy))) scale(w->DrawList, 0);
+  scale(ImGui::GetForegroundDrawList(), foreground_from);
+}
+
+// The search box (settings_search_box): the Switch's software keyboard instead of a keyboard. A asks for the words on a
+// worker thread (the keyboard is a system applet that takes the screen); they arrive at a later frame and search every page.
+std::atomic<bool> g_search_busy{false};
+std::mutex g_search_mutex;
+std::string g_search_result; bool g_search_ready = false;
+void search_row() {
+  const bool on = gx::g_search_text[0] != 0;
+  std::string label = on ? std::string("Search: ") + gx::g_search_text : std::string("Search all settings");
+  label += "###settings_search";
+  if (gx::settings_widgets::Button(label.c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0)) && !g_search_busy.exchange(true)) {
+    const std::string initial = gx::g_search_text;
+    std::thread([initial] {
+      std::string text = initial;
+      const bool ok = fe::software_keyboard("Search all settings", "Words from a setting's name; a typo is fine.", text);
+      std::lock_guard<std::mutex> lock(g_search_mutex);
+      if (ok) { g_search_result = text; g_search_ready = true; }
+      g_search_busy = false;
+    }).detach();
+  }
+  gx::settings_page::label_item("Search all settings");
+  {
+    std::lock_guard<std::mutex> lock(g_search_mutex);
+    if (g_search_ready) {
+      g_search_ready = false;
+      std::snprintf(gx::g_search_text, sizeof gx::g_search_text, "%s", g_search_result.c_str());
+      host::log("settings: search \"%s\"", gx::g_search_text);
+    }
+  }
+  if (on) {
+    if (gx::settings_widgets::Button("Clear the search###settings_search_clear", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+      gx::g_search_text[0] = 0;
+      host::log("settings: search cleared");
+    }
+  }
+  // settings_search_box's own bookkeeping, without its text box
+  gx::g_search = gx::g_search_text[0] != 0;
+  gx::g_search_hits = 0;
+  if (!gx::g_goto_label.empty() && ImGui::GetTime() - gx::g_goto_flash > 1.0) gx::g_goto_label.clear();
+  gx::g_hidden = 0;
+  gx::g_search_page = -1;
+  ImGui::Spacing();
+  if (gx::g_search) gx::settings_hide_begin();
+}
+
+// The radial style's home (settings_frame's radial_home branch, upstream pc_settings.cpp).
+void radial_home() {
+  gx::settings_home_quit(g_state, 3);
+  confirm_quit_popup();
+  ImDrawList* draw = ImGui::GetWindowDrawList();
+  const ImVec2 window_pos = ImGui::GetWindowPos();
+  const ImVec2 window_size = ImGui::GetWindowSize();
+  const ImVec2 center(window_pos.x + window_size.x * 0.5f, window_pos.y + window_size.y * 0.51f);
+  const float radius = std::min(224.0f, std::min(window_size.x, window_size.y) * 0.315f);
+  draw->AddText(ImVec2(window_pos.x + 24.0f, window_pos.y + 18.0f), IM_COL32(240, 248, 255, 255), "MELEE UNLOCKED  /  SETTINGS");
+  const ImVec2 hint_min(window_pos.x + window_size.x - 238.0f, window_pos.y + 46.0f);
+  const ImVec2 hint_max(window_pos.x + window_size.x - 18.0f, window_pos.y + 96.0f);
+  draw->AddRectFilled(ImVec2(hint_min.x + 2, hint_min.y + 3), ImVec2(hint_max.x + 2, hint_max.y + 3), IM_COL32(0, 3, 10, 96), 12.0f);
+  draw->AddRectFilled(hint_min, hint_max, IM_COL32(15, 27, 42, 235), 12.0f);
+  draw->AddRect(hint_min, hint_max, IM_COL32(95, 145, 184, 205), 12.0f, 0, 1.2f);
+  draw->AddText(ImVec2(hint_min.x + 12.0f, hint_min.y + 6.0f), IM_COL32(186, 204, 222, 255), "MOVE  /  D-PAD OR STICK");
+  draw->AddText(ImVec2(hint_min.x + 12.0f, hint_min.y + 25.0f), IM_COL32(239, 246, 252, 255), "A  SELECT     B  BACK");
+  gx::settings_radial_nav(g_state, center, radius, true);
+  g_state.home_focus_reset = false;
+}
+
+// The categories beside a page, for Simple and the legacy styles (settings_frame's own steps for appearances 5, 6 and 7).
+void side_categories(int style) {
+  if (style == 7) {
+    static constexpr const char* tabs[] = {"Video", "Audio", "Game", "Controls", "Overlays", "Customize", "Gecko Codes", "Mods"};
+    if (ImGui::BeginTabBar("settings_tabs")) {
+      for (int i = 0; i < 8; ++i) {
+        if (gx::settings_widgets::BeginTabItem(tabs[i], nullptr, g_state.active_tab == i && g_enter_frames > 0 ? ImGuiTabItemFlags_SetSelected : 0)) {
+          g_state.active_tab = i;
+          ImGui::EndTabItem();
+        }
+      }
+      ImGui::EndTabBar();
+    }
+  } else if (style == 6) {
+    static constexpr const char* tabs[] = {"Video", "Audio", "Game", "Controls", "Overlays", "Customize", "Gecko Codes", "Mods"};
+    ImGui::SetCursorPos(ImVec2(8, 12));
+    for (int i = 0; i < 8; ++i) {
+      const bool selected = g_state.active_tab == i;
+      ImGui::PushID(i);
+      ImGui::PushStyleColor(ImGuiCol_Button, selected ? ImVec4(.34f, .23f, .58f, 1.0f) : ImVec4(.10f, .18f, .29f, 1.0f));
+      const ImVec2 label_size = ImGui::CalcTextSize(tabs[i]);
+      if (gx::settings_widgets::Button(tabs[i], ImVec2(label_size.x + 18.0f, 23.0f))) g_state.active_tab = i;
+      ImGui::PopStyleColor();
+      ImGui::PopID();
+      if (i != 7) ImGui::SameLine(0.0f, 4.0f);
+    }
+    ImGui::Separator();
+    ImGui::Spacing();
+  } else {   // Simple: a column of tiles
+    ImGui::BeginChild("##settings_navigation", ImVec2(151.0f, -80), false);
+    for (int i = 0; i < 8; ++i)
+      if (gx::settings_nav_tile(i, g_state.active_tab == i, style, ImVec2(151.0f - 8.0f, 48.0f))) g_state.active_tab = i;
+    ImGui::EndChild();
+    ImGui::SameLine();
+  }
+}
+
+// One page's rows (the category's sections), inside the content child.
+void draw_rows(int style) {
+  if (g_state.open) {
+    g_state.page_navigation.begin(g_state.active_tab, style);
+    gx::settings_page::observer = &g_state.page_navigation;
+  }
+  search_row();
+  if (style == 4) {   // Wide tabs: the page's icon and title at the top of its card
+    static constexpr const char* wide_titles[] = {"Video", "Audio", "Game", "Controls", "Overlays", "Customize", "Gecko Codes", "Mods"};
+    const ImVec2 header = ImGui::GetCursorScreenPos();
+    gx::settings_symbol_icon(g_state.active_tab, ImVec2(header.x + 19.0f, header.y + 17.0f), 0.52f, gx::settings_palette_tint(4, IM_COL32(226, 238, 249, 255)));
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 40.0f);
+    ImGui::PushFont(gx::settings_heading_font());
+    ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(gx::settings_accent(4)), "%s", wide_titles[g_state.active_tab]);
+    ImGui::PopFont();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8.0f);
+    ImGui::Spacing();
+  }
+  const std::array<Category, 8> cats = build_rows(g_in_game_feed);
+  for (int page = 0; page < 8; ++page) {
+    if (!gx::settings_page_shown(g_state.active_tab, page)) continue;
+    const Category& c = cats[size_t(page)];
+    if (c.sections.empty() && !gx::g_search) ImGui::TextDisabled("Nothing on this page yet.");
+    for (const Section& s : c.sections) {
+      if (s.rows.empty()) continue;
+      gx::settings_section(s.title.c_str());
+      for (const Row& r : s.rows) {
+        // A row's ID: its "###key" when it has one (a label that changes keeps its focus), else its place in the section.
+        const size_t key = r.label.find("###");
+        if (key != std::string::npos) ImGui::PushID(r.label.c_str() + key + 3); else ImGui::PushID(int(&r - s.rows.data()));
+        ImGui::PushID(s.title.c_str()); draw_row(r); ImGui::PopID(); ImGui::PopID();
+        if (g_focus_first && g_row_id && (style != 0 || g_state.clean_detail_frames >= 14.0f)) {
+          ImGui::SetFocusID(g_row_id, ImGui::GetCurrentWindow());
+          ImGui::SetNavCursorVisible(true);
+          ImGui::SetScrollY(0.0f);
+          g_focus_first = false;
+        }
+      }
+    }
+  }
+  gx::settings_pages_end();
+  gx::settings_page::observer = nullptr;
+  if (g_state.open) if (const char* focus = g_state.page_navigation.changed_focus()) host::log("settings: focus %s", focus);
+}
+
+// A category page: each style's chrome around the rows (settings_frame's detail branch, upstream pc_settings.cpp).
+void draw_page(int style, const Appearance& look) {
+  const bool gd = style == 2, clean = style == 0, dashboard = style == 1, wide = style == 4, classic = style >= 6, old_menu = style == 7;
+  int colours = 0, vars = 0;
+  if (dashboard) {
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 p = ImGui::GetWindowPos(), s = ImGui::GetWindowSize();
+    draw->AddRectFilled(p, ImVec2(p.x + s.x, p.y + s.y), IM_COL32(25, 34, 49, 246), 13.0f);
+    draw->AddRectFilled(p, ImVec2(p.x + s.x, p.y + 5.0f), IM_COL32(246, 195, 55, 255), 2.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.14f, 0.31f, 0.55f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.49f, 0.82f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.30f, 0.60f, 0.94f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.18f, 0.34f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+    colours += 4; vars += 1;
+  }
+  if (clean) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.23f, 0.06f, 0.19f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.91f, 0.12f, 0.48f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0.24f, 0.58f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.11f, 0.07f, 0.14f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0f);
+    colours += 4; vars += 1;
+  }
+  if (gd) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.21f, 0.25f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.94f, 0.69f, 0.15f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0.79f, 0.23f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.08f, 0.10f, 0.13f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    colours += 4; vars += 1;
+  }
+  static constexpr const char* page_names[] = {"VIDEO", "AUDIO", "GAME", "CONTROLS", "OVERLAYS", "CUSTOMIZE", "GECKO CODES", "MODS"};
+  const float gd_scale = ImGui::GetWindowWidth() / 640.0f;
+  if (gd) {
+    const ImVec2 origin = ImGui::GetWindowPos();
+    gx::settings_gd_chrome(origin, gd_scale, page_names[g_state.active_tab]);
+    gx::gd_kit_text(ImGui::GetWindowDrawList(), "body", origin, gd_scale, 104, 414.0f,
+                    gx::g_settings_gd_help.empty() ? "Choose a setting. Changes save automatically." : gx::g_settings_gd_help.c_str(), IM_COL32(242, 239, 228, 255), 472);
+    ImGui::SetCursorPos(ImVec2(72.0f * gd_scale, 84.0f * gd_scale));
+  } else if (clean) {
+    gx::mu_settings_clean_detail_header(g_state);
+  } else if (dashboard) {
+    gx::settings_detail_header(g_state, 1);
+    ImGui::SetCursorPos(ImVec2(24, 112));
+  } else if (style == 3) {
+    gx::settings_detail_header(g_state, 3);
+    const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
+    const float nav_width = std::min(320.0f, std::max(248.0f, (ws.x - 52.0f) * 0.31f));
+    const ImVec2 center(wp.x + 26.0f + nav_width * 0.5f, wp.y + 112.0f + (ws.y - 160.0f) * 0.45f);
+    const float radius = std::min(122.0f, std::min(nav_width * 0.43f, (ws.y - 200.0f) * 0.34f));
+    gx::settings_radial_nav(g_state, center, radius, false);
+  } else if (old_menu) {
+    ImGui::TextUnformatted("Start or B: return to game");
+  } else if (classic) {
+    ImGui::SetCursorPos(ImVec2(8, 12));
+  } else if (wide) {
+    ImGui::SetCursorPos(ImVec2(20, 56));
+  } else {   // Simple
+    ImGui::SetCursorPos(ImVec2(20, 14));
+    ImGui::PushFont(gx::settings_heading_font());
+    ImGui::TextUnformatted("SETTINGS");
+    ImGui::PopFont();
+    ImGui::SetCursorPos(ImVec2(20, 56));
+  }
+  ImGui::BeginDisabled(!g_state.open);
+  if (!gd && !clean && style != 3 && !classic) ImGui::Separator();
+  if (wide) ImGui::SetCursorPos(ImVec2(18.0f, 120.0f));
+  else if (style >= 5) side_categories(style);
+  const OptionsView options{style};
+  if (clean) gx::mu_settings_page_entrance(g_state, options);
+  else {   // the other styles' entrance (the same function; its Clean branch is not taken)
+    gx::mu_settings_page_entrance(g_state, options);
+  }
+  if (wide) {
+    const ImVec2 window = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
+    const ImVec2 a(window.x + 24.0f, window.y + 108.0f), b(window.x + size.x - 24.0f, window.y + size.y - 50.0f);
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(ImVec2(a.x, a.y + 4.0f), ImVec2(b.x, b.y + 4.0f), IM_COL32(0, 0, 0, 55), 14.0f);
+    draw->AddRectFilled(a, b, IM_COL32(12, 21, 32, 246), 14.0f);
+    draw->AddRect(a, b, IM_COL32(76, 105, 132, 150), 14.0f, 0, 1.0f);
+  }
+  int child_colours = 0;
+  if (style <= 4) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, gd ? ImVec4(0, 0, 0, 0) : clean ? ImVec4(0.035f, 0.025f, 0.055f, 0.78f) :
+                                            dashboard ? ImVec4(0.055f, 0.12f, 0.22f, 0.96f) : ImVec4(0, 0, 0, 0));
+    child_colours = 1;
+  }
+  gx::g_settings_form_style = gd ? 2 : style;
+  gx::g_settings_gd_origin = ImGui::GetWindowPos();
+  gx::g_settings_gd_scale = gd_scale;
+  if (style == 3 || wide) {
+    const ImVec2 window = ImGui::GetWindowPos(), size = ImGui::GetWindowSize();
+    ImVec2 a = ImGui::GetCursorScreenPos();
+    ImVec2 b(a.x + ImGui::GetContentRegionAvail().x, window.y + size.y - 54.0f);
+    if (style == 3) {
+      const float nav_width = std::min(320.0f, std::max(248.0f, (size.x - 52.0f) * 0.31f));
+      a = ImVec2(window.x + 26.0f + nav_width + 36.0f, window.y + 112.0f);
+      b = ImVec2(window.x + size.x - 64.0f, window.y + size.y - 54.0f);
+    }
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(ImVec2(a.x - 5, a.y - 7), ImVec2(b.x + 5, b.y + 4), style == 3 ? IM_COL32(13, 22, 35, 250) : IM_COL32(7, 19, 35, 204), 18.0f);
+    draw->AddRect(ImVec2(a.x - 5, a.y - 7), ImVec2(b.x + 5, b.y + 4),
+                  style == 3 ? IM_COL32(99, 119, 139, 112) : gx::settings_palette_tint(style, IM_COL32(85, 150, 208, 142)), 18.0f, 0, 1.5f);
+  }
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, gd ? ImVec2(0, 0) : classic ? ImVec2(8.0f, 5.0f) : style == 3 ? ImVec2(24.0f, 20.0f) :
+                                                   wide ? ImVec2(26.0f, 22.0f) : ImVec2(clean ? 18.0f : 24.0f, 20.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, old_menu ? ImVec2(5.0f, 3.75f) : classic ? ImVec2(4.0f, 2.0f) : style == 3 ? ImVec2(14.0f, 9.0f) : ImVec2(12.0f, 8.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, old_menu ? ImVec2(10.0f, 5.0f) : classic ? ImVec2(5.0f, 4.0f) : gd ? ImVec2(4.0f * gd_scale, 4.0f * gd_scale) : ImVec2(12.0f, 12.0f));
+  constexpr float kGdListTop = 84.0f, kGdHintTop = 398.0f, kGdHintGap = 8.0f, kGdRowHeight = 30.0f, kGdRowSpacing = 4.0f, kGdRowPitch = kGdRowHeight + kGdRowSpacing;
+  const float gd_list_height = std::floor((kGdHintTop - kGdHintGap - kGdListTop + kGdRowSpacing) / kGdRowPitch) * kGdRowPitch - kGdRowSpacing;
+  ImVec2 content_size = gd ? ImVec2(532.0f * gd_scale, gd_list_height * gd_scale) : ImVec2(0, -48);
+  if (clean) content_size.y = -84.0f;
+  if (style == 3) {
+    const ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
+    const float nav_width = std::min(320.0f, std::max(248.0f, (ws.x - 52.0f) * 0.31f));
+    const float content_x = 26.0f + nav_width + 36.0f;
+    ImGui::SetCursorScreenPos(ImVec2(wp.x + content_x, wp.y + 112.0f));
+    content_size.x = std::max(300.0f, ws.x - content_x - 64.0f);
+  }
+  const ImVec2 content_origin = ImGui::GetCursorPos();
+  ImGui::BeginChild("##settings_content", content_size, ImGuiChildFlags_NavFlattened | ((style == 3 || wide) ? ImGuiChildFlags_AlwaysUseWindowPadding : 0),
+                    ImGuiWindowFlags_NoScrollWithMouse);
+  gx::mu_settings_smooth_scroll(gd);
+  ImGui::PushTextWrapPos(0.0f);
+  draw_rows(style);
+  ImGui::PopTextWrapPos();
+  const ImVec2 child_size = ImGui::GetWindowSize();
+  ImGui::EndChild();
+  ImGui::PopStyleVar(3);
+  if (child_colours) ImGui::PopStyleColor(child_colours);
+  ImGui::EndDisabled();
+  ImGui::SetCursorPos(ImVec2(content_origin.x, content_origin.y + child_size.y));
+  ImGui::PopStyleVar();    // the page entrance's alpha
+  gx::settings_page_footer(g_state, style);
+  if (!has_home(style)) g_state.home_focus_reset = false;
+  confirm_quit_popup();
+  if (vars) ImGui::PopStyleVar(vars);
+  if (colours) ImGui::PopStyleColor(colours);
+  (void)look;
+}
+
 void draw_panel(int w, int h) {
   const bool model_open = g_open.load();
+  const Appearance look = read_appearance();
+  const int style = look.style;
+  static int last_style = -1;
   if (model_open != g_ui_open || (model_open && g_jump.exchange(false))) {
     g_ui_open = model_open;
     g_state.open = model_open;
-    if (!model_open) g_reopen_page = g_last_page;   // where it was left: the next open returns there (this session)
+    if (!model_open) { g_reopen_page = g_last_page; g_legacy = false; }   // where it was left: the next open returns there (this session)
     if (model_open) {
       g_state.home_focus_reset = true;
-      g_state.clean_detail_open = false;
+      g_state.clean_detail_open = g_state.dashboard_detail_open = g_state.gd_detail_open = g_state.radial_detail_open = g_state.wide_detail_open = false;
+      g_state.dashboard_home_frames = 0; g_state.gd_screen_frames = 0;
       if (g_reopen_page >= 0) { g_state.active_tab = g_reopen_page; g_state.home_focus_reset = false; g_enter_frames = 3; }
       std::string title;
       { std::lock_guard<std::mutex> lock(g_mutex); title = g_open_title; g_open_title.clear(); }
@@ -675,135 +1209,199 @@ void draw_panel(int w, int h) {
         g_state.active_tab = cat; g_state.home_focus_reset = false; g_enter_frames = 3;
         g_scroll_to = sec;
       }
-      host::log("settings: opened on %s%s%s", kCategory[std::clamp(g_state.active_tab, 0, 7)], g_scroll_to.empty() ? "" : " > ", g_scroll_to.c_str());
+      g_state.radial_selection = g_state.active_tab;
+      host::log("settings: opened on %s%s%s (style %s)", kCategory[std::clamp(g_state.active_tab, 0, 7)], g_scroll_to.empty() ? "" : " > ", g_scroll_to.c_str(), kStyleNames[style]);
       g_scroll_to.clear();
     }
   }
+  if (last_style != style) {   // a new style starts on its own first page, the category kept
+    if (last_style >= 0 && g_state.open) { host::log("settings: menu style %s", kStyleNames[style]); g_enter_frames = 3; g_state.home_focus_reset = false; }
+    last_style = style;
+  }
+  bool& detail = detail_flag(style);
   // B goes back a page, then closes; Start closes from any page (settings_frame's own handling).
   if (g_state.open && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) && !g_remap_on.load()) {
     if (ImGui::IsKeyPressed(ImGuiKey_GamepadStart, false)) g_state.open = false;
     else if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false)) {
-      if (g_state.clean_detail_open) g_state.clean_detail_open = false;
+      if (has_home(style) && detail) detail = false;
+      else if (style == 4 && g_state.wide_detail_open) g_state.wide_detail_open = false;
       else g_state.open = false;
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_F11, false) && ini_int("legacymenu", 0, 0, 1)) { g_legacy = !g_legacy; host::log("settings: legacy menu %s", g_legacy ? "on" : "off"); }
   }
-  if (g_state.open && g_enter_frames == 0) g_last_page = g_state.clean_detail_open ? g_state.active_tab : -1;
+  if (g_state.open && g_enter_frames == 0) g_last_page = (!has_home(style) || detail) ? g_state.active_tab : -1;
   gx::mu_settings_motion(g_state);
   const bool visible = g_state.open || g_state.panel_slide_x > -720.0f;
   if (!visible) { if (!g_state.open && g_ui_open) { g_close_request = true; } return; }
 
-  const OptionsView options;
-  gx::g_settings_palette = std::clamp(std::atoi(fe::app_ini("mu_palette", "0").c_str()), 0, 3);
-  gx::g_settings_custom_color_enabled = false;
-  const gx::SettingsAppearanceScope appearance_scope(0);
+  gx::g_settings_palette = look.palette;
+  gx::g_settings_custom_color_enabled = look.custom;
+  gx::g_settings_custom_color = look.accent;
+  const int foreground_from = ImGui::GetForegroundDrawList()->VtxBuffer.Size;
+  const gx::SettingsAppearanceScope appearance_scope(style);
+  const bool classic = style == 6, old_menu = style == 7;
+  int classic_colours = 0, classic_vars = 0;
+  ImFont* plain = ImGui::GetIO().Fonts->Fonts.empty() ? nullptr : ImGui::GetIO().Fonts->Fonts[0];   // ImGui's own (the legacy menus' fixed font)
+  if (classic) {
+    // The compact v0.6.6 screen (settings_frame's appearance 6): black canvas, navy controls, purple selected tab. Its Lucida
+    // Console is a Windows font: ImGui's own fixed font here.
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(.045f, .048f, .055f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(.055f, .062f, .075f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(.88f, .90f, .93f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(.48f, .51f, .57f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(.105f, .16f, .24f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(.24f, .20f, .38f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.10f, .18f, .29f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(.30f, .22f, .47f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(.34f, .23f, .58f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(.20f, .22f, .26f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 2.0f));
+    classic_colours = 10; classic_vars = 3;
+  }
+  if ((classic || old_menu) && plain) ImGui::PushFont(plain);
   const ImVec2 display = ImGui::GetIO().DisplaySize;
   const float motion_scale = std::max(0.1f, display.y / 480.0f);
-  const float width = std::min(560.0f, std::max(390.0f, display.x * 0.38f));
-  const float pw = std::max(300.0f, std::min(width, display.x - 12.0f));
-  const float slide_scale = std::max(motion_scale, pw / 720.0f);
-  ImGui::SetNextWindowPos(ImVec2(display.x - pw + std::abs(g_state.panel_slide_x) * slide_scale, 0), ImGuiCond_Always);
-  ImGui::SetNextWindowSize(ImVec2(pw, display.y), ImGuiCond_Always);
-  ImGui::SetNextWindowBgAlpha(0.0f);
-  ImGui::Begin("PC settings", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-               ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
-               ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
+  const ImGuiWindowFlags fixed = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+  if (old_menu) {
+    ImGui::SetNextWindowSize(ImVec2(std::min(560.0f, display.x - 20.0f), std::min(620.0f, display.y - 20.0f)), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(10 + g_state.panel_slide_x * motion_scale * 0.0f, 10), ImGuiCond_Always);
+    ImGui::Begin("PC settings###legacy_old_settings", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                                                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+  } else {
+    const float width = style == 0 ? std::min(560.0f, std::max(390.0f, display.x * 0.38f)) : style == 1 ? std::min(1040.0f, display.x - 24.0f) :
+                        style == 2 ? std::min(display.x - 12.0f, (display.y - 12.0f) * 4.0f / 3.0f) : style == 3 ? display.x - 24.0f :
+                        style == 4 ? std::min(960.0f, display.x - 24.0f) : style == 6 ? std::min(980.0f, display.x - 40.0f) : std::min(860.0f, display.x - 24.0f);
+    const float pw = std::max(300.0f, std::min(width, display.x - 12.0f));
+    const float ph = style == 3 ? std::max(320.0f, display.y - 12.0f) : style == 4 || style == 6 ? std::max(360.0f, std::min(710.0f, display.y - 40.0f)) :
+                     style == 2 ? pw * 3.0f / 4.0f : std::max(320.0f, std::min(790.0f, display.y - 12.0f));
+    const ImVec2 base = style == 0 ? ImVec2(display.x - pw, 0) : ImVec2((display.x - pw) * 0.5f, (display.y - ph) * 0.5f);
+    const float slide_x = style == 0 ? std::abs(g_state.panel_slide_x) : g_state.panel_slide_x;
+    const float slide_scale = std::max(motion_scale, pw / 720.0f);
+    ImGui::SetNextWindowPos(ImVec2(base.x + slide_x * slide_scale, base.y), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(pw, style == 0 ? display.y : ph), ImGuiCond_Always);
+    const bool scene_chrome = style <= 4;
+    ImGui::SetNextWindowBgAlpha(scene_chrome ? 0.0f : classic ? 1.0f : 0.97f);
+    ImGui::Begin("PC settings", nullptr, fixed | (scene_chrome ? ImGuiWindowFlags_NoBackground : 0));
+  }
   if (g_state.open && (g_state.home_focus_reset || ImGui::IsWindowAppearing())) {
     ImGui::SetWindowFocus();
     ImGui::SetNavCursorVisible(true);   // a controller-only panel: the focus frame shows, and the first A acts
   }
-  {   // Back from a category page: the focus returns to that category's row (the page's controls are gone)
+  {   // Entering and leaving a category page: the log line, the first row's focus, the category's own focus on the way back
     static bool was_detail = false;
-    if (was_detail != g_state.clean_detail_open) host::log("settings: %s", g_state.clean_detail_open ? kCategory[std::clamp(g_state.active_tab, 0, 7)] : "categories");
-    if (g_enter_frames > 0 && !g_state.clean_detail_open) {
-      if (g_enter_frames == 3) was_detail = true;          // focus the row as Back does
-      else if (g_enter_frames == 1) { g_state.clean_detail_open = true; }
+    static int was_style = -1;
+    if (was_style != style) { was_detail = !has_home(style); was_style = style; if (!has_home(style)) { g_focus_first = true; } }
+    if (was_detail != detail && has_home(style)) host::log("settings: %s", detail ? kCategory[std::clamp(g_state.active_tab, 0, 7)] : "categories");
+    if (g_enter_frames > 0) {
+      if (has_home(style) && !detail) {
+        if (g_enter_frames == 3) was_detail = true;          // focus the row as Back does
+        else if (g_enter_frames == 1) { detail = true; g_state.radial_selection = g_state.active_tab; }
+      } else if (!has_home(style) && g_enter_frames == 1) {
+        g_focus_first = true;
+        host::log("settings: %s", kCategory[std::clamp(g_state.active_tab, 0, 7)]);
+        if (style == 4) g_state.wide_detail_open = true;
+      }
       --g_enter_frames;
     }
-    if (!was_detail && g_state.clean_detail_open) {   // a page entered: its first row gets the focus (set below, by its ID)
-      g_state.page_navigation.tab = g_state.active_tab; g_state.page_navigation.style = 0; g_state.page_navigation.logged_focus = 0;
+    static int was_tab = -1;
+    if (!has_home(style) && g_state.open && was_tab != g_state.active_tab && was_tab >= 0 && g_enter_frames == 0) {
+      host::log("settings: %s", kCategory[std::clamp(g_state.active_tab, 0, 7)]);
+      g_state.page_navigation.tab = g_state.active_tab; g_state.page_navigation.style = style; g_state.page_navigation.logged_focus = 0;
+    }
+    was_tab = g_state.active_tab;
+    if (!was_detail && detail) {   // a page entered: its first row gets the focus (set below, by its ID)
+      g_state.page_navigation.tab = g_state.active_tab; g_state.page_navigation.style = style; g_state.page_navigation.logged_focus = 0;
       g_focus_first = true;
     }
-    if (was_detail && !g_state.clean_detail_open) {
+    if (was_detail && !detail && home_item_id(style)) {
       ImGui::PushID(g_state.active_tab);
-      const ImGuiID id = ImGui::GetID("##clean_category");
+      const ImGuiID id = ImGui::GetID(home_item_id(style));
       ImGui::PopID();
       ImGui::SetFocusID(id, ImGui::GetCurrentWindow());
       ImGui::SetNavCursorVisible(true);
     }
-    was_detail = g_state.clean_detail_open;
+    was_detail = detail;
   }
-  const bool clean_home = !g_state.clean_detail_open && g_state.clean_detail_frames <= 0.0f;
-  if (!gx::g_menu_style_gallery_open)
+  if (style == 0 && !gx::g_menu_style_gallery_open)
     gx::settings_clean_chrome(g_state.clean_detail_open ? kCategory[std::clamp(g_state.active_tab, 0, 7)] : "SETTINGS", g_state.panel_slide_x);
+  if (style == 3) gx::settings_radial_scene();
+  if (style == 4) gx::settings_wide_home(g_state);
+  const bool clean_home = style == 0 && !g_state.clean_detail_open && g_state.clean_detail_frames <= 0.0f;
   if (clean_home) {
     gx::settings_clean_home(g_state);
     if (g_in_game_feed) gx::settings_home_quit(g_state, 0);
     confirm_quit_popup();
-  } else {
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.23f, 0.06f, 0.19f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.91f, 0.12f, 0.48f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0.24f, 0.58f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.11f, 0.07f, 0.14f, 1.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0f);
-    gx::mu_settings_clean_detail_header(g_state);
-    ImGui::BeginDisabled(!g_state.open);
-    gx::mu_settings_page_entrance(g_state, options);
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.035f, 0.025f, 0.055f, 0.78f));
-    gx::g_settings_form_style = 0;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0f, 20.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(12.0f, 8.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(12.0f, 12.0f));
-    const ImVec2 content_origin = ImGui::GetCursorPos();
-    ImGui::BeginChild("##settings_content", ImVec2(0, -84.0f), ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoScrollWithMouse);
-    gx::mu_settings_smooth_scroll();
-    ImGui::PushTextWrapPos(0.0f);
-    if (g_state.open && g_state.clean_detail_open) {
-      g_state.page_navigation.begin(g_state.active_tab, 0);
-      gx::settings_page::observer = &g_state.page_navigation;
-    }
-    // melee-unlocked has no keyboard-free way into its search box: the box is left out (FEATURES.md).
-    const std::array<Category, 8> cats = build_rows(g_in_game_feed);
-    for (int page = 0; page < 8; ++page) {
-      if (!gx::settings_page_shown(g_state.active_tab, page)) continue;
-      const Category& c = cats[size_t(page)];
-      if (c.sections.empty()) ImGui::TextDisabled("Nothing on this page yet.");
-      for (const Section& s : c.sections) {
-        if (s.rows.empty()) continue;
-        gx::settings_section(s.title.c_str());
-        for (const Row& r : s.rows) {
-          // A row's ID: its "###key" when it has one (a label that changes keeps its focus), else its place in the section.
-          const size_t key = r.label.find("###");
-          if (key != std::string::npos) ImGui::PushID(r.label.c_str() + key + 3); else ImGui::PushID(int(&r - s.rows.data()));
-          ImGui::PushID(s.title.c_str()); draw_row(r); ImGui::PopID(); ImGui::PopID();
-          if (g_focus_first && g_row_id && g_state.clean_detail_frames >= 14.0f) {
-            ImGui::SetFocusID(g_row_id, ImGui::GetCurrentWindow());
-            ImGui::SetNavCursorVisible(true);
-            ImGui::SetScrollY(0.0f);
-            g_focus_first = false;
-          }
-        }
-      }
-    }
-    gx::settings_pages_end();
-    gx::settings_page::observer = nullptr;
-    if (g_state.open) if (const char* focus = g_state.page_navigation.changed_focus()) host::log("settings: focus %s", focus);
-    ImGui::PopTextWrapPos();
-    const ImVec2 content_size = ImGui::GetWindowSize();
-    ImGui::EndChild();
-    ImGui::PopStyleVar(3);
-    ImGui::PopStyleColor();
-    ImGui::EndDisabled();
-    ImGui::SetCursorPos(ImVec2(content_origin.x, content_origin.y + content_size.y));
-    ImGui::PopStyleVar();    // the page entrance's alpha
-    gx::settings_page_footer(g_state, 0);
+  } else if (style == 1 && !detail) {
+    gx::settings_dashboard_home(g_state);
+    if (g_in_game_feed) gx::settings_home_quit(g_state, 1);
     confirm_quit_popup();
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
+  } else if (style == 2 && !detail) {
+    gx::settings_gd_home(g_state);
+    if (g_in_game_feed) gx::settings_home_quit(g_state, 2);
+    confirm_quit_popup();
+  } else if (style == 3 && !detail) {
+    radial_home();
+  } else {
+    draw_page(style, look);
   }
   ImGui::End();
+  if ((classic || old_menu) && plain) ImGui::PopFont();
+  if (classic_vars) ImGui::PopStyleVar(classic_vars);
+  if (classic_colours) ImGui::PopStyleColor(classic_colours);
+  apply_transparency(look.transparency, foreground_from);
   if (g_remap_on.load()) draw_remap(int(display.x), int(display.y));
+  // Menu sounds (settings_frame): a tick when the category or the focused control changes, a brighter one when a page or the
+  // panel opens, a lower one when it closes.
+  {
+    static bool snd_init = false, snd_open = false;
+    static int snd_tab = 0, snd_detail = 0;
+    static ImGuiID snd_focus = 0;
+    const int detail_now = (g_state.clean_detail_open ? 1 : 0) | (g_state.dashboard_detail_open ? 2 : 0) | (g_state.gd_detail_open ? 4 : 0) |
+                           (g_state.radial_detail_open ? 8 : 0) | (g_state.wide_detail_open ? 16 : 0);
+    const ImGuiID focus_now = g_state.open ? ImGui::GetFocusID() : 0;
+    int sound = 0;
+    if (snd_init && ini_int("menusounds", 0, 0, 1) && g_in_game_feed) {
+      if (g_state.open != snd_open) sound = g_state.open ? 2 : 3;
+      else if (g_state.open && detail_now != snd_detail) sound = detail_now ? 2 : 3;
+      else if (g_state.open && (g_state.active_tab != snd_tab || (focus_now && focus_now != snd_focus))) sound = 1;
+    }
+    if (sound) { g_ui_sound.store(sound); static int logged = 0; if (logged++ < 8) host::log("settings: menu sound %d", sound); }
+    snd_init = true; snd_open = g_state.open; snd_tab = g_state.active_tab; snd_detail = detail_now; snd_focus = focus_now;
+  }
   if (!g_state.open && g_ui_open) g_close_request = true;   // the panel asked to close: the model closes at its next poll
   (void)w; (void)h;
+}
+
+// The note when skins are off online (upstream's draw_skin_online_notice, ini skin_online_notice, on by default): once per
+// visit to the online screens, for 15 seconds, when a picked skin is served as the standard costume there.
+void draw_skin_online_notice() {
+  static bool shown_this_visit = false;
+  static double show_until = 0.0;
+  const bool online = g_online_now.load();
+  if (!online || !&fe::features::cosmetics_off_online || !ini_int("skin_online_notice", 1, 0, 1)) { if (!online) { shown_this_visit = false; show_until = 0.0; } return; }
+  uint32_t stages = 0;
+  const uint32_t skins = fe::features::cosmetics_off_online(&stages);
+  if (!shown_this_visit && skins + stages > 0) {
+    shown_this_visit = true;
+    show_until = ImGui::GetTime() + 15.0;
+    host::log("settings: skins off online note (%u skins, %u stages)", skins, stages);
+  }
+  if (ImGui::GetTime() >= show_until || skins + stages == 0) return;
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, 64), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+  ImGui::SetNextWindowBgAlpha(0.85f);
+  ImGui::Begin("SkinOnlineNotice", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                                            ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+  const ImVec4 yellow(1, .75f, .25f, 1);
+  if (skins == 1) ImGui::TextColored(yellow, "1 skin is off for this online mode and shows as the standard costume.");
+  else if (skins > 1) ImGui::TextColored(yellow, "%u skins are off for this online mode and show as the standard costume.", skins);
+  if (stages == 1) ImGui::TextColored(yellow, "1 stage mod is off for this online mode and shows as the standard stage.");
+  else if (stages > 1) ImGui::TextColored(yellow, "%u stage mods are off for this online mode and show as the standard stage.", stages);
+  ImGui::TextUnformatted("Settings > Mods lists them.");
+  ImGui::End();
 }
 
 // ---- fonts and artwork ----
@@ -840,6 +1438,57 @@ mu_ui::Art decode_bmp(const uint8_t* b, const uint8_t* e) {
   art.w = w; art.h = h;
   return art;
 }
+// The menu sound being played (audio thread of play_io.cpp's mixer: the simulation thread).
+struct UiTick { int remaining = 0, total = 0; double step = 0, phase = 0, level = 0; } g_tick;
+
+// An 8-bit RGBA or RGB PNG, not interlaced (the GD kit's files): zlib's inflate and the five row filters.
+bool decode_png(const uint8_t* p, size_t n, int* w_out, int* h_out, std::vector<uint8_t>& rgba) {
+  static const uint8_t sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+  if (n < 8 || std::memcmp(p, sig, 8) != 0) return false;
+  auto be32 = [](const uint8_t* q) { return uint32_t(q[0]) << 24 | uint32_t(q[1]) << 16 | uint32_t(q[2]) << 8 | q[3]; };
+  uint32_t w = 0, h = 0; int channels = 0;
+  std::vector<uint8_t> idat;
+  for (size_t at = 8; at + 12 <= n;) {
+    const uint32_t len = be32(p + at); const uint8_t* type = p + at + 4; const uint8_t* data = p + at + 8;
+    if (at + 12 + len > n) return false;
+    if (!std::memcmp(type, "IHDR", 4)) {
+      w = be32(data); h = be32(data + 4);
+      if (data[8] != 8 || data[12] != 0 || (data[9] != 6 && data[9] != 2)) return false;
+      channels = data[9] == 6 ? 4 : 3;
+    } else if (!std::memcmp(type, "IDAT", 4)) idat.insert(idat.end(), data, data + len);
+    else if (!std::memcmp(type, "IEND", 4)) break;
+    at += 12 + len;
+  }
+  if (!w || !h || !channels || w > 4096 || h > 4096) return false;
+  const size_t stride = size_t(w) * channels;
+  std::vector<uint8_t> raw((stride + 1) * h);
+  uLongf out = uLongf(raw.size());
+  if (uncompress(raw.data(), &out, idat.data(), uLong(idat.size())) != Z_OK || out != raw.size()) return false;
+  std::vector<uint8_t> cur(stride), prev(stride, 0);
+  rgba.assign(size_t(w) * h * 4, 255);
+  for (uint32_t y = 0; y < h; ++y) {
+    const uint8_t filter = raw[y * (stride + 1)];
+    const uint8_t* src = &raw[y * (stride + 1) + 1];
+    for (size_t x = 0; x < stride; ++x) {
+      const int a = x >= size_t(channels) ? cur[x - channels] : 0, b = prev[x], c = x >= size_t(channels) ? prev[x - channels] : 0;
+      int v = src[x];
+      switch (filter) {
+        case 1: v += a; break;
+        case 2: v += b; break;
+        case 3: v += (a + b) / 2; break;
+        case 4: { const int pp = a + b - c, pa = std::abs(pp - a), pb = std::abs(pp - b), pc = std::abs(pp - c);
+                  v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c; break; }
+        default: break;
+      }
+      cur[x] = uint8_t(v);
+    }
+    for (uint32_t x = 0; x < w; ++x)
+      for (int k = 0; k < channels; ++k) rgba[(size_t(y) * w + x) * 4 + k] = cur[size_t(x) * channels + k];
+    std::swap(cur, prev);
+  }
+  *w_out = int(w); *h_out = int(h);
+  return true;
+}
 }  // namespace
 
 namespace mu_ui {
@@ -850,10 +1499,30 @@ void fonts_init() {
   ImFontConfig config;
   config.FontDataOwnedByAtlas = false;                        // the embedded files stay where they are
   config.OversampleH = 2;
+  // The launcher's Japanese, Chinese and Korean (mu_lang.cpp): Source Sans 3 has no CJK, so the console's own shared fonts are
+  // merged into both faces (upstream picks a CJK face per script on Windows). Off the console none is found: those show as boxes.
+  const auto merge_cjk = [&](float size) {
+#ifdef __SWITCH__
+    static bool pl = R_SUCCEEDED(plInitialize(PlServiceType_User));
+    if (!pl) return;
+    for (PlSharedFontType type : {PlSharedFontType_Standard, PlSharedFontType_ChineseSimplified, PlSharedFontType_ExtChineseSimplified, PlSharedFontType_KO}) {
+      PlFontData font{};
+      if (R_FAILED(plGetSharedFontByType(&font, type)) || !font.address) continue;
+      ImFontConfig merge;
+      merge.MergeMode = true;
+      merge.FontDataOwnedByAtlas = false;
+      io.Fonts->AddFontFromMemoryTTF(font.address, int(font.size), size, &merge);
+    }
+#else
+    (void)size;
+#endif
+  };
   std::snprintf(config.Name, sizeof config.Name, "Source Sans 3 Black");
   g_heading = io.Fonts->AddFontFromMemoryTTF(const_cast<uint8_t*>(mu_ui_font_black), int(mu_ui_font_black_end - mu_ui_font_black), 28.0f, &config);
+  merge_cjk(28.0f);
   std::snprintf(config.Name, sizeof config.Name, "Source Sans 3 Bold");
   g_body = io.Fonts->AddFontFromMemoryTTF(const_cast<uint8_t*>(mu_ui_font_bold), int(mu_ui_font_bold_end - mu_ui_font_bold), 16.0f, &config);
+  merge_cjk(16.0f);
   gx::g_settings_heading_font = g_heading;
   gx::g_settings_body_font = g_body;
   aurora_imgui_host_gamepad(true);          // patches/0115: the panel's gamepad keys come from the app's controllers only
@@ -889,8 +1558,18 @@ void panel_draw(int window_w, int window_h) {
   // The panel is driven by the controller (a touch or a mouse pointer resting over it must not pick categories).
   // Its focus frame always shows (there is no pointer to hide it for).
   const bool shown = open || g_state.panel_slide_x > -720.0f;
-  if (shown) io.ConfigFlags |= ImGuiConfigFlags_NoMouse; else io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+  // The Mac has a pointer: the panel takes clicks and the wheel as upstream's does on a PC (the controller still drives it).
+  io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
   io.ConfigNavCursorVisibleAlways = shown;
+  if (!open) {
+    draw_skin_online_notice();
+    // The easter egg over the game picture (4:3 in the middle of the screen, or the whole width with widescreen).
+    if (g_in_game_feed && !g_in_match.load()) {
+      const ImVec2 d = io.DisplaySize;
+      const float gw = std::min(d.x, d.y * 4.0f / 3.0f);
+      egg_draw((d.x - gw) * 0.5f, 0, (d.x + gw) * 0.5f, d.y, ImGui::GetTime());
+    }
+  }
   if (!open && g_state.panel_slide_x <= -720.0f && !g_ui_open && g_state.panel_anim_initialized) return;
   // melee-unlocked's style and fonts for the panel only; ImGui's own default for everything drawn after it.
   const ImGuiStyle saved = ImGui::GetStyle();
@@ -942,7 +1621,17 @@ void panel_service(bool in_game) {
     if (change && change(args.first, args.second == 0 ? 0 : args.second)) g_changed = true;
   }
   for (const Action& a : actions) {
-    if (a.act == Act::Ini) { fe::app_ini_set(a.key, std::to_string(a.value)); say("menu: %s %d", a.key.c_str(), a.value); }
+    if (a.act == Act::Ini) {
+      int v = a.value;
+      if (!a.text.empty()) {   // a choice whose saved values differ from its places ("7,6")
+        std::vector<int> values; std::stringstream ss(a.text); std::string part;
+        while (std::getline(ss, part, ',')) values.push_back(std::atoi(part.c_str()));
+        if (v >= 0 && v < int(values.size())) v = values[size_t(v)];
+      }
+      fe::app_ini_set(a.key, std::to_string(v));
+      if (a.b != 1) say("menu: %s %d", a.key.c_str(), v);
+      if (a.key == "menusounds" && v) g_ui_sound.store(2);   // a sample, so the change is heard
+    }
     if (a.act == Act::ModPrimary) mu_mods::primary(a.key);
     if (a.act == Act::Gecko && &fe::features::gecko_toggle) fe::features::gecko_toggle(a.key);
     if (a.act == Act::ModRemove) mu_mods::remove(a.key);
@@ -968,6 +1657,68 @@ void panel_service(bool in_game) {
 
 bool panel_open() { return g_open.load(); }
 void panel_home_mode(bool on) { g_in_game_feed = !on; if (on) g_armed = false; }
+void panel_open_from_launcher() {
+  // The launcher's Settings: the legacy menu when it is enabled (upstream: "F11 and launcher Settings open the selected legacy menu").
+  g_legacy = ini_int("legacymenu", 0, 0, 1) != 0;
+  host::menu_open_extra("");
+}
+void note_session(bool fighting, bool online) { g_in_match.store(fighting); g_online_now.store(online); }
+bool ui_sound_pending() { return g_ui_sound.load(std::memory_order_relaxed) != 0 || g_tick.remaining > 0; }
+void ui_sound_mix(int16_t* rl, uint32_t frames, uint32_t rate) {
+  // upstream audio.cpp mix_ui_sound: 740 Hz for 30 ms (a move), 990 Hz (open) or 590 Hz (close) for 55 ms, quiet, decaying.
+  if (const int kind = g_ui_sound.exchange(0)) {
+    const double freq = kind == 1 ? 740.0 : kind == 2 ? 990.0 : 590.0;
+    const double seconds = kind == 1 ? 0.030 : 0.055;
+    g_tick.total = g_tick.remaining = int(rate * seconds);
+    g_tick.step = 6.283185307179586 * freq / rate;
+    g_tick.phase = 0.0;
+    g_tick.level = (kind == 1 ? 0.045 : 0.065) * 32767.0;
+  }
+  for (uint32_t i = 0; i < frames && g_tick.remaining > 0; ++i, --g_tick.remaining) {
+    const double env = double(g_tick.remaining) / g_tick.total;
+    const double v = std::sin(g_tick.phase) * env * env * g_tick.level;
+    g_tick.phase += g_tick.step;
+    for (int c = 0; c < 2; ++c) rl[i * 2 + c] = int16_t(std::clamp(rl[i * 2 + c] + v, -32768.0, 32767.0));
+  }
+}
+Art picture_file(const std::string& path) {
+  Art art;
+  FILE* f = std::fopen(path.c_str(), "rb");
+  if (!f) return art;
+  std::vector<uint8_t> bytes;
+  uint8_t buf[65536]; size_t n;
+  while ((n = std::fread(buf, 1, sizeof buf, f)) > 0 && bytes.size() < (32u << 20)) bytes.insert(bytes.end(), buf, buf + n);
+  std::fclose(f);
+  if (bytes.size() > 2 && bytes[0] == 'B' && bytes[1] == 'M') return decode_bmp(bytes.data(), bytes.data() + bytes.size());
+  int w = 0, h = 0;
+  std::vector<uint8_t> rgba;
+  if (!decode_png(bytes.data(), bytes.size(), &w, &h, rgba)) return art;
+  art.texture = reinterpret_cast<void*>(aurora_imgui_add_texture(uint32_t(w), uint32_t(h), rgba.data()));
+  art.w = w; art.h = h;
+  return art;
+}
+void* gd_texture(const std::string& name) {
+  // gd_melee/kit/<file>.png -> the embedded copy (gen/mu_ui/gd_assets.inc), decoded once and uploaded.
+  struct Asset { const char* name; const uint8_t* begin; const uint8_t* end; };
+#define MU_GD_ASSET(n) {#n, mu_gd_##n, mu_gd_##n##_end},
+  static const Asset assets[] = {
+#include "gd_assets.inc"
+  };
+#undef MU_GD_ASSET
+  const size_t slash = name.find_last_of('/');
+  std::string base = name.substr(slash == std::string::npos ? 0 : slash + 1);
+  if (base.size() > 4 && base.compare(base.size() - 4, 4, ".png") == 0) base.resize(base.size() - 4);
+  for (char& c : base) if (!std::isalnum(static_cast<unsigned char>(c))) c = '_';   // CMake's MAKE_C_IDENTIFIER
+  if (name.rfind("menu_previews/", 0) == 0) base = "mp_" + base;                    // the style gallery's screenshots
+  for (const Asset& a : assets) {
+    if (base != a.name) continue;
+    int w = 0, h = 0;
+    std::vector<uint8_t> rgba;
+    if (!decode_png(a.begin, size_t(a.end - a.begin), &w, &h, rgba)) { host::log("ui: GD Melee picture %s could not be read", a.name); return nullptr; }
+    return reinterpret_cast<void*>(aurora_imgui_add_texture(uint32_t(w), uint32_t(h), rgba.data()));
+  }
+  return nullptr;
+}
 bool panel_take_quit() { return g_home_quit.exchange(false); }
 void panel_open_on(const std::string& title) { host::menu_open_extra(title); }
 void panel_close() { host::menu_close(); }
@@ -1023,6 +1774,7 @@ bool menu_touch(float, float) { return false; }
 void app_menu_frame(PadState pads[4]) {
   // mumac: an input-suggestion read (mu_play_main.cpp suggest_read) gets the controller setup on its own lane and nothing else.
   if (fe::suggestion_read) { fe::mac_controls_frame(pads, 1); return; }
+  fe::egg_watch_pads(pads);   // the easter egg's code: read only, before anything here changes the pads
   // mumac: the frontend's controller setup (controls_mac.cpp, fe/controls.cpp) and its chords (chords_mac.cpp).
   const bool capturing = fe::mac_controls_frame(pads, 0);
   fe::mac_chords(pads);
@@ -1036,6 +1788,7 @@ void app_menu_frame(PadState pads[4]) {
     if (fe::g_open_at_frame >= 0 && int(retrace_count()) >= fe::g_open_at_frame) {
       fe::g_open_at_frame = -1; fe::set_open_locked(true);
       if (const char* page = std::getenv("MELEE_MENU_PAGE")) fe::g_open_title = page;
+      if (std::getenv("MELEE_MENU_LEGACY")) fe::g_legacy = fe::ini_int("legacymenu", 0, 0, 1) != 0;   // screenshot aid: as the launcher's Settings
     }
     // L + R + Start held on any connected controller for half a second toggles the panel. Melee's own L + R + A + Start
     // (quit the match) contains it, so a hold that includes A never counts, and pressing A during the hold cancels it.

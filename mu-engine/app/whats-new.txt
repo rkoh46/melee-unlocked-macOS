@@ -1,0 +1,7 @@
+# What's new: the launcher shows these lines the first time a new version starts, and from the Play page's What's new link
+# (port/runtime/host/mu_launcher.mm). One line each, newest first; lines starting with # are left out.
+Settings: every melee-unlocked menu style (Customize > Choose menu style...), palettes, transparency and a custom accent wheel; F11 for the legacy menus.
+Settings: menu sounds (Audio > Menu), and a note when skins are off in an online mode.
+Launcher: melee-unlocked's nine languages (the Language button), your own rail picture (click Bailey), this window.
+Mods: each mod disc's skin count on the Mods page, and Choose skins in the game's settings (Mods).
+And the character select has a secret.

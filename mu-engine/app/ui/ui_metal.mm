@@ -16,6 +16,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <mutex>
@@ -45,8 +46,31 @@ void ensure_context(id<MTLDevice> device) {
   g_ready = true;
 }
 
-// The pointer, in the window's points (SDL's mouse state; the panel itself ignores it while it is shown).
+// The scroll wheel (and trackpad scrolling), gathered from SDL's events as they are queued (an event watch: the window code
+// keeps its own event loop) and handed to ImGui once a frame.
+std::atomic<float> g_wheel_x{0.0f}, g_wheel_y{0.0f};
+std::atomic<bool> g_f11{false};
+bool wheel_watch(void*, SDL_Event* event) {
+  if (event->type == SDL_EVENT_MOUSE_WHEEL) {
+    const float flip = event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
+    g_wheel_x.store(g_wheel_x.load() + event->wheel.x * flip);
+    g_wheel_y.store(g_wheel_y.load() + event->wheel.y * flip);
+  }
+  // F11: upstream's switch to the legacy menu (the panel reads ImGuiKey_F11; the rest of the keyboard is a controller here).
+  if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat && event->key.scancode == SDL_SCANCODE_F11) g_f11.store(true);
+  return true;
+}
+
+// The pointer, in the window's points (SDL's mouse state), its buttons and the wheel: the settings panel takes clicks and
+// scrolling as upstream's does on a PC.
 void feed_mouse(ImGuiIO& io, float scale) {
+  static bool watching = false;
+  if (!watching) { watching = true; SDL_AddEventWatch(wheel_watch, nullptr); }
+  const float wx = g_wheel_x.exchange(0.0f), wy = g_wheel_y.exchange(0.0f);
+  if (wx != 0.0f || wy != 0.0f) io.AddMouseWheelEvent(wx, wy);
+  static bool f11_down = false;
+  if (f11_down) { io.AddKeyEvent(ImGuiKey_F11, false); f11_down = false; }
+  else if (g_f11.exchange(false)) { io.AddKeyEvent(ImGuiKey_F11, true); f11_down = true; }
   float x = 0, y = 0;
   const SDL_MouseButtonFlags buttons = SDL_GetMouseState(&x, &y);
   SDL_Window* focus = SDL_GetMouseFocus();

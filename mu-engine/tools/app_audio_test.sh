@@ -14,6 +14,8 @@
 #             MusicPacks/audio/onetto+onetto2/ with an OGG and an M4A): the log names each pick, and the recording has a 440 Hz
 #             tone over the game's sound from the main menu on
 #   off       no settings: the game's own music stream as before, and no 440 Hz tone in the recording
+#   menusounds launcher.ini `menusounds=1` and the settings panel opened at retrace 300 on CUSTOMIZE (MELEE_MENU_OPEN): the
+#             panel's open tick (990 Hz, 55 ms) mixed into the game's output; the recording is searched for 990 Hz in 0.1 s steps
 # Output: build/mu-engine/runs/app-audio/<case>/ (log, out.raw, melee-unlocked/MusicPacks/).
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
@@ -29,8 +31,8 @@ run() {   # $1 folder, $2 frames
 python3 -I "$here/play_vs_script.py" "$repo/build/mu-engine/mu/port/scripts/parity_vs_onett.txt" "$root/vs.txt"
 fresh() { rm -rf "$1"; mkdir -p "$1/melee-unlocked"; }
 # The recording's 440 Hz share: Goertzel power at 440 Hz against the whole signal, per second (16-bit stereo or 32-bit float).
-tone_report() {
-  python3 -I - "$1" "$2" <<'PY'
+tone_report() {   # $3: another frequency, looked for in tenths of a second
+  python3 -I - "$1" "$2" ${3:-} <<'PY'
 import math, struct, sys
 path, rate = sys.argv[1], int(sys.argv[2])
 data = open(path, "rb").read()
@@ -41,18 +43,24 @@ if is_float:
     n = len(data) // 8; left = [x * 32767 for x in struct.unpack("<%df" % (n * 2), data[:n * 8])[0::2]]
 else:
     n = len(data) // 4; left = struct.unpack("<%dh" % (n * 2), data[:n * 4])[0::2]
-k = 2 * math.cos(2 * math.pi * 440 / rate)
+hz = float(sys.argv[3]) if len(sys.argv) > 3 else 440.0
+step = rate // 10 if len(sys.argv) > 3 else rate   # a short tick: tenths of a second
+k = 2 * math.cos(2 * math.pi * hz / rate)
 seconds = []
-for start in range(0, n - rate, rate):
+for start in range(0, n - step, step):
     s1 = s2 = 0.0; energy = 0.0
-    for x in left[start:start + rate]:
+    for x in left[start:start + step]:
         s = x + k * s1 - s2; s2 = s1; s1 = s; energy += x * x
     power = s1 * s1 + s2 * s2 - k * s1 * s2
-    seconds.append(power / (energy * rate / 2) if energy else 0.0)
+    seconds.append(power / (energy * step / 2) if energy else 0.0)
 loud = [i for i, v in enumerate(seconds) if v > 0.2]
 heard = [i for i, v in enumerate(seconds) if v == v and v > 0]
-print("recording (%s): %.1f s at %d Hz, %d s with sound; seconds where a 440 Hz tone is over 20%% of the sound: %d (%s)" % (
-      "float" if is_float else "16-bit", n / rate, rate, len(heard), len(loud), ", ".join(str(i) for i in loud[:40]) + (" ..." if len(loud) > 40 else "")))
+unit = "tenths of a second" if step != rate else "seconds"
+print("recording (%s): %.1f s at %d Hz, %d %s with sound; %s where a %g Hz tone is over 20%% of the sound: %d (%s)" % (
+      "float" if is_float else "16-bit", n / rate, rate, len(heard), unit, unit, hz, len(loud), ", ".join(str(i) for i in loud[:40]) + (" ..." if len(loud) > 40 else "")))
+if step != rate and seconds:
+    order = sorted(range(len(seconds)), key=lambda i: -seconds[i])[:3]
+    print("strongest %g Hz shares: %s; median %.3f" % (hz, ", ".join("%.3f at %.1f s" % (seconds[i], i / 10) for i in order), sorted(seconds)[len(seconds) // 2]))
 PY
 }
 for case in "$@"; do
@@ -62,6 +70,11 @@ for case in "$@"; do
   fixed)   printf '%s\n' "audio_mode 1" "audio_buffer_ms 15" > "$set_ini"; run "$dir" 3000 ;;
   jukebox) printf '%s\n' "musicpacks 1" > "$set_ini"; run "$dir" 3000 ;;
   off)     run "$dir" 3000 ;;
+  menusounds)
+    printf '%s\n' "menusounds=1" > "$dir/launcher.ini"
+    MELEE_UPDATE_CHECK=0 MELEE_MENU_OPEN=300 MELEE_MENU_PAGE=CUSTOMIZE SDL_AUDIO_DRIVER=disk SDL_AUDIO_DISK_OUTPUT_FILE="$dir/out.raw" timeout 300 \
+      "$engine" --iso "$iso" --profile-dir "$dir" --offline --hidden --volume 70 --frames 600 --no-record >> "$dir/log" 2>&1
+    echo "engine exit $?" >> "$dir/log" ;;
   packs)
     tones="$repo/build/mu-engine/music-test"
     [ -f "$tones/tone.m4a" ] || bash "$here/music_decode_test.sh" > /dev/null
@@ -72,9 +85,10 @@ for case in "$@"; do
   *) echo "unknown case $case" >&2; exit 2 ;;
   esac
   echo "== $case"
-  grep -hE "audio:|jukebox:|play: scene 2/2|engine exit|second start" "$dir/log" | grep -v "audio: game made" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200 | tail -30
+  grep -hE "audio:|jukebox:|play: scene 2/2|engine exit|second start|menu sound|settings: opened" "$dir/log" | grep -v "audio: game made" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200 | tail -30
   rate=$(sed -n 's/.*device buffer [0-9]* frames at \([0-9]*\) Hz.*/\1/p' "$dir/log" | head -1)
   [ -f "$dir/out.raw" ] && [ -n "$rate" ] && tone_report "$dir/out.raw" "$rate"
+  [ "$case" = menusounds ] && [ -f "$dir/out.raw" ] && [ -n "$rate" ] && tone_report "$dir/out.raw" "$rate" 990
   [ -f "$dir/melee-unlocked/audio-auto.txt" ] && { echo "audio-auto.txt:"; cat "$dir/melee-unlocked/audio-auto.txt"; }
   [ -f "$dir/melee-unlocked/MusicPacks/Tracks.txt" ] && echo "MusicPacks/Tracks.txt: $(wc -l < "$dir/melee-unlocked/MusicPacks/Tracks.txt") lines"
   true

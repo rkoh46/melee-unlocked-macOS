@@ -23,6 +23,7 @@ void register_proai();               // proai.cpp: Fight a pro (command 0xEA) an
 void register_cosmetics();            // cosmetics.cpp: skins (commands 0xF9, 0xFB-0xFD), the online costume rule
 void register_looks();               // looks.cpp: look presets, Lightweight, Visual effects (the renderer: patches/0115)
 void register_audio();               // audio.cpp: Audio buffer (Auto, Low latency) and Use custom music (the jukebox)
+void register_egg();                 // egg_command.cpp: the character select frame command (0xDA) for the easter egg
 void register_gecko();               // gecko.cpp: the player's Gecko codes (GeckoCodes.ini), offline
 void register_phob();                // phob.cpp: PhobGCC settings on a stock controller (the adapter's raw reports), its menu
 void register_graphics();            // graphics.cpp: SSAO, texture packs, menu videos, shader presets, HDR, Lab view, captures

@@ -37,6 +37,9 @@ python3 -I "$ROOT/tools/mu_launcher_art.py" "$MU_TREE/port/app" "$APP/Contents/R
 cp "$MU_TREE/port/runtime/gx/ui_sources/gd_melee/assets/kit/SourceSans3-OFL.md" "$APP/Contents/Resources/mu-art/SourceSans3-OFL.md"
 # The licences of what else the engine compiles in from the fetched tree: Dear ImGui (MIT) and zstd (BSD-3-Clause).
 cp "$MU_TREE/port/third_party/imgui/LICENSE.txt" "$APP/Contents/Resources/mu-art/imgui-LICENSE.txt"
+# melee-unlocked's launcher translations (lang/*.txt, GPL-2.0-or-later) for the launcher's Language button; never committed.
+mkdir -p "$APP/Contents/Resources/mu-lang" && cp "$MU_TREE/lang/"*.txt "$APP/Contents/Resources/mu-lang/"
+cp "$ROOT/mu-engine/app/whats-new.txt" "$APP/Contents/Resources/whats-new.txt"   # the launcher's What's new
 cp "$MU_TREE/port/third_party/zstd/LICENSE" "$APP/Contents/Resources/mu-art/zstd-LICENSE.txt"
 # The app icon: melee-unlocked's own (melee_unlocked.ico from the fetched tree, converted above).
 ICONSET="$(mktemp -d)/AppIcon.iconset"; mkdir -p "$ICONSET"
