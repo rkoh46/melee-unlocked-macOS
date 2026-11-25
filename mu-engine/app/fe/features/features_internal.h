@@ -25,6 +25,7 @@ void register_looks();               // looks.cpp: look presets, Lightweight, Vi
 void register_audio();               // audio.cpp: Audio buffer (Auto, Low latency) and Use custom music (the jukebox)
 void register_te_lock_test();        // te_lock_test.cpp: --feature-test te-lock
 void register_key_labels();          // key_labels.cpp: command 0xDF, keyboard key names in the game's prompts
+void register_extras();              // extras.cpp: Reset CPU training options, the replay viewer's mute
 void register_egg();                 // egg_command.cpp: the character select frame command (0xDA) for the easter egg
 void register_gecko();               // gecko.cpp: the player's Gecko codes (GeckoCodes.ini), offline
 
@@ -72,6 +73,7 @@ bool overlay_draws_training();       // a picture overlay draws the Training pan
 
 // replays.cpp
 bool replay_playing();               // a .slp is being played back
+bool replay_muted();                 // extras.cpp: a replay plays and its sound is muted (replaymute)
 // netoverlay.cpp: a session trace record of a replay shown "as it was played" (replay_library.cpp) into the overlay's ring; the
 // panel then shows it during the replay.
 void net_trace_show_replay_record(const void* record);   // a net_trace::Record

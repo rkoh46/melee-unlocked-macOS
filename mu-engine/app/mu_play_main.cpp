@@ -33,6 +33,8 @@
 #include <IOKit/pwr_mgt/IOPMLib.h>
 #include <mach-o/dyld.h>
 #include <algorithm>
+#include <pthread.h>
+#include <sys/qos.h>
 #include <atomic>
 #include <cmath>
 #include <ctime>
@@ -62,6 +64,7 @@ void mu_shim_open_log(const std::string& path);
 }
 
 // ui/mu_panel.cpp: the menu sounds mixed into the game output, and what the session is doing (reminder, skins note).
+namespace fe::features { bool replay_muted(); }   // fe/features/extras.cpp
 namespace fe::mu_ui { bool ui_sound_pending(); void ui_sound_mix(int16_t* rl, uint32_t frames, uint32_t rate); void note_session(bool fighting, bool online); }
 
 namespace {
@@ -297,7 +300,12 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
   // The settings panel's menu sounds (ui/mu_panel.cpp, upstream's menusounds), mixed into this block of the game's output; the
   // game's own samples are untouched.
   static std::vector<int16_t> with_tick;
-  if (fe::mu_ui::ui_sound_pending()) { with_tick.assign(rl, rl + size_t(frames) * 2); fe::mu_ui::ui_sound_mix(with_tick.data(), frames, 32000); rl = with_tick.data(); }
+  // The replay viewer's mute (fe/features/extras.cpp, replaymute): the game's sound is silence while a replay plays.
+  const bool muted = fe::features::replay_muted();
+  if (muted || fe::mu_ui::ui_sound_pending()) {
+    if (muted) with_tick.assign(size_t(frames) * 2, 0); else with_tick.assign(rl, rl + size_t(frames) * 2);
+    fe::mu_ui::ui_sound_mix(with_tick.data(), frames, 32000); rl = with_tick.data();
+  }
   // The app's output takes the AI DMA layout: big-endian 16-bit samples, two per frame.
   static std::vector<uint8_t> be;
   be.resize(size_t(frames) * 4);
@@ -360,6 +368,9 @@ int suggest_read(int port, uint8_t out[8]) {
 extern "C" int mu_net_suggest_setting(void);   // fe/features/options.cpp: settings.ini input_suggestions (default on)
 
 int main(int argc, char** argv) {
+  // The game runs on this thread (melee-unlocked's host services on the main thread): keep it on the performance cores, as
+  // upstream raises its game thread's priority (main.cpp) and the GameCube adapter thread already is (gc_adapter_iokit.cpp).
+  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
   mu_abi_install_crash_report();
   std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir, play_script;
   bool record = true, script_codes = false, audio_device = true, script_clock = false;

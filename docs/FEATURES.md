@@ -367,8 +367,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M12 | Alternate stage pick by held buttons | not wired; medium |
 | M13 | Keep the display awake during controller-only play | active: the engine holds a PreventUserIdleDisplaySleep assertion while its window is up (mu_play_main.cpp; `power: the display stays awake while the game runs`) |
 | M14 | Mouse cursor hides over the game | active: the pointer hides after two seconds at rest over the focused game window and shows while the settings panel is open (window_sdl.cpp, melee-unlocked's cursor_idle rule) |
-| M15 | Settings-panel controller ownership rules | not wired; easy |
-| M16 | Game calendar date from the real clock | not wired; easy |
+| M15 | Settings-panel controller ownership rules | active: the panel follows the pad that went from rest to active and hands the game its controllers back only once the pads used in the menu are released (upstream's settings_nav.h rule in ui/mu_panel.cpp, g_nav_port) |
+| M16 | Game calendar date from the real clock | active: play mode starts the console clock from the local time (`mu_play_main.cpp` time_base, the host's rule), so saves and TM-CE exports carry today's date; scripted reference runs keep their fixed clock |
 | M17 | DSP coefficient table, player dump first | not wired; easy |
 | M18 | Crash report privacy scrubbing | active: melee-unlocked's own rules (Crash report row) |
 | M19 | Crash zip contents and fallback | not wired; easy |
@@ -376,7 +376,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M21 | GPU-driver attribution in crash reports | not wired; easy: name Metal/AGX frames |
 | M22 | Crashed-start recovery | not wired; medium: same idea for the Metal pipeline cache |
 | M23 | Frame generation off after a Streamline crash | not wired; n/a |
-| M24 | Game thread priority and timer resolution | not wired; easy: a real-time thread policy (the render thread already has one) |
+| M24 | Game thread priority and timer resolution | active in the Mac's form: the game thread (the engine's main thread) runs at QOS_CLASS_USER_INTERACTIVE (`mu_play_main.cpp`), as the GameCube adapter thread does; macOS has no timer resolution or EcoQoS switch |
 | M25 | Diagnostic summary lines | not wired; easy |
 | M26 | Launcher logs | not wired; easy |
 | M27 | Shared disc memory outside the game folder | not wired; easy |
@@ -384,9 +384,9 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M29 | Engine switch requested by the game | not wired; n/a |
 | M30 | Launcher replay choice honoured by direct starts | not wired; easy if a launcher and game are separate |
 | M31 | Windows audio session details | not wired; n/a (CoreAudio has no ducking) |
-| M32 | Replay viewer mute | not wired; easy |
+| M32 | Replay viewer mute | active: settings.ini `replaymute`, a Replays page row ("Mute the game while watching a replay"): the game's sound is silence while a replay plays, the volume setting untouched (`fe/features/extras.cpp`, `mu_play_main.cpp`). A replay played back with SDL's disk output: RMS 3935 with it off, 0.0 with it on |
 | M33 | Alt+Enter fullscreen toggle | active: Control-Command-F (the Mac's shortcut) and Alt+Return toggle full screen, and the green button works as everywhere; the panel's Fullscreen row follows the window and launcher.ini keeps it |
-| M34 | "Reset CPU training options" button | not wired; easy |
+| M34 | "Reset CPU training options" button | active: GAME > Computer players > Reset CPU training options (`fe/features/extras.cpp`) puts every cpu_* key of settings.ini back to the game's own behaviour; the row says how many are set (build/shots-ui/cpu-reset.png: "2 set") |
 | M35 | Lobby state files | not wired; medium |
 | M36 | Release start scripts | not applicable (the launcher starts the engine; Watch plays replays) |
 | M37 | Source build from the launcher's Build tab | not wired; n/a |

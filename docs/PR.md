@@ -124,3 +124,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - Keyboard key names in the game's prompts (command 0xDF from the keyboard layout, `fe/features/key_labels.cpp`).
 - `mu-engine/tools/slp_strip_codes.py`: a legacy-style copy of a replay (no Gecko list) for the legacy code list path.
 - Replays: a replay on a mod stage is refused with upstream's message (launcher and engine), and one recorded with other mod content is refused as upstream's check_replay_content does; `mu-engine/tools/slp_set_stage.py`.
+- Reset CPU training options (Computer players), the replay viewer's mute (`replaymute`), the game thread at user-interactive QoS (`fe/features/extras.cpp`, `mu_play_main.cpp`).
