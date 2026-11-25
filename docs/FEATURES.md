@@ -261,7 +261,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Memory card as a folder of .gci files | host | active: memory card files in ~/Library/Application Support/Dashdance/melee-unlocked/Card A |
 | Automatic save backups | host | active: memory card files in ~/Library/Application Support/Dashdance/melee-unlocked/Card A |
 | Unlock everything without touching the save | game image | active: memory card files in ~/Library/Application Support/Dashdance/melee-unlocked/Card A |
-| Save import for mods | host | active: memory card files in ~/Library/Application Support/Dashdance/melee-unlocked/Card A |
+| Save import for mods | host | active as on the Switch (fe/mods.cpp): a .gci in a profile's folder goes onto that profile's card once, then the player's own saves win; the 20XX TE save is recognised and switches TE's native features instead (`app_te_test.sh`: `20XXTE-v2d-r4-USA.gci is the 20XX Tournament Edition save (v2d r4): its features are the game's native ones`); another game save's import not tried on the Mac |
 
 ## 11. In-game UI, overlays, accessibility, diagnostics
 
@@ -280,7 +280,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Accessibility-type options | see sections 4, 8 | not wired |
 | Text size or colour-blind setting | n/a | upstream stub (does not exist) |
 | Logs | host | active: the engine's engine.log (the session before as engine.prev.log) and engine.log.host, and the launcher's launcher.log, in ~/Library/Application Support/Dashdance/melee-unlocked/ |
-| Trace-mark keys | host | not wired |
+| Trace-mark keys | host | wired as on the Switch (fe/features/netoverlay.cpp): D-pad Left, Right and Down on the player's controller during an online match mark the session trace "looked wrong", "input came out wrong", "sounded wrong" (upstream's F7..F9; read only), a wait of 6 frames marks it by itself; the trace file is kept and plays back as it was played (Replay library row), but no test has pressed a mark yet |
 | Frame capture burst | renderer | not wired |
 | One-frame glitch detector | renderer | not wired |
 | Frame time CSV, simulation time CSV, latency trace | host / renderer | partial, in this app's own form: `--digest` CSVs, the `[frame N] ... sim:` log lines, `MELEE_METAL_LATENCY=1` |
@@ -309,7 +309,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Mods catalog | launcher + external | active: melee-unlocked's mods-catalog-2.json from the fetched tree, installed by the shared installer (`mu-engine/tools/mod_install_test.sh`) |
 | Melee 3D | launcher | not wired |
 | Replay library | launcher | active: the launcher's Replays page lists the games and Watch plays one in the melee-unlocked engine; in the engine, the panel's Replays page is melee-unlocked's library as the Switch has it (`fe/features/replay_library.cpp`): each replay's line and Slippi-Launcher-style stats, sort, hide short games, the search (a text prompt, `ui/software_keyboard_mac.mm`), the watch queue, "Show it as it was played" (`replayasplayed`, from a replay's .trace), Compress all (.slpz, each read back before its .slp goes; `compressreplays 1` also compresses earlier sessions at the start), Delete to the folder's .trash with Undo the last delete. `mu-engine/tools/app_replay_library_test.sh`: stats read, deleted to .trash and back with Undo, search "fox" 4 shown, watch queue 2, Compress all 4 of 4 to .slpz. "As it was played" on the Mac: an online loopback game with `session_trace 2` and 60 ms lag, 30 ms jitter (`MU_INI="session_trace 2" app_online_test.sh`) kept `Game_*.trace` (2827 rows); played back with `replayasplayed 1`: `replay: showing the session as it was played (2827 trace rows)`, `5652 post-frame records compared with the file, 0 differ` |
-| Replay stats | launcher | partial: the replays module's coach tips are logged at playback (fe/features/replay_coach_glue.cpp); no stats page |
+| Replay stats | launcher | partial: Slippi-Launcher-style stats per player on the engine panel's Replays page (fe/features/replay_library.cpp) and the coach tips at playback; the launcher's own Replays page has no stats card or session trace graph yet |
 | Watch live | launcher | active: the launcher's Replays page Watch live follows the Slippi Launcher's spectate folder (its Settings spectateSlpPath, else rootSlpPath/Spectate, else ~/Documents/Slippi/Spectate) and opens each new game file as it appears; the engine plays a file still being written, waiting at the top of each frame for it to arrive and ending at Game End or after 30 s without growth (replays.cpp, after melee-unlocked's source_host.cpp). Tested with tools/mac/slp_live_writer.py: a 7202-frame game written at 3x played to its Game End (0 differ); one written slower than real time waited for its frames and ended when it stopped growing. Not tried with the Slippi Launcher itself |
 | Multiplayer Lobby | launcher + external | not wired |
 | Hosted lobby service | launcher | upstream stub |
