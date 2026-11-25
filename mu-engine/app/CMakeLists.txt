@@ -132,11 +132,12 @@ target_compile_definitions(mu_proai PRIVATE MU_PROAI_FRONTEND=1)
 target_compile_options(mu_proai PRIVATE -O2 -fno-strict-aliasing)
 set(_mu_fe_ui_sources "${FE}/app_menu.cpp" "${FE}/overlay_draw.cpp" "${FE_GEN}/proai/practice_menu.cpp" "${FE}/proai/practice_overlay.cpp")
 set_source_files_properties("${FE}/overlay_draw.cpp" PROPERTIES INCLUDE_DIRECTORIES "${FE};${FE_GEN};${DD}/host")
+set_source_files_properties("${FE}/controls.cpp" "${FE}/controls_files.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_TREE}/port/linux;${MU_TREE}/port/runtime/abi;${DD}/host;${MU_TREE}/port/runtime/host")
 set_source_files_properties("${MU_UI}/chords_mac.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_TREE}/port/runtime/abi;${DD}/host;${MU_TREE}/port/runtime/host")
 set_source_files_properties("${FE}/app_menu.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_RUN};${MU_TREE}/port/linux;${MU_TREE}/port/runtime/abi;${DD}/host")
 set_source_files_properties("${FE_GEN}/proai/practice_menu.cpp" "${FE}/proai/practice_overlay.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI}/mac_include;${FE};${FE}/proai/include;${FE}/proai;${FE_GEN}/proai;${FE_GEN};${MU_TREE}/port/runtime/hle;${MU_TREE}/port/runtime/abi"
   COMPILE_DEFINITIONS "MU_PROAI_FRONTEND=1")
-set(_mu_ui_sources ${_mu_fe_ui_sources} "${MU_UI}/chords_mac.cpp" "${MU_UI}/mu_panel.cpp" "${MU_UI}/mu_mods.cpp" "${MU_UI}/frontend_mac.cpp" "${MU_UI}/ui_metal.mm" "${_ui_embed}")
+set(_mu_ui_sources ${_mu_fe_ui_sources} "${FE}/controls.cpp" "${FE}/controls_files.cpp" "${MU_UI}/controls_mac.cpp" "${FE}/features/present/present.cpp" "${MU_UI}/chords_mac.cpp" "${MU_UI}/mu_panel.cpp" "${MU_UI}/mu_mods.cpp" "${MU_UI}/frontend_mac.cpp" "${MU_UI}/ui_metal.mm" "${_ui_embed}")
 set_source_files_properties("${MU_UI}/ui_metal.mm" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 set_source_files_properties("${MU_UI}/mu_panel.cpp" PROPERTIES COMPILE_DEFINITIONS "app_menu_frame=menu_frame")
 add_executable(melee_unlocked_mac
@@ -163,10 +164,7 @@ target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinst
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")
 # mu_panel.cpp asks for the Practice menu weakly (the Switch's features/proai.cpp): absent, its row is left out.
-target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi"
-  # fe/features/present (display-rate presentation through Aurora) is not built: its weak entry points stay unresolved.
-  "LINKER:-U,__ZN2fe7present17register_settingsEv" "LINKER:-U,__ZN2fe7present18mark_discontinuityEv"
-  "LINKER:-U,__ZN2fe7present24configure_from_argumentsERKNSt3__16vectorINS1_12basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEENS6_IS8_EEEE")
+target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi")
 
 # The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page: linked into the app
 # (melee_port_mac) as objects so its definitions replace the launcher's weak "no installer" ones. melee-unlocked's

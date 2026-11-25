@@ -13,6 +13,7 @@
 #include "net_host.h"
 #include "slippi_menus.h"
 #include "feature_calls.h"
+#include "features/present/present.h"
 
 #include "audio.h"
 #include "app/game_menu.h"     // ui/app/game_menu.h: the menu interface melee-unlocked's panel (ui/mu_panel.cpp) implements
@@ -28,6 +29,7 @@
 #include <mach-o/dyld.h>
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <mutex>
 #include <thread>
@@ -200,6 +202,7 @@ void tables_hook(MuHostApi* host, MuGameApi* game) {
 namespace fe {
 std::function<void(host::RuntimeSettings&)> mac_menu_initial;
 std::function<void(const host::RuntimeSettings&, host::MenuChange)> mac_menu_apply;
+std::function<void(const MacPicture&)> mac_set_picture;
 // The newest `capacity` simulation-thread frame times, oldest first (the overlays' performance graph).
 int perf_history(float* sim_ms, int capacity) {
   std::lock_guard<std::mutex> lock(g_perf_mutex);
@@ -349,6 +352,11 @@ int main(int argc, char** argv) {
   gfx.efb_scale = scale; gfx.vsync = vsync; gfx.cache_dir = cache_dir;
   gfx.capture_path = capture_path; gfx.capture_frame = capture_frame;
   gfx.capture_ui = std::getenv("MELEE_CAPTURE_UI") != nullptr;   // screenshots of the settings panel (MELEE_MENU_OPEN)
+  // Display-rate presentation and sub-frames (settings.ini subframe / fps, or --frame-mode / --fps): off by default.
+  if (g_play)
+    gx::metal_set_present_loop([](gx::Backend& b, gx::FrameQueue& q, const std::atomic<bool>& stop, gx::PresentRender render) {
+      fe::present::loop(b, q, stop, [] {}, render);
+    }, [] { return fe::present::active(); });
   void* layer = host::window_create(1280, 960, L"melee-unlocked-macOS", !hidden);
   int client_w = 0, client_h = 0;
   host::window_client_size(&client_w, &client_h);
@@ -362,16 +370,32 @@ int main(int argc, char** argv) {
   fe::mac_menu_initial = [=](host::RuntimeSettings& rs) {
     rs.scale = scale; rs.vsync = vsync; rs.volume = volume; rs.fullscreen = fullscreen; rs.online_delay = net.delay;
   };
-  fe::mac_menu_apply = [backend, gfx](const host::RuntimeSettings& s, host::MenuChange what) mutable {
+  // The renderer's options change from the panel (simulation thread) and the overlays' picture page (render thread).
+  static std::mutex gfx_mutex;
+  fe::mac_menu_apply = [backend, &gfx](const host::RuntimeSettings& s, host::MenuChange what) {
     switch (what) {
       case host::MenuChange::Volume: host::audio_set_volume(s.volume); break;
       case host::MenuChange::Fullscreen: host::window_set_fullscreen(s.fullscreen); break;
-      case host::MenuChange::Graphics: case host::MenuChange::Anisotropy:
-        gfx.efb_scale = s.scale; gfx.vsync = s.vsync; gfx.anisotropy = s.anisotropy; gx::metal_set_options(backend, gfx); break;
+      case host::MenuChange::Graphics: case host::MenuChange::Anisotropy: case host::MenuChange::Filter: {
+        std::lock_guard<std::mutex> lock(gfx_mutex);
+        gfx.efb_scale = s.scale; gfx.vsync = s.vsync; gfx.anisotropy = s.anisotropy; gfx.filter = s.filter;
+        gx::metal_set_options(backend, gfx);
+        break;
+      }
       default: break;
     }
   };
+  fe::mac_set_picture = [backend, &gfx](const fe::MacPicture& p) {
+    std::lock_guard<std::mutex> lock(gfx_mutex);
+    gfx.brightness = p.brightness; gfx.contrast = p.contrast; gfx.vibrance = p.vibrance; gfx.crt = p.crt; gfx.crt_curve = p.crt_curve;
+    // The overlays' Auto shape is 4:3: the renderer's own choice (4:3, or 16:9 with the widescreen code). 0 fills the window.
+    if (p.aspect >= 0) gfx.picture_aspect = std::fabs(p.aspect - 4.0f / 3.0f) < 1e-3f ? 0.0f : p.aspect <= 0.0f ? 99.0f : p.aspect;
+    if (p.scale > 0) gfx.efb_scale = p.scale;   // Auto keeps the launcher's choice
+    gx::metal_set_options(backend, gfx);
+  };
+  if (g_play) fe::mac_controls_load((support / "launcher.ini").string());   // padx.<id>: the controller setups (fe/controls.cpp)
   if (g_play) fe::app_menu_setup();   // melee-unlocked's options, the feature modules' pages (fe/app_menu.cpp)
+  if (const int f = host::menu_settings().filter) { gfx.filter = f; gx::metal_set_options(backend, gfx); }   // the screen filter launcher.ini keeps
   else { host::RuntimeSettings rs; fe::mac_menu_initial(rs); host::menu_init(rs, fe::mac_menu_apply); }
   gx::metal_set_ui_pass(mu_ui_metal::pass());
   host::window_input_init();
@@ -452,6 +476,7 @@ int main(int argc, char** argv) {
       fe::app_ini_set("controller." + c.guid, std::to_string(c.port) + "|" + c.map.serialize());
     fe::app_ini_set("keyboard", host::keyboard_map().serialize());
   }
+  if (g_play) fe::mac_controls_save();
   delete backend;
   host::window_destroy();
   if (!g_restart_args.empty()) {   // the replay viewer's Watch: the game takes a replay only at boot, so this program starts again

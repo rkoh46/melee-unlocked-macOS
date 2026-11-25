@@ -5,6 +5,7 @@
 #pragma once
 #include "gx_core.h"
 #include "overlay.h"
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -24,6 +25,12 @@ struct MetalOptions {
   uint32_t capture_frame = 0;
   uint32_t capture_every = 0;
   bool capture_ui = false;    // the capture also has the UI pass (metal_set_ui_pass) drawn over it
+  // Picture options (melee-unlocked's picture page): all off by default, the present pass is then unchanged.
+  float brightness = 1.0f, contrast = 1.0f, vibrance = 1.0f;   // 1 = as rendered
+  int filter = 0;            // 0 smooth, 1 area (sharp box), 2 CRT scanlines, 3 vibrant
+  int crt = 0;               // the CRT look: 0 off, 1 scanlines and mask, 2 with curvature
+  float crt_curve = 1.0f;    // its curvature strength
+  float picture_aspect = 0;  // the picture's shape (width / height); 0 = the game's own (4:3, or 16:9 with widescreen)
   std::string cache_dir;     // pipelines.bin lives here: every pipeline seen, precompiled in the background next launch
 };
 
@@ -44,4 +51,11 @@ void metal_set_overlay(Backend* backend, OverlayProvider provider);
 // render thread. One per process; nullptr removes it.
 using UiPass = std::function<void(void* encoder, void* pass, void* command_buffer, int width, int height)>;
 void metal_set_ui_pass(UiPass pass);
+// Display-rate presentation (sub-frames): when `active` says so as the render thread starts, `loop` runs the render
+// thread instead of its own loop, taking frames from `queue` and drawing each (or a sub-frame pose of it) with `render`.
+// Set before create_metal_backend. Off by default.
+class FrameQueue;
+using PresentRender = void (*)(Backend& backend, const Frame& frame, const DrawMatrices* overrides);
+using PresentLoop = std::function<void(Backend& backend, FrameQueue& queue, const std::atomic<bool>& stop, PresentRender render)>;
+void metal_set_present_loop(PresentLoop loop, std::function<bool()> active);
 }  // namespace gx

@@ -81,7 +81,7 @@ extern "C" const uint8_t mu_ui_font_black[], mu_ui_font_black_end[], mu_ui_font_
 extern "C" const uint8_t mu_ui_bailey[], mu_ui_bailey_end[], mu_ui_mark[], mu_ui_mark_end[];
 
 namespace fe::features { __attribute__((weak)) bool practice_menu_chord(int port); }
-namespace fe { void mac_chords(host::PadState pads[4]); }   // features/proai.cpp: the Practice menu
+namespace fe { void mac_chords(host::PadState pads[4]); bool mac_controls_frame(host::PadState pads[4]); }   // features/proai.cpp: the Practice menu
 
 namespace fe {
 namespace {
@@ -977,7 +977,10 @@ bool menu_touch(float, float) { return false; }
 // play_io.cpp's menu_frame calls this with the game's controllers (simulation thread): the open combo, the panel's
 // queued changes, the remap's capture, and neutral controllers for the game while the panel is open.
 void app_menu_frame(PadState pads[4]) {
-  fe::mac_chords(pads);   // mumac: the frontend's controller chords (chords_mac.cpp; controls.cpp on the Switch)
+  // mumac: the frontend's controller setup (controls_mac.cpp, fe/controls.cpp) and its chords (chords_mac.cpp).
+  const bool capturing = fe::mac_controls_frame(pads);
+  fe::mac_chords(pads);
+  if (capturing) for (int i = 0; i < 4; ++i) { const int8_t err = pads[i].err; pads[i] = {}; pads[i].err = err; }   // the capture's presses are not the panel's
   {
     std::lock_guard<std::mutex> lock(fe::g_mutex);
     if (fe::g_open_at_frame >= 0 && int(retrace_count()) >= fe::g_open_at_frame) {

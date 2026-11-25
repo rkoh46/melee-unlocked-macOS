@@ -34,6 +34,9 @@ namespace {
 std::mutex& ui_pass_mutex() { static std::mutex m; return m; }
 UiPass& ui_pass() { static UiPass pass; return pass; }
 }
+PresentLoop& present_loop() { static PresentLoop l; return l; }
+std::function<bool()>& present_active() { static std::function<bool()> a; return a; }
+void metal_set_present_loop(PresentLoop loop, std::function<bool()> active) { present_loop() = std::move(loop); present_active() = std::move(active); }
 void metal_set_ui_pass(UiPass pass) { std::lock_guard<std::mutex> lock(ui_pass_mutex()); ui_pass() = std::move(pass); }
 namespace {
 
@@ -71,13 +74,13 @@ struct PsoKeyHash { size_t operator()(const PsoKey& k) const {
 struct TextureEntry { id<MTLTexture> texture = nil; uint32_t width = 0, height = 0, levels = 1; uint64_t last_used = 0; };
 struct Pipeline { id<MTLRenderPipelineState> state = nil; };
 
-struct BlitConstants { float rect[4]; float sharp[4]; float box[4]; };
+struct BlitConstants { float rect[4]; float sharp[4]; float box[4]; float pic[4]; float look[4]; };
 struct ClearConstants { float color[4]; float depth; float pad[3]; };
 
 const char* kBlitSource = R"(
 #include <metal_stdlib>
 using namespace metal;
-struct C { float4 rect; float4 sharp; float4 box; };
+struct C { float4 rect; float4 sharp; float4 box; float4 pic; float4 look; };
 struct O { float4 pos [[position]]; float2 uv; };
 vertex O blit_vs(uint id [[vertex_id]], constant C& c [[buffer(0)]]) {
   O o; float2 p = float2((id << 1) & 2, id & 2);
@@ -93,9 +96,37 @@ float4 downsample(texture2d<float> src, sampler samp, constant C& c, float2 uv) 
       acc += src.sample(samp, uv + (float2(x, y) + 0.5) / float2(nx, ny) * foot - 0.5 * foot);
   return acc / float(nx * ny);
 }
+// Picture options: pic = brightness, contrast, vibrance, on; look = filter, crt, curve, output height in pixels.
+float4 picture(float4 col, constant C& c, float2 screen) {
+  if (c.pic.w <= 0.0) return col;
+  float3 rgb = col.rgb * c.pic.x;
+  rgb = (rgb - 0.5) * c.pic.y + 0.5;
+  float vib = c.pic.z * (int(c.look.x) == 3 ? 1.35 : 1.0);
+  float luma = dot(rgb, float3(0.299, 0.587, 0.114));
+  rgb = mix(float3(luma), rgb, vib);
+  if (int(c.look.x) == 2 || c.look.y > 0.0) {   // scanlines: 240 lines over the picture, and an aperture mask
+    float line = screen.y * 240.0;
+    float scan = 0.72 + 0.28 * pow(sin(3.14159 * fract(line)), 2.0);
+    rgb *= scan;
+    if (c.look.y > 0.0) {
+      int m = int(fmod(screen.x * c.look.w * 1.3333, 3.0));
+      float3 mask = m == 0 ? float3(1.0, 0.85, 0.85) : m == 1 ? float3(0.85, 1.0, 0.85) : float3(0.85, 0.85, 1.0);
+      rgb *= mask * 1.12;
+    }
+  }
+  return float4(saturate(rgb), col.a);
+}
+float2 crt_warp(float2 uv01, float k) { float2 d = uv01 * 2.0 - 1.0; d *= 1.0 + k * 0.06 * dot(d.yx, d.yx); return d * 0.5 + 0.5; }
 fragment float4 blit_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d<float> src [[texture(0)]], sampler samp [[sampler(0)]]) {
-  float4 col = downsample(src, samp, c, i.uv);
-  if (c.sharp.z <= 0.0) return col;
+  float2 screen = (i.uv - c.rect.zw) / max(c.rect.xy, float2(1e-6));   // 0..1 over the picture
+  float2 uv = i.uv;
+  if (c.pic.w > 0.0 && c.look.y >= 2.0) {
+    float2 w = crt_warp(screen, c.look.z);
+    if (any(w < 0.0) || any(w > 1.0)) return float4(0, 0, 0, 1);
+    uv = w * c.rect.xy + c.rect.zw; screen = w;
+  }
+  float4 col = downsample(src, samp, c, uv);
+  if (c.sharp.z <= 0.0) return picture(col, c, screen);
   float2 step = c.sharp.xy * max(c.box.xy, float2(1.0));
   float3 n = src.sample(samp, i.uv + float2(0, -step.y)).rgb, s = src.sample(samp, i.uv + float2(0, step.y)).rgb;
   float3 w = src.sample(samp, i.uv + float2(-step.x, 0)).rgb, e = src.sample(samp, i.uv + float2(step.x, 0)).rgb;
@@ -104,7 +135,7 @@ fragment float4 blit_ps(O i [[stage_in]], constant C& c [[buffer(0)]], texture2d
   float peak = -1.0 / mix(8.0, 5.0, saturate(c.sharp.z));
   float3 wgt = amp * peak;
   float3 r = (col.rgb + (n + s + w + e) * wgt) / (1.0 + 4.0 * wgt);
-  return float4(saturate(r), col.a);
+  return picture(float4(saturate(r), col.a), c, screen);
 }
 struct ClearC { float4 color; float depth; float pad0, pad1, pad2; };
 struct ClearO { float4 pos [[position]]; };
@@ -287,7 +318,10 @@ class MetalBackend final : public Backend {
     blit_sampler_ = [device_ newSamplerStateWithDescriptor:sd];
   }
 
-  float output_aspect() const { return opts_.widescreen ? 16.0f / 9.0f : 4.0f / 3.0f; }
+  float output_aspect() const {
+    if (opts_.picture_aspect > 50.0f) return (float)std::max(client_w_, 1) / (float)std::max(client_h_, 1);   // the whole window
+    return opts_.picture_aspect > 0.1f ? opts_.picture_aspect : opts_.widescreen ? 16.0f / 9.0f : 4.0f / 3.0f;
+  }
   bool fx_wanted() const { return opts_.upscaler > 0 && fx_supported_; }
   int pick_scale() const {
     constexpr int max_scale = 16384 / EFB_WIDTH;
@@ -938,6 +972,12 @@ class MetalBackend final : public Backend {
       bc.box[0] = (float)std::clamp((int)std::lround((double)c.src_w * scale_ / std::max(vw, 1.0f)), 1, 4);
       bc.box[1] = (float)std::clamp((int)std::lround((double)c.src_h * scale_ / std::max(vh, 1.0f)), 1, 4);
     }
+    const bool picture_on = opts_.brightness != 1.0f || opts_.contrast != 1.0f || opts_.vibrance != 1.0f || opts_.filter >= 2 || opts_.crt > 0;
+    if (picture_on) {
+      bc.pic[0] = opts_.brightness; bc.pic[1] = opts_.contrast; bc.pic[2] = opts_.vibrance; bc.pic[3] = 1.0f;
+      bc.look[0] = (float)opts_.filter; bc.look[1] = (float)opts_.crt; bc.look[2] = opts_.crt_curve; bc.look[3] = vh;
+    }
+    if (opts_.filter == 1 && !fx) { bc.box[0] = std::max(bc.box[0], 2.0f); bc.box[1] = std::max(bc.box[1], 2.0f); }   // area: a wider box
     [enc setRenderPipelineState:blit_present_];
     [enc setVertexBytes:&bc length:sizeof bc atIndex:0];
     [enc setFragmentBytes:&bc length:sizeof bc atIndex:0];
@@ -1202,6 +1242,25 @@ class MetalBackend final : public Backend {
                   [blit copyFromTexture:source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(x, y, 0) sourceSize:MTLSizeMake(w, h, 1)
                               toTexture:capture_staging_ destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
                   [blit endEncoding];
+                  if (opts_.capture_ui && !capture_bgra_ && (opts_.brightness != 1.0f || opts_.contrast != 1.0f || opts_.vibrance != 1.0f || opts_.filter >= 2 || opts_.crt > 0)) {
+                    // The picture options, as the present pass draws them, over the captured picture.
+                    MTLRenderPassDescriptor* prp = [MTLRenderPassDescriptor renderPassDescriptor];
+                    prp.colorAttachments[0].texture = capture_staging_;
+                    prp.colorAttachments[0].loadAction = MTLLoadActionDontCare;
+                    prp.colorAttachments[0].storeAction = MTLStoreActionStore;
+                    id<MTLRenderCommandEncoder> penc = [command_ renderCommandEncoderWithDescriptor:prp];
+                    [penc setViewport:MTLViewport{0, 0, (double)w, (double)h, 0, 1}];
+                    BlitConstants pb{{(float)w / efb_w_, (float)h / efb_h_, (float)x / efb_w_, (float)y / efb_h_},
+                                     {1.0f / std::max((float)efb_w_, 1.0f), 1.0f / std::max((float)efb_h_, 1.0f), 0.0f, 0.0f}, {1, 1, 0, 0},
+                                     {opts_.brightness, opts_.contrast, opts_.vibrance, 1.0f}, {(float)opts_.filter, (float)opts_.crt, opts_.crt_curve, (float)h}};
+                    [penc setRenderPipelineState:blit_copy_];
+                    [penc setVertexBytes:&pb length:sizeof pb atIndex:0];
+                    [penc setFragmentBytes:&pb length:sizeof pb atIndex:0];
+                    [penc setFragmentTexture:source atIndex:0];
+                    [penc setFragmentSamplerState:blit_sampler_ atIndex:0];
+                    [penc drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+                    [penc endEncoding];
+                  }
                   std::lock_guard<std::mutex> lock(ui_pass_mutex());
                   if (opts_.capture_ui && ui_pass()) {   // the UI drawn over the captured picture, as it is over the window
                     MTLRenderPassDescriptor* ui_rp = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -1401,7 +1460,7 @@ class MetalBackend final : public Backend {
 class MetalThreaded final : public Backend {
  public:
   explicit MetalThreaded(MetalBackend* inner) : inner_(inner) { worker_ = std::thread([this] { run(); }); }
-  ~MetalThreaded() override { queue_.finish(); if (worker_.joinable()) worker_.join(); delete inner_; }
+  ~MetalThreaded() override { stop_.store(true); queue_.finish(); if (worker_.joinable()) worker_.join(); delete inner_; }
   void submit_frame(const Frame& frame) override { host::SimCostScope cost(host::SIM_QUEUE); if (!queue_.push(frame)) throw ExitRequested{host::exit_code()}; }
   void submit_and_recycle(Frame& frame) override { host::SimCostScope cost(host::SIM_QUEUE); if (!queue_.push_and_recycle(frame)) throw ExitRequested{host::exit_code()}; }
   // Control from other threads is applied by the worker between frames.
@@ -1421,6 +1480,21 @@ class MetalThreaded final : public Backend {
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
     host::thread_realtime("render", 4.0);
     uint64_t drained = 0, executed = 0;
+    if (present_loop() && present_active() && present_active()()) {   // display-rate presentation (metal_set_present_loop)
+      try {
+        present_loop()(*this->presenter(), queue_, stop_, [](Backend& b, const Frame& f, const DrawMatrices* o) {
+          auto& self = static_cast<Presenter&>(b);
+          self.owner->apply_pending();
+          self.owner->inner_->submit_frame(f, o);
+          self.owner->frames_presented_.store(self.owner->inner_->frames_presented());
+        });
+      } catch (const std::exception& e) {
+        host::log("renderer: fatal error on the render thread: %s", e.what());
+        queue_.finish(true); host::request_exit(3);
+      }
+      host::log("renderer: display-rate presentation ended");
+      return;
+    }
     try {
       Frame frame;
       for (;;) {
@@ -1450,6 +1524,14 @@ class MetalThreaded final : public Backend {
     }
     host::log("renderer: %llu frames executed on the render thread, %llu drained without presenting", (unsigned long long)executed, (unsigned long long)drained);
   }
+  // The Backend the presentation loop draws through: each draw goes to the renderer with the loop's poses.
+  struct Presenter final : Backend {
+    MetalThreaded* owner = nullptr;
+    void submit_frame(const Frame& frame) override { owner->inner_->submit_frame(frame); }
+  };
+  Presenter* presenter() { presenter_.owner = this; return &presenter_; }
+  Presenter presenter_;
+  std::atomic<bool> stop_{false};
   MetalBackend* inner_;
   FrameQueue queue_;
   std::thread worker_;

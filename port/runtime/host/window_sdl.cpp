@@ -664,6 +664,7 @@ bool input_load_script(const char* path) {
   return true;
 }
 void input_mark_match_start() { g_match_start.store(retrace_count()); }
+void* input_port_gamepad(int port) { return port >= 0 && port < 4 && g_gamepad_port[port] ? SDL_GetGamepadFromID(g_gamepad_port[port]) : nullptr; }
 
 void input_poll(PadState out[4]) {
   struct UiSnapshot {

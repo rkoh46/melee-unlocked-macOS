@@ -11,6 +11,7 @@
 #include "../slippi_menus.h"
 #include "aurora/aurora.h"
 #include "host.h"
+#include "window.h"
 
 #include <algorithm>
 #include <chrono>
@@ -89,8 +90,11 @@ std::vector<std::string> mod_profile_choices() {
 // ---- the rest of play mode's frontend, as the Mac engine has it ----
 namespace fe {
 uint32_t online_delay_frames() { return options.online_delay > 0 ? uint32_t(options.online_delay) : 0u; }   // the launcher's setting
-void decoder_sync() {}   // the GX stream is decoded on the simulation thread itself (mu_play_main.cpp on_fifo)
-std::vector<std::string> controls_rate_lines() { return {}; }   // the Switch's Pro Controller / Joy-Con rates
+void decoder_sync() {}
+double display_refresh_hz() { return host::window_refresh_rate(); }
+// The Switch's present hook (Aurora's render loop presents again between frames); the Mac renderer runs the presentation
+// loop itself (gx::metal_set_present_loop), so this is only noted.
+void set_present_hook(const PresentHook&) {}   // the GX stream is decoded on the simulation thread itself (mu_play_main.cpp on_fifo)
 // Slippi's menu files (mods.cpp asks for them): mu-engine/app/slippi_menus.cpp serves the bundle's slippi_sys.
 bool slippi_menus_on() { return slippi_menus::active(); }
 void slippi_files_build() { slippi_menus::disc_ready(); }
@@ -102,10 +106,24 @@ namespace host {
 uint64_t now_ns() { return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 }
 
-// The Switch frontend's picture options (Aurora, patches/0109): logged here; the Metal renderer does not draw them yet.
-void aurora_set_picture(const AuroraPicture*) {}
-namespace aurora::window {
-void set_frame_buffer_aspect(float) {}
-void set_frame_buffer_scale(float) {}
+// The Switch frontend's picture options (Aurora, patches/0109): the overlays call these when the picture page changes
+// (fe/overlay_draw.cpp apply_picture: the picture first, then the shape and the internal resolution).
+namespace { std::mutex g_pic_mutex; fe::MacPicture g_pic; }
+void aurora_set_picture(const AuroraPicture* p) {
+  if (!p) return;
+  std::lock_guard<std::mutex> lock(g_pic_mutex);
+  g_pic.brightness = p->brightness; g_pic.contrast = p->contrast; g_pic.vibrance = p->vibrance; g_pic.crt = int(p->crt); g_pic.crt_curve = p->crt_curve;
+  if (fe::mac_set_picture) fe::mac_set_picture(g_pic);
 }
-
+namespace aurora::window {
+void set_frame_buffer_aspect(float aspect) {
+  std::lock_guard<std::mutex> lock(g_pic_mutex);
+  g_pic.aspect = aspect;   // 0: the whole window; the renderer takes 0 as the game's own shape
+  if (fe::mac_set_picture) fe::mac_set_picture(g_pic);
+}
+void set_frame_buffer_scale(float scale) {
+  std::lock_guard<std::mutex> lock(g_pic_mutex);
+  g_pic.scale = int(scale);
+  if (fe::mac_set_picture) fe::mac_set_picture(g_pic);
+}
+}

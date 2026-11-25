@@ -17,11 +17,11 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 
 | Feature | Side | Mac status |
 |---|---|---|
-| Sub-frame animation: Off | renderer | not wired |
-| Sub-frame animation: Predict ahead | game image + host + renderer | engine option, no setting |
-| Sub-frame animation: Interpolate | same | not wired |
-| Generic matrix modes | renderer | not wired |
-| Frame cap | renderer | not wired |
+| Sub-frame animation: Off | renderer | active: display-rate presentation on the Metal renderer (fe/features/present through `gx::metal_set_present_loop`); off by default |
+| Sub-frame animation: Predict ahead | game image + host + renderer | active: settings.ini subframe 1 (or --frame-mode predict); tested at 120 presents per second (1797 presents for 894 game frames) |
+| Sub-frame animation: Interpolate | same | active: settings.ini subframe 2 |
+| Generic matrix modes | renderer | active: the sub-frame solver's matrix modes (port/runtime/gx/subframe.cpp) |
+| Frame cap | renderer | active: settings.ini fps N |
 | Sub-frame pause when the game falls behind online | host | not wired |
 
 ## 3. Online
@@ -191,7 +191,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Lab view | renderer | not wired |
 | Looping video backgrounds | renderer | not wired |
 | Border art | renderer | active: the overlays (a .bmp in the Borders folder) |
-| Built-in CRT look | renderer | not wired |
+| Built-in CRT look | renderer | active: settings.ini crt_filter 1/2 and crt_curve, drawn in the Metal present pass; off by default |
 | RetroArch shader presets | renderer | not wired |
 | Easter egg | renderer + game image | engine option, no setting |
 
@@ -204,32 +204,32 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Adapter polling-rate readout | host + renderer | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | Xbox, DualShock 4, DualSense, Switch Pro, Joy-Con, generic HID pads | host | not wired |
 | Keyboard | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
-| Remapping | host + renderer | not wired |
-| Controller profiles | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
-| Dolphin profile import | host | not wired |
-| Deadzone, radius, snapback filter, trigger cap and click point | host | not wired |
-| Box controllers | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
+| Remapping | host + renderer | active: the panel's CONTROLS page (the app's remap, and the bindings page of fe/controls.cpp) |
+| Controller profiles | host | active: fe/controls.cpp profiles (ControllerProfiles folder), on the CONTROLS page |
+| Dolphin profile import | host | active: fe/controls.cpp; reads the app's Dolphin folder, else Slippi Dolphin's or Dolphin's GCPad profiles |
+| Deadzone, radius, snapback filter, trigger cap and click point | host | active: fe/controls.cpp's setup page, applied after the app's input (IOKit adapter and SDL pads) |
+| Box controllers | host | active: fe/controls.cpp box mode (melee-unlocked's box_melee.h) |
 | PhobGCC settings on a stock controller | host + renderer | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | PhobScope and Phob Check | renderer + host | not wired |
 | "Play as P2/P3/P4" | host + renderer | not wired |
 | Rumble and its switch | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
-| Button chords | host | not wired |
+| Button chords | host | active: Start + D-pad Down/Up + Z (ui/chords_mac.cpp, melee-unlocked's settings_chord.h) |
 | Background input | host | not wired |
 
 ## 8. Display
 
 | Feature | Side | Mac status |
 |---|---|---|
-| Picture from the GX stream | renderer | not wired |
-| Aspect ratio | renderer | not wired |
-| V-Sync | renderer | not wired |
+| Picture from the GX stream | renderer | active: the app's GX decoder and Metal renderer |
+| Aspect ratio | renderer | active: settings.ini aspect (the picture's shape) and the widescreen code |
+| V-Sync | renderer | active: the launcher and the panel |
 | Quality presets | renderer | not wired |
 | "Low spec" switch | renderer | not wired |
 | Internal resolution | renderer | active: the app's Metal renderer and launcher settings |
 | Anti-aliasing | renderer | not wired |
-| Anisotropic filtering | renderer | not wired |
-| Sharpening | renderer | not wired |
-| Brightness, contrast, vibrance | renderer | not wired |
+| Anisotropic filtering | renderer | active: the panel's texture filtering row |
+| Sharpening | renderer | active: settings.ini sharpness (the present pass's sharpening) |
+| Brightness, contrast, vibrance | renderer | active: settings.ini brightness / contrast / vibrance, in the Metal present pass; off by default |
 | Screen-space ambient occlusion | renderer | not wired |
 | Window size, borderless and exclusive fullscreen | renderer | active: the app's Metal renderer and launcher settings |
 | Graphics backend picker | renderer | not wired |

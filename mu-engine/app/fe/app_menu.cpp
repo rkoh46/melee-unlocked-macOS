@@ -4,8 +4,8 @@
 // melee-unlocked options settings.ini already supports, written back to settings.ini when changed, plus the
 // feature modules' pages (feature_hooks.h). Options upstream only allows offline are greyed while the session
 // is online. Opened with L + R + Start held for half a second, as in the app. Aurora builds only.
-// mumac: the Mac engine's copy (mu-engine/app/fe): no Aurora (the screen filter row is the Metal renderer's business,
-// fe::mac_menu_apply), no Switch controller setup pages (controls.cpp); the picture rows the Mac has go to mac_menu_apply.
+// mumac: the Mac engine's copy (mu-engine/app/fe): no Aurora (the screen filter row goes to the Metal renderer through
+// fe::mac_menu_apply),  the picture rows the Mac has go to mac_menu_apply.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "frontend.h"
 
@@ -186,7 +186,6 @@ void app_menu_setup() {
   host::menu_init(rs, apply);
   // Rows of the earlier renderer that mean nothing here: this renderer always draws the newest frame.
   host::menu_hide(host::MenuChange::FullSpeed);
-  host::menu_hide(host::MenuChange::Filter);   // the Switch's screen filters (Aurora); not drawn by the Metal renderer yet
   host::menu_hide(host::MenuChange::Msaa);
   host::menu_hide(host::MenuChange::Trigger);  // the Switch's GameCube adapter scaling; the CONTROLS page has the Mac's
   host::menu_hide(host::MenuChange::Stick);
@@ -254,6 +253,7 @@ void app_menu_setup() {
   }
   // The controller setup beyond the Controls page's button remap (controls.cpp): setup, bindings, profiles; last, so
   // they sit right above Controls.
+  controls_menu_pages(&extra);   // the controller setup, bindings and profiles (fe/controls.cpp), on the panel's CONTROLS page
   host::menu_set_extra_pages(std::move(extra));
   say("app: in-game menu ready (L + R + Start): %zu settings pages, %zu feature pages", pages().size(), groups.size());
 }
