@@ -73,7 +73,8 @@ bool overlay_draws_training();       // a picture overlay draws the Training pan
 
 // replays.cpp
 bool replay_playing();               // a .slp is being played back
-bool replay_muted();                 // extras.cpp: a replay plays and its sound is muted (replaymute)
+bool replay_muted();
+bool restart_requested();            // extras.cpp: the panel's Restart the game was confirmed (taken once)                 // extras.cpp: a replay plays and its sound is muted (replaymute)
 // netoverlay.cpp: a session trace record of a replay shown "as it was played" (replay_library.cpp) into the overlay's ring; the
 // panel then shows it during the replay.
 void net_trace_show_replay_record(const void* record);   // a net_trace::Record

@@ -3,17 +3,37 @@
 //     settings.ini: 20XX CPUs, tech, get-up, DI, SDI, no taunts, always L-cancel, no rapid jabs, no transforming) back to the
 //     game's own behaviour, on the panel's Computer players page;
 //   - the replay viewer's mute (upstream's: while muted the game's sound is not heard; the volume setting is untouched):
-//     settings.ini `replaymute`, a Replays page row; mu_play_main.cpp's sound output asks replay_muted().
+//     settings.ini `replaymute`, a Replays page row; mu_play_main.cpp's sound output asks replay_muted();
+//   - "Restart game" (upstream's footer menu, with its confirmation): A, then A again within 3 s; the engine starts again with
+//     the same arguments (replays.cpp's restart request, mu_play_main.cpp); offline only;
+//   - the Arcade look preset and reset (upstream's two buttons): every Arcade-look switch on (with the grid) or off at once.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "features_internal.h"
 #include "frontend.h"
 
 #include <atomic>
+#include <chrono>
 #include <string>
 
 namespace fe::features {
 namespace {
-std::atomic<bool> g_replay_mute{false};
+std::atomic<bool> g_replay_mute{false}, g_restart{false};
+double g_restart_armed = -10.0;
+double now_s() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+std::string restart_value() {
+  if (online()) return "Not online (leave the online mode first)";
+  return now_s() - g_restart_armed < 3.0 ? "Press A again to restart" : "Press A";
+}
+void restart_press() {
+  if (online()) return;
+  if (now_s() - g_restart_armed < 3.0) { g_restart = true; say("options: Restart the game confirmed"); }
+  else g_restart_armed = now_s();
+}
+constexpr const char* kArcade[] = {"arcade_hitboxes", "arcade_projectile_hitboxes", "arcade_hitboxes_behind", "arcade_camera_2d", "arcade_backdrop"};
+void arcade_set(bool on) {
+  for (const char* k : kArcade) settings_change(k, on ? (std::string(k) == "arcade_backdrop" ? "2" : "1") : "0");
+  say("options: Arcade look %s", on ? "preset: every switch on, the grid behind the stage" : "reset: every switch off");
+}
 constexpr const char* kCpuKeys[] = {"cpu_20xx", "cpu_tech", "cpu_getup", "cpu_di", "cpu_sdi", "cpu_notaunt", "cpu_lcancel", "cpu_nojab", "cpu_notransform"};
 std::string cpu_reset_value() {
   int set = 0;
@@ -29,11 +49,31 @@ bool setting(const std::string& key, const std::string& value) {
   g_replay_mute = value == "1";
   return true;
 }
+// --feature-test extras (verification runs): at retrace 120 the Arcade preset and reset, then Restart the game pressed twice;
+// the restarted engine (--restarted on its command line) does nothing more.
+void test_retrace(const Retrace& info) {
+  static bool done = false;
+  if (done || info.retrace < 120 || !feature_test("extras")) return;
+  done = true;
+  for (const auto& a : options.rest) if (a == "--restarted") { say("extras test: running again after Restart the game"); return; }
+  arcade_set(true);
+  say("extras test: after the preset: %s %s %s %s %s", settings_get("arcade_hitboxes").c_str(), settings_get("arcade_projectile_hitboxes").c_str(),
+      settings_get("arcade_hitboxes_behind").c_str(), settings_get("arcade_camera_2d").c_str(), settings_get("arcade_backdrop").c_str());
+  arcade_set(false);
+  say("extras test: after the reset: %s %s %s %s %s", settings_get("arcade_hitboxes").c_str(), settings_get("arcade_projectile_hitboxes").c_str(),
+      settings_get("arcade_hitboxes_behind").c_str(), settings_get("arcade_camera_2d").c_str(), settings_get("arcade_backdrop").c_str());
+  restart_press(); say("extras test: Restart the game: %s", restart_value().c_str()); restart_press();
+}
 }  // namespace
+bool restart_requested() { return g_restart.exchange(false); }
 bool replay_muted() { return g_replay_mute.load(std::memory_order_relaxed) && replay_playing(); }
 void register_extras() {
   add_setting(setting);
+  add_retrace(test_retrace);
   add_menu_entry({"Computer players", "Reset CPU training options", cpu_reset_value, nullptr, cpu_reset_press});
+  add_menu_entry({"Game options", "Restart the game", restart_value, nullptr, restart_press});
+  add_menu_entry({"Picture and HUD", "Arcade look: every switch on", [] { return std::string(); }, nullptr, [] { arcade_set(true); }});
+  add_menu_entry({"Picture and HUD", "Arcade look: reset", [] { return std::string(); }, nullptr, [] { arcade_set(false); }});
   add_menu_entry({"Replays", "Mute the game while watching a replay", [] { return std::string(g_replay_mute ? "On" : "Off"); },
                   [](int) { g_replay_mute = !g_replay_mute; say("replay: mute %s", g_replay_mute ? "on" : "off"); }, nullptr,
                   [](MenuEntry::Write w) { w("replaymute", g_replay_mute ? "1" : "0"); }});

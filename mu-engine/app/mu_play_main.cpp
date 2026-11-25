@@ -425,6 +425,7 @@ int main(int argc, char** argv) {
     else if (a == "--replay") replay = next();
     else if (a == "--replay-dir") replay_dir = next();
     else if (a == "--no-record") record = false;
+    else if (a == "--restarted") host::log("play: started again from the settings panel's Restart the game");
     else if (a == "--no-audio-device") audio_device = false;
     else if (a == "--script-real-clock") script_clock = true;   // tests: a scripted match on the real clock and seed (as a player's)   // tests: mix and count the sound, open no output device
     else if (a == "--script-codes") script_codes = true;   // tests: a scripted match with melee-unlocked's codes on (not the retail game)

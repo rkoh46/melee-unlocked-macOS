@@ -299,7 +299,8 @@ bool place_row(const std::string& label, int* cat, std::string* title) {
     // melee-unlocked's VIDEO page has the Arcade look section
     {"Show hitboxes", 0, "Arcade look"}, {"Projectile hitboxes", 0, "Arcade look"}, {"Hitboxes behind fighters", 0, "Arcade look"},
     {"Lossless adapter lag test (next start only)", 0, "Advanced"},
-    {"2D camera", 0, "Arcade look"}, {"Grid behind the stage", 0, "Arcade look"}, {"Combo counter (offline)", 0, "Arcade look"}};
+    {"2D camera", 0, "Arcade look"}, {"Grid behind the stage", 0, "Arcade look"}, {"Combo counter (offline)", 0, "Arcade look"},
+    {"Arcade look: every switch on", 0, "Arcade look"}, {"Arcade look: reset", 0, "Arcade look"}};
   for (const P& p : table) if (label == p.label) { *cat = p.cat; *title = p.title; return true; }
   return false;
 }

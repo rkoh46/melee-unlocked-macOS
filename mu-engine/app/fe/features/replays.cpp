@@ -1220,6 +1220,7 @@ void replay_watch(const std::string& path) {
   say("replay: %s asked for; play mode starts the game again with it", path.c_str());
 }
 bool take_restart_request(std::vector<std::string>* extra_args) {
+  if (restart_requested()) { extra_args->assign({"--restarted"}); return true; }   // the panel's Restart the game (extras.cpp)
   if (pending_restart.empty()) return false;
   *extra_args = std::move(pending_restart);
   pending_restart.clear();

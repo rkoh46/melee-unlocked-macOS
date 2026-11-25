@@ -417,8 +417,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A67 | Engine-only and experimental rules | not wired; Switch: easy (n/a mostly: one engine); macOS: easy |
 | A71 | `widescreen` key | not wired; Switch: easy - doc fix |
 | A72 | Retired keys | not wired; doc only |
-| B7 | Restart game from the panel | not wired; Switch: easy - relaunch the app's game process or re-enter play mode from the in-game menu; macOS: easy - the engine already starts itself again for the replay viewer's Watch |
-| B33b | Arcade preset / Reset buttons | not wired; Switch: easy - menu row setting five existing keys; macOS: easy - same in the dashboard/in-game menu |
+| B7 | Restart game from the panel | active: GAME > Game > Restart the game (A, then A again within 3 s, upstream's confirmation; offline only): the engine starts again with the same arguments (`fe/features/extras.cpp`, the restart path replays.cpp's Watch uses). `--feature-test extras`: `Restart the game confirmed`, `the game starts again`, `started again from the settings panel's Restart the game` |
+| B33b | Arcade preset / Reset buttons | active: VIDEO > Arcade look > "every switch on" (hitboxes, projectile hitboxes, behind fighters, 2D camera, the grid) and "reset" (`fe/features/extras.cpp`). `--feature-test extras`: after the preset `1 1 1 1 2`, after the reset `0 0 0 0 0` |
 | B62 | Audio latency and underrun read-out | not wired; Switch: easy - audout queue depth and an underrun counter from the app's audio path; macOS: easy - AVAudioEngine/CoreAudio IO buffer and dropout count |
 | B71 | Per-mod-disc random stage-skin pool | not wired; Switch: medium - needs the stage-skin store (FEATURES: imports not wired) first; macOS: medium - same store, then a list row |
 | B75 | Costume packs: apply a whole set | not wired; Switch: medium - depends on the cosmetic store; UI is a list; macOS: medium - same |
