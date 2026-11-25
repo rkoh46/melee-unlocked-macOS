@@ -1,0 +1,29 @@
+mu_replay_recording(): whether a match is being recorded (the fighter block is cleared then; see decomp-0012).
+
+--- a/sourceport/game/include/mu_native.h
++++ b/sourceport/game/include/mu_native.h
+@@ -563,6 +563,7 @@
+ struct StartMeleeData;
+ int mu_replay_on(void);
+ int mu_replay_code(unsigned int code);     /* playback and the replay carries the code */
++int mu_replay_recording(void);              /* mumac: a match is being recorded */
+ int mu_replay_allows(unsigned int code);   /* not playback, or the replay carries the code */
+ int mu_replay_frame_index(void);
+ void mu_replay_boot_mode(unsigned char* mode);
+--- a/sourceport/game/shim/mu_replay.c
++++ b/sourceport/game/shim/mu_replay.c
+@@ -87,6 +87,14 @@
+ static void start_recording(StartMeleeData* data, const u8* msrb);
+ char* getenv(const char* name);
+ 
++/* mumac: a match is being recorded (fighters made now start from a cleared block, as Slippi's Init Player Data code
++ * gives every recorded match: a match started from the menus would otherwise record stale heap that its playback,
++ * booted straight into the match, never sees). */
++int mu_replay_recording(void)
++{
++    return recording_active;
++}
++
+ int mu_replay_on(void)
+ {
+     return mu_replay_abi_active();

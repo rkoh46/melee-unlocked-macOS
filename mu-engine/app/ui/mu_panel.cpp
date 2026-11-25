@@ -107,6 +107,9 @@ std::atomic<bool> g_home_quit{false};     // Quit chosen before the game (the ho
 std::string g_open_title;            // a page the next open shows (menu_open_extra), consumed by the render thread
 int g_combo_frames = 0;
 bool g_combo_blocked = false;
+int g_nav_port = 0;                  // the pad that drives the panel (settings_nav.h's rule)
+bool g_nav_rest[4] = {true, true, true, true}, g_nav_was_open = false;
+int g_nav_closed_frames = 60;
 int g_open_at_frame = -1;
 // The navigation pads for the panel (render thread reads them).
 host::PadState g_nav[4] = {};
@@ -257,7 +260,11 @@ bool place_row(const std::string& label, int* cat, std::string* title) {
     {"Retail game (no built-in codes)", 6, "Built-in codes"}, {"Slippi menus (Online Play)", 6, "Built-in codes"},
     {"Language", 2, "Language"}, {"Everything unlocked", 2, "Language"},
     {"Frozen Pokemon Stadium", 2, "Stages"}, {"Frozen Final Destination", 2, "Stages"},
-    {"Automatic L-cancel (offline)", 2, "L-cancel"}, {"Offline input delay", 2, "Input delay"}};
+    {"Automatic L-cancel (offline)", 2, "L-cancel"}, {"Offline input delay", 2, "Input delay"},
+    {"Console low-pass on voices (next start)", 1, "Music and sound"},
+    // melee-unlocked's VIDEO page has the Arcade look section
+    {"Show hitboxes", 0, "Arcade look"}, {"Projectile hitboxes", 0, "Arcade look"}, {"Hitboxes behind fighters", 0, "Arcade look"},
+    {"2D camera", 0, "Arcade look"}, {"Grid behind the stage", 0, "Arcade look"}, {"Combo counter (offline)", 0, "Arcade look"}};
   for (const P& p : table) if (label == p.label) { *cat = p.cat; *title = p.title; return true; }
   return false;
 }
@@ -453,11 +460,11 @@ gx::SettingsState g_state;
 bool g_ui_open = false;              // what the panel shows as open (follows g_open)
 bool g_armed = false;                // the controller was let go once since the panel opened
 bool g_quit_pending = false;
-std::string g_scroll_to;             // a section to bring into view (menu_open_extra)
+std::string g_scroll_to;             // the page a menu_open_extra named (logged)
+bool g_focus_first = false;          // the page just entered: its first row takes the focus
+ImGuiID g_row_id = 0;                // the control of the row drawn last
 int g_enter_frames = 0;              // menu_open_extra: frames until the category is entered
 int g_last_page = -1, g_reopen_page = -1;   // the category page shown last (-1: the category list), for the next open
-std::string g_walk_label;            // menu_open_extra: the row the focus walks down to
-int g_walk_frames = 0;
 host::PadState g_fed[4] = {};
 uint64_t g_fed_seq = ~0ull;
 bool g_in_game_feed = true;          // the pads come from the simulation thread (false: panel_feed from the home screen)
@@ -514,6 +521,7 @@ int stepper(const Row& r) {
 
 void draw_row(const Row& r) {
   ImGui::BeginDisabled(!r.enabled);
+  g_row_id = 0;
   switch (r.kind) {
     case Kind::Toggle: {
       bool v = r.value != 0;
@@ -572,6 +580,7 @@ void draw_row(const Row& r) {
       break;
     }
   }
+  g_row_id = ImGui::GetItemID();
   ImGui::EndDisabled();
   if (!r.hint.empty()) gx::settings_hint("%s", r.hint.c_str());
   else if (r.next_start) gx::settings_hint("Applies at the next start.");
@@ -643,6 +652,7 @@ void draw_panel(int w, int h) {
         g_scroll_to = sec;
       }
       host::log("settings: opened on %s%s%s", kCategory[std::clamp(g_state.active_tab, 0, 7)], g_scroll_to.empty() ? "" : " > ", g_scroll_to.c_str());
+      g_scroll_to.clear();
     }
   }
   // B goes back a page, then closes; Start closes from any page (settings_frame's own handling).
@@ -684,6 +694,10 @@ void draw_panel(int w, int h) {
       if (g_enter_frames == 3) was_detail = true;          // focus the row as Back does
       else if (g_enter_frames == 1) { g_state.clean_detail_open = true; }
       --g_enter_frames;
+    }
+    if (!was_detail && g_state.clean_detail_open) {   // a page entered: its first row gets the focus (set below, by its ID)
+      g_state.page_navigation.tab = g_state.active_tab; g_state.page_navigation.style = 0; g_state.page_navigation.logged_focus = 0;
+      g_focus_first = true;
     }
     if (was_detail && !g_state.clean_detail_open) {
       ImGui::PushID(g_state.active_tab);
@@ -732,18 +746,17 @@ void draw_panel(int w, int h) {
       for (const Section& s : c.sections) {
         if (s.rows.empty()) continue;
         gx::settings_section(s.title.c_str());
-        // Opened on this page (menu_open_extra): the focus walks down to its first row, as a player would (below).
-        if (!g_scroll_to.empty() && s.title == g_scroll_to && g_state.content_anim_frame >= 8.0f) {
-          const Row& first = s.rows.front();
-          g_walk_label = std::string(first.label.c_str(), ImGui::FindRenderedTextEnd(first.label.c_str()));
-          g_walk_frames = 600;
-          g_scroll_to.clear();
-        }
         for (const Row& r : s.rows) {
           // A row's ID: its "###key" when it has one (a label that changes keeps its focus), else its place in the section.
           const size_t key = r.label.find("###");
           if (key != std::string::npos) ImGui::PushID(r.label.c_str() + key + 3); else ImGui::PushID(int(&r - s.rows.data()));
           ImGui::PushID(s.title.c_str()); draw_row(r); ImGui::PopID(); ImGui::PopID();
+          if (g_focus_first && g_row_id && g_state.clean_detail_frames >= 14.0f) {
+            ImGui::SetFocusID(g_row_id, ImGui::GetCurrentWindow());
+            ImGui::SetNavCursorVisible(true);
+            ImGui::SetScrollY(0.0f);
+            g_focus_first = false;
+          }
         }
       }
     }
@@ -819,7 +832,7 @@ void fonts_init() {
   g_body = io.Fonts->AddFontFromMemoryTTF(const_cast<uint8_t*>(mu_ui_font_bold), int(mu_ui_font_bold_end - mu_ui_font_bold), 16.0f, &config);
   gx::g_settings_heading_font = g_heading;
   gx::g_settings_body_font = g_body;
-  aurora_imgui_host_gamepad(true);          // patches/0112: the panel's gamepad keys come from the app's controllers only
+  aurora_imgui_host_gamepad(true);          // patches/0115: the panel's gamepad keys come from the app's controllers only
   io.ConfigInputTrickleEventQueue = true;   // settings_input::configure: press and release pairs kept between frames
   say("ui: melee-unlocked's fonts loaded (Source Sans 3 Black and Bold)");
 }
@@ -847,13 +860,6 @@ void panel_draw(int window_w, int window_h) {
     if (seq != g_fed_seq) { g_fed_seq = seq; feed_imgui(pads); }
   }
   const bool open = g_open.load();
-  if (g_walk_frames > 0) {   // D-pad Down, one row every other frame, until the walk's row has the focus
-    --g_walk_frames;
-    const auto it = g_state.page_navigation.labels.find(ImGui::GetFocusID());
-    const bool there = it != g_state.page_navigation.labels.end() && it->second == g_walk_label;
-    if (there || !open || g_walk_frames == 0) { g_walk_frames = 0; io.AddKeyEvent(ImGuiKey_GamepadDpadDown, false); }
-    else io.AddKeyEvent(ImGuiKey_GamepadDpadDown, (g_walk_frames & 1) != 0);
-  }
   gx::settings_input::navigation(io, open);
   // The panel is driven by the controller (a touch or a mouse pointer resting over it must not pick categories).
   // Its focus frame always shows (there is no pointer to hide it for).
@@ -990,19 +996,47 @@ void app_menu_frame(PadState pads[4]) {
     // L + R + Start held on any connected controller for half a second toggles the panel. Melee's own L + R + A + Start
     // (quit the match) contains it, so a hold that includes A never counts, and pressing A during the hold cancels it.
     bool combo = false, any_held = false;
+    int combo_port = -1;
     for (int i = 0; i < 4; ++i) {
       if (pads[i].err != 0) continue;
       const uint32_t b = pads[i].button;
       if ((b & (fe::BTN_L | fe::BTN_R | fe::BTN_START)) == (fe::BTN_L | fe::BTN_R | fe::BTN_START)) {
         any_held = true;
-        if (b & fe::BTN_A) fe::g_combo_blocked = true; else combo = true;
+        if (b & fe::BTN_A) fe::g_combo_blocked = true; else { combo = true; if (combo_port < 0) combo_port = i; }
       }
     }
     if (!any_held) fe::g_combo_blocked = false;
     if (fe::g_combo_blocked) combo = false;
     fe::g_combo_frames = combo ? fe::g_combo_frames + 1 : 0;
     if (fe::g_combo_frames == 1) log("menu: L+R+Start held");
-    if (fe::g_combo_frames == 30) { fe::set_open_locked(!fe::g_open.load()); fe::g_combo_blocked = true; }
+    if (fe::g_combo_frames == 30) { fe::set_open_locked(!fe::g_open.load()); fe::g_combo_blocked = true; if (combo_port >= 0) fe::g_nav_port = combo_port; }
+    // Which controller drives the panel, and when the game gets its controllers back (as patches/0114 did for the old menu,
+    // after melee-unlocked's host/settings_nav.h, GPL-2.0-or-later): the panel follows the pad that went from rest to active
+    // last, so a drifting second pad cannot take it; after it closes the game reads neutral pads until every button is up and
+    // the driving pad is at rest, at most a second.
+    {
+      const auto active = [&](int i) {
+        return pads[i].err == 0 && (pads[i].button || std::abs(pads[i].stick_x) >= 30 || std::abs(pads[i].stick_y) >= 30);
+      };
+      bool moved = false;
+      for (int i = 0; i < 4; ++i) {
+        const bool now = active(i);
+        if (fe::g_open.load() && !moved && now && fe::g_nav_rest[i]) { fe::g_nav_port = i; moved = true; }
+        fe::g_nav_rest[i] = pads[i].err == 0 && !now;
+      }
+      if (fe::g_nav_port < 0 || fe::g_nav_port > 3 || pads[fe::g_nav_port].err != 0)
+        for (int i = 0; i < 4; ++i) if (pads[i].err == 0) { fe::g_nav_port = i; break; }
+      if (!fe::g_open.load()) {
+        if (fe::g_nav_was_open) { fe::g_nav_closed_frames = 0; fe::g_nav_was_open = false; }
+        if (fe::g_nav_closed_frames < 60) {
+          ++fe::g_nav_closed_frames;
+          bool hold = false;
+          for (int i = 0; i < 4; ++i) if (pads[i].err == 0 && (pads[i].button || (i == fe::g_nav_port && active(i)))) hold = true;
+          if (hold) for (int i = 0; i < 4; ++i) { const int8_t err = pads[i].err; pads[i] = {}; pads[i].err = err; }
+          else fe::g_nav_closed_frames = 60;
+        }
+      } else fe::g_nav_was_open = true;
+    }
     if (fe::g_open.load()) {
       if (fe::g_remap_on.load()) {
         const fe::Device* d = fe::device_locked();
@@ -1021,8 +1055,9 @@ void app_menu_frame(PadState pads[4]) {
           }
         }
         for (int i = 0; i < 4; ++i) { fe::g_nav[i] = {}; fe::g_nav[i].err = pads[i].err; }   // the remap's presses are not the panel's
-      } else {
-        std::memcpy(fe::g_nav, pads, sizeof fe::g_nav);
+      } else {   // only the driving pad moves the panel
+        for (int i = 0; i < 4; ++i) { fe::g_nav[i] = {}; fe::g_nav[i].err = pads[i].err; }
+        if (fe::g_nav_port >= 0 && fe::g_nav_port < 4) fe::g_nav[fe::g_nav_port] = pads[fe::g_nav_port];
       }
       ++fe::g_nav_seq;
     }

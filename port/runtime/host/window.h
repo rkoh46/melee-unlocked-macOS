@@ -38,5 +38,8 @@ void window_client_size(int* w, int* h);
 // until the next line. Buttons: A B X Y Z L R START DU DD DL DR. A line with only a frame releases all.
 bool input_load_script(const char* path);
 void* input_port_gamepad(int port);   // the SDL_Gamepad* feeding a GameCube port in the last input_poll (null: none)
+// An outside pad source (tests: a controller script of another format): when set and it returns true, it fills the four
+// pads in place of every device, before the in-game menu sees them.
+void input_set_source(bool (*source)(PadState out[4]));
 void input_mark_match_start();   // confirmed online or recorded offline match frame 1 starts `@match` input
 }  // namespace host

@@ -1,0 +1,24 @@
+A new fighter starts from a cleared state where a replay records it: fp+2218 bit 5 is cleared (only a reflector writes it; Slippi
+post-frame state flags 1, bit 5), and the whole block is cleared while a match is being recorded, as Slippi's Init Player Data
+code does for every recorded match (needs 0012-replay-recording-flag). A vanilla match started from the menus otherwise records
+stale heap that its playback, booted straight into the match, never sees.
+
+--- a/src/melee/ft/fighter.c
++++ b/src/melee/ft/fighter.c
+@@ -532,6 +532,7 @@
+     fp->x221F_b6 = false;
+     fp->reflecting = false;
+     fp->x2218_b4 = false;
++    fp->x2218_b5 = false; /* mumac: only a reflector writes it, so a new fighter held whatever the heap had; replays record it (Slippi post-frame flags 1, bit 5) */
+     fp->ReflectAttr.x1A3C_damageOver = 0;
+     fp->ReflectAttr.x1A2C_reflectHitDirection = 0;
+     fp->x2218_b6 = false;
+@@ -970,7 +971,7 @@
+     /* Slippi online code "Init Player Data" (80068eec), when a replay carries it: zero the block.
+      * TM-CE's m-ex "Initialize Extended Playerblock Values" patch (the same address) does the
+      * same, which also clears its fp->mu_mex / fp->mu_tm fields. */
+-    if (mu_replay_code(MU_RC_INIT_PLAYER_DATA) || mu_tmce_active()) {
++    if (mu_replay_code(MU_RC_INIT_PLAYER_DATA) || mu_tmce_active() || mu_replay_recording()) {   /* mumac: and every recorded match */
+         memset(fp, 0, sizeof(Fighter));
+     }
+     /* fp+221B (the shield flags) is one of the state-flag bytes a post-frame event records, and nothing

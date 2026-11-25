@@ -124,7 +124,16 @@ target_include_directories(mu_fe PRIVATE "${FE}" "${FE}/features" "${FE_GEN}" "$
   "${_enet}/include" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/host" "${DD}/host")
 target_compile_definitions(mu_fe PRIVATE MU_FOREIGN_ELF MU_SQUAD=1 MELEE_NO_SLIPPI MELEE_PORT_VERSION="mu-native" MU_HIGH_BASE=${MU_HIGH_BASE})
 target_compile_options(mu_fe PRIVATE -O2 -fno-strict-aliasing -Wno-deprecated-declarations)
-add_library(mu_proai OBJECT "${FE}/proai/onnx_lite.cpp" "${FE}/proai/ort_lite.cpp" "${FE_GEN}/proai/phillip_ai.cpp" "${FE_GEN}/proai_catalog.cpp"
+# The free DSP coefficient table (Dolphin's free DSP ROM table, GPL-2.0-or-later, melee-unlocked's Sys/GC/dsp_coef.bin) for
+# features/options.cpp (settings.ini dsp_lowpass), embedded from the fetched tree.
+set(_dsp_bytes "0")
+if(EXISTS "${MU_TREE}/port/slippi_sys/GC/dsp_coef.bin")
+  file(READ "${MU_TREE}/port/slippi_sys/GC/dsp_coef.bin" _dsp_hex HEX)
+  string(REGEX REPLACE "(..)" "0x\\1," _dsp_bytes "${_dsp_hex}")
+endif()
+file(WRITE "${FE_GEN}/dsp_coef_free.cpp.new" "// Generated from the fetched tree's port/slippi_sys/GC/dsp_coef.bin.\nextern const unsigned char fe_dsp_coef_free[];\nextern const unsigned fe_dsp_coef_free_size;\nconst unsigned char fe_dsp_coef_free[] = {${_dsp_bytes}};\nconst unsigned fe_dsp_coef_free_size = sizeof fe_dsp_coef_free;\n")
+configure_file("${FE_GEN}/dsp_coef_free.cpp.new" "${FE_GEN}/dsp_coef_free.cpp" COPYONLY)
+add_library(mu_proai OBJECT "${FE_GEN}/dsp_coef_free.cpp" "${MU_TREE}/port/runtime/hle/native_practice_model.cpp" "${FE}/proai/onnx_lite.cpp" "${FE}/proai/ort_lite.cpp" "${FE_GEN}/proai/phillip_ai.cpp" "${FE_GEN}/proai_catalog.cpp"
   "${FE}/proai/proai_fetch_curl.cpp")
 set_target_properties(mu_proai PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
 target_include_directories(mu_proai PRIVATE "${MU_REPO}/port/third_party" "${FE}/proai/include" "${FE}/proai" "${FE_GEN}/proai" "${FE_GEN}/abi" "${FE}" "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/runtime/abi" "${DD}/host")

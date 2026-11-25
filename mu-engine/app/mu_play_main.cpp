@@ -7,6 +7,7 @@
 // pumped at every retrace, as the classic engine does.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "host_services.h"
+#include "input_script.h"   // melee-unlocked's script format (port/linux, the fetched tree)
 #include "mu_elf_bridge.h"
 #include "fixedmap.h"
 #include "abi_macos.h"
@@ -30,6 +31,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <ctime>
 #include <chrono>
 #include <mutex>
 #include <thread>
@@ -399,7 +401,26 @@ int main(int argc, char** argv) {
   else { host::RuntimeSettings rs; fe::mac_menu_initial(rs); host::menu_init(rs, fe::mac_menu_apply); }
   gx::metal_set_ui_pass(mu_ui_metal::pass());
   host::window_input_init();
-  if (!play_script.empty() && !host::input_load_script(play_script.c_str())) { std::fprintf(stderr, "cannot read %s\n", play_script.c_str()); return 2; }
+  // --play-script: a controller script in melee-unlocked's format (the parity scripts': @scene major:minor latched once
+  // seen, @match on the game's match frame), fed through the app's input path so the menu and the chords see it.
+  static linux_host::InputScript s_play_script;
+  if (!play_script.empty()) {
+    std::string why;
+    if (!s_play_script.load(play_script, &why)) { std::fprintf(stderr, "cannot read %s: %s\n", play_script.c_str(), why.c_str()); return 2; }
+    host::input_set_source([](host::PadState out[4]) {
+      MuStatePod state{};
+      linux_host::state_snapshot(&state);
+      MuPadStatus mu[4] = {};
+      for (auto& p : mu) p.err = -1;
+      if (!s_play_script.apply(host::retrace_count(), state, mu)) return false;
+      for (int i = 0; i < 4; ++i) {
+        out[i].button = mu[i].button; out[i].stick_x = mu[i].stick_x; out[i].stick_y = mu[i].stick_y; out[i].sub_x = mu[i].sub_x;
+        out[i].sub_y = mu[i].sub_y; out[i].trig_l = mu[i].trigger_l; out[i].trig_r = mu[i].trigger_r; out[i].analog_a = mu[i].analog_a;
+        out[i].analog_b = mu[i].analog_b; out[i].err = mu[i].err;
+      }
+      return true;
+    });
+  }
   gx::init(backend);
   const bool audio = host::audio_open(volume, nullptr, audio_device);
   if (!audio) host::log("audio: device unavailable, continuing silent");
@@ -432,6 +453,13 @@ int main(int argc, char** argv) {
       host::log("online: on (user folder %s)%s", net.user_dir.c_str(), menus_online ? "; a search starts from the game's Online Play page" : "");
     }
   } else if (menus_online) host::log("online: no Slippi sign-in in %s: the Online Play page will ask to log in", net.user_dir.c_str());
+  // The game's calendar from the local clock in play mode (Melee-NX-NetPlay play_main, upstream h_boot_time: saves and Training
+  // Mode CE exports were otherwise dated January 1, 2000). Scripted runs keep their fixed clock.
+  if (g_play && !config.has_time_base) {
+    const std::time_t now = std::time(nullptr); std::tm t{}; localtime_r(&now, &t);
+    const int64_t local_seconds = int64_t(timegm(&t));
+    if (local_seconds > 946684800) { config.has_time_base = true; config.time_base = uint64_t(local_seconds - 946684800) * uint64_t(MU_TB_HZ); }
+  }
   if (g_play && !net_on) config.pace = false;   // paced here (on_retrace), so the replay viewer can fast-forward
   linux_host::set_tables_hook(tables_hook);
   linux_host::set_video_sinks(on_fifo, on_retrace, nullptr);

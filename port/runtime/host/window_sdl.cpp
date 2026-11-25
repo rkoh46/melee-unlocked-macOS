@@ -664,6 +664,8 @@ bool input_load_script(const char* path) {
   return true;
 }
 void input_mark_match_start() { g_match_start.store(retrace_count()); }
+bool (*g_input_source)(PadState out[4]) = nullptr;
+void input_set_source(bool (*source)(PadState out[4])) { g_input_source = source; }
 void* input_port_gamepad(int port) { return port >= 0 && port < 4 && g_gamepad_port[port] ? SDL_GetGamepadFromID(g_gamepad_port[port]) : nullptr; }
 
 void input_poll(PadState out[4]) {
@@ -676,6 +678,7 @@ void input_poll(PadState out[4]) {
   } ui{out};
   struct MenuPass { PadState* pads; ~MenuPass() { menu_frame(pads); } } menu_pass{out};   // after every input source, before the UI snapshot
   for (int i = 0; i < 4; ++i) { out[i] = {}; out[i].err = -1; }
+  if (g_input_source && g_input_source(out)) return;
   if (pad_file(out)) return;
   if (g_scripted) {
     auto pads = g_script.sample(retrace_count(), g_match_start.load(),
