@@ -193,7 +193,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Border art | renderer | active: the overlays (a .bmp in the Borders folder) |
 | Built-in CRT look | renderer | active: settings.ini crt_filter 1/2 and crt_curve, drawn in the Metal present pass; off by default |
 | RetroArch shader presets | renderer | not wired |
-| Easter egg | renderer + game image | not wired: the Switch has melee-unlocked's character select egg now (its egg.cpp, 3a90423); not copied to the Mac yet |
+| Easter egg | renderer + game image | active: melee-unlocked's character select egg (its walter_egg.cpp from the fetched tree, `fe/egg.cpp` and `fe/features/egg_command.cpp` from the Switch: the code is read from the panel's controller poll, the character select frame command 0xDA gives it the hands and camera; its corner sound offline only). `mu-engine/tools/app_egg_test.sh`: `walter egg: on (code on port 1, Bailey, ...)`, then Walter, `2 out`; screenshot build/shots-ui/egg.png |
 
 ## 7. Controllers
 
