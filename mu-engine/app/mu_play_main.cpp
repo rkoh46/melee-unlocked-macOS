@@ -14,6 +14,8 @@
 #include "net_host.h"
 #include "slippi_menus.h"
 #include "feature_calls.h"
+#include <sstream>
+#include "../../port/runtime/host/input_script.h"   // this repository's script format (@scene MODE STATE blocks)
 #include "features/present/present.h"
 
 #include "audio.h"
@@ -402,9 +404,41 @@ int main(int argc, char** argv) {
   gx::metal_set_ui_pass(mu_ui_metal::pass());
   host::window_input_init();
   // --play-script: a controller script in melee-unlocked's format (the parity scripts': @scene major:minor latched once
-  // seen, @match on the game's match frame), fed through the app's input path so the menu and the chords see it.
+  // seen, @match on the game's match frame), fed through the app's input path so the menu and the chords see it. A script
+  // with "@scene MODE STATE" blocks (two hex bytes; several blocks, @rearm) is this repository's format
+  // (port/runtime/host/input_script.cpp), as Melee-NX-NetPlay's frontend tests write them (mu-engine/tests/online).
   static linux_host::InputScript s_play_script;
+  static host::InputScript s_scene_script;
+  static uint32_t s_scene_match_start = 0;
+  bool scene_format = false;
   if (!play_script.empty()) {
+    std::ifstream in(play_script);
+    std::string line;
+    while (std::getline(in, line)) {
+      std::istringstream words(line); std::string first, a, b;
+      if ((words >> first >> a >> b) && first == "@scene") { scene_format = true; break; }
+    }
+  }
+  if (scene_format) {
+    std::ifstream in(play_script);
+    std::string why;
+    if (!s_scene_script.load(in, &why)) { std::fprintf(stderr, "cannot read %s: %s\n", play_script.c_str(), why.c_str()); return 2; }
+    host::input_set_source([](host::PadState out[4]) {
+      MuStatePod state{};
+      linux_host::state_snapshot(&state);
+      // @match entries count from the match's start; outside a match there is none (0), so the scene blocks drive the pads.
+      if (state.match_frame == 0) s_scene_match_start = 0;
+      else if (!s_scene_match_start) s_scene_match_start = std::max<uint32_t>(1, host::retrace_count() - state.match_frame);
+      const auto pads = s_scene_script.sample(host::retrace_count(), s_scene_match_start, uint8_t(state.scene_major), uint8_t(state.scene));
+      for (unsigned port = 0; port < pads.size(); ++port) {
+        out[port].err = pads[port].connected ? 0 : -1;
+        out[port].button = pads[port].buttons;
+        out[port].stick_x = pads[port].sx; out[port].stick_y = pads[port].sy;
+        out[port].sub_x = pads[port].cx; out[port].sub_y = pads[port].cy;
+      }
+      return true;
+    });
+  } else if (!play_script.empty()) {
     std::string why;
     if (!s_play_script.load(play_script, &why)) { std::fprintf(stderr, "cannot read %s: %s\n", play_script.c_str(), why.c_str()); return 2; }
     host::input_set_source([](host::PadState out[4]) {
@@ -444,6 +478,7 @@ int main(int argc, char** argv) {
   if (net_host::wanted(net) && (menus_online ? std::filesystem::exists(net.user_dir + "/user.json") || net.fake_user : true)) {
     net.out_dir = (mu_dir / "net").string(); fs::create_directories(net.out_dir, ec);
     net.iso_path = iso; net.embedded_image = true;
+    if (&fe::features::online_replay_for_report) net_host::set_replay_path_hook(fe::features::online_replay_for_report);   // Slippi's replay upload
     if (const int start = net_host::start(net, net_say)) {
       host::log("online: the netplay host could not start (%d); playing offline", start);
     } else {

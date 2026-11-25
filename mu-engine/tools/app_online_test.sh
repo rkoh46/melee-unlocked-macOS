@@ -1,7 +1,8 @@
 #!/bin/bash
 # The app's melee-unlocked engine (MeleeUnlockedEngine, with picture and sound, windows hidden) plays Unranked against a
 # second copy on this Mac: the app's matchmaking client against the loopback stand-in (tools/mac/mock_matchmaking),
-# generated inputs on both sides, everything under a sandbox that refuses outgoing connections except to 127.0.0.1.
+# generated inputs on both sides, everything under a sandbox that refuses outgoing connections except to 127.0.0.1. Slippi's
+# HTTP services are the loopback stand-in (tools/mac/mock_slippi_http.py): game reports, profile refresh, replay uploads.
 #   app_online_test.sh ISO [FRAMES] [ENGINE]
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
@@ -12,18 +13,22 @@ rm -rf "$out"; mkdir -p "$out"
 profile='(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))'
 sandbox-exec -p "$profile" "$repo/build/mu-engine/out/mock_matchmaking" --port "$port" --seconds 900 > "$out/mock.log" 2>&1 &
 mock=$!
+hport=$((port + 600))
+sandbox-exec -p "$profile" python3 -I "$repo/tools/mac/mock_slippi_http.py" $hport --save "$out/uploads" > "$out/http.log" 2>&1 &
+mockhttp=$!
 sleep 1
 for side in a b; do
   seed=$([ $side = a ] && echo 303 || echo 404)
-  MELEE_MM_LOOPBACK_PORT=$port sandbox-exec -p "$profile" timeout 1200 "$engine" --iso "$iso" --profile-dir "$out/$side" --hidden --volume 0 \
+  MELEE_MM_LOOPBACK_PORT=$port MELEE_SERVICES_LOOPBACK_PORT=$hport sandbox-exec -p "$profile" timeout 1200 "$engine" --iso "$iso" --profile-dir "$out/$side" --hidden --volume 0 \
     --frames "$frames" --online unranked --fake-user --user-dir "$out/$side/user" --net-inputs $seed $([ $side = b ] && echo "${MU_B_ARGS:-}") > "$out/$side.log" 2>&1 &
   eval "pid_$side=$!"
   sleep 2
 done
 wait $pid_a; ra=$?; wait $pid_b; rb=$?
-kill $mock 2>/dev/null; wait $mock 2>/dev/null
+kill $mock $mockhttp 2>/dev/null; wait $mock $mockhttp 2>/dev/null
 echo "side a exit $ra, side b exit $rb"
 grep -h "mock mm: matched" "$out/mock.log"
+grep -h "mock http:" "$out/http.log" | head -12
 for side in a b; do echo "== $side"; grep -E "net check|rollbacks \(loads\)|online: on|frames presented|audio: [0-9]" "$out/$side.log" | sed 's/^\[ *[0-9.]*\] //' | head -8; done
 ca=$(grep -h "net check (" "$out/a.log" | sed 's/^\[ *[0-9.]*\] //'); cb=$(grep -h "net check (" "$out/b.log" | sed 's/^\[ *[0-9.]*\] //')
 if [ -n "$ca" ] && [ "$ca" = "$cb" ]; then echo "net check: EQUAL on both sides"; else echo "net check: DIFFERENT or missing"; fi

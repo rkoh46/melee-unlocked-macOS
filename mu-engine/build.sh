@@ -99,25 +99,30 @@ build_runner() {
     for f in $RUNNER_SOURCES; do b=$o/$(basename $f .cpp).o
       clang++ -arch arm64 -O2 -g -std=gnu++17 -Wall -Wno-unused-function -fno-strict-aliasing $RUNNER_INC $RUNNER_DEF -c $f -o $b & done; wait
     for f in $RUNNER_SOURCES; do objs="$objs $o/$(basename $f .cpp).o"; done
-    clang++ -arch arm64 $objs build/mu-engine/out/netplay.o -lz -liconv -o build/mu-engine/out/mu-runner )
+    clang++ -arch arm64 $objs build/mu-engine/out/netplay.o -lz -liconv -framework Foundation -o build/mu-engine/out/mu-runner )
   echo "built $out/mu-runner"
 }
 
-# The netplay object: this repository's Slippi netplay (port/runtime/hle) and ENet with the bridge for the engine's own
-# online code (runner/netplay_bridge_mac.cpp), linked into one relocatable object in which only netplay_bridge::* stays
-# global: the app's netplay code and melee-unlocked's host services share names.
-NET_HLE="port/runtime/hle/slippi_online.cpp port/runtime/hle/slippi_net.cpp port/runtime/hle/slippi_net_diag.cpp
-  port/runtime/hle/slippi_matchmaking_protocol.cpp port/runtime/hle/slippi_offline.cpp port/runtime/hle/slippi_text.cpp mu-engine/runner/netplay_bridge_mac.cpp"
-NET_INC="-Imu-engine/runner -Iport/runtime/hle -Iport/runtime/host -Iport/runtime/gx -Iport/runtime/ppc -Iport/runtime
+# The netplay object: this repository's Slippi netplay (port/runtime/hle, copied to build/mu-engine/netsrc with
+# mu-engine/patches/net-*.patch applied by net_sources.sh) and ENet with the bridge for the engine's own online code
+# (runner/netplay_bridge_mac.cpp), linked into one relocatable object in which only netplay_bridge::* stays global: the
+# app's netplay code and melee-unlocked's host services share names. Game reports, the profile refresh and replay uploads
+# (slippi_report.cpp, NSURLSession) are part of it.
+NS=build/mu-engine/netsrc/port/runtime/hle
+NET_HLE="$NS/slippi_online.cpp $NS/slippi_net.cpp $NS/slippi_net_diag.cpp $NS/slippi_matchmaking_protocol.cpp $NS/slippi_offline.cpp
+  $NS/slippi_text.cpp $NS/slippi_report.cpp mu-engine/runner/netplay_bridge_mac.cpp"
+NET_INC="-Imu-engine/runner -I$NS -Iport/runtime/hle -Iport/runtime/host -Iport/runtime/gx -Iport/runtime/ppc -Iport/runtime
   -Iport/third_party/enet/include -Iport/third_party -Iport/third_party/nlohmann/include -Iport/app -Inative"
 net_object() {
   ( cd "$repo"; unset DEVELOPER_DIR
+    bash mu-engine/net_sources.sh build/mu-engine/netsrc > /dev/null
     o=build/mu-engine/obj-net; rm -rf $o; mkdir -p $o
     for f in callbacks compress host list packet peer protocol unix; do
       clang -arch arm64 -O2 -w -fvisibility=hidden -DHAS_FCNTL=1 -DHAS_POLL=1 -DHAS_INET_PTON=1 -DHAS_INET_NTOP=1 -DHAS_SOCKLEN_T=1 \
         -DHAS_MSGHDR_FLAGS=1 -Iport/third_party/enet/include -c port/third_party/enet/$f.c -o $o/enet_$f.o & done
     for f in $NET_HLE; do
       clang++ -arch arm64 -std=gnu++20 -O2 -g -w -fvisibility=hidden -fvisibility-inlines-hidden $NET_INC -c $f -o $o/$(basename $f .cpp).o & done
+    clang++ -arch arm64 -std=gnu++20 -O2 -g -w -fobjc-arc -fvisibility=hidden $NET_INC -c $NS/slippi_http_apple.mm -o $o/slippi_http_apple.o &
     wait
     nm -gU $o/netplay_bridge_mac.o | awk '$3 ~ /netplay_bridge/ {print $3}' > $o/exported.txt
     ld -r -arch arm64 -exported_symbols_list $o/exported.txt $o/*.o -o build/mu-engine/out/netplay.o )

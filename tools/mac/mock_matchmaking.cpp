@@ -5,7 +5,9 @@
 //
 // build: clang++ -std=c++17 -O2 -Iport/third_party/enet/include -Iport/third_party tools/mac/mock_matchmaking.cpp
 //        port/third_party/enet/{callbacks,compress,host,list,packet,peer,protocol,unix}.c -o build/mock_matchmaking
-// run:   mock_matchmaking [--port 43113] [--seconds 600]
+// run:   mock_matchmaking [--port 43113] [--seconds 600] [--dead-lan]
+//        --dead-lan: every player's LAN address becomes 127.0.0.1:9, where nothing answers (the same-router fallback test:
+//        both players share the public address 127.0.0.1, so each dials the dead LAN address first, then the public one).
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include <enet/enet.h>
 #include <nlohmann/json.hpp>
@@ -34,6 +36,8 @@ static std::string address_of(const ENetAddress& a) {
 
 int main(int argc, char** argv) {
   int port = 43113, seconds = 600;
+  bool dead_lan = false;
+  for (int i = 1; i < argc; ++i) if (!std::strcmp(argv[i], "--dead-lan")) dead_lan = true;
   for (int i = 1; i + 1 < argc; ++i) {
     if (!std::strcmp(argv[i], "--port")) port = std::atoi(argv[++i]);
     else if (!std::strcmp(argv[i], "--seconds")) seconds = std::atoi(argv[++i]);
@@ -64,7 +68,7 @@ int main(int argc, char** argv) {
                 msg["user"].value("connectCode", "?").c_str());
     if (mode == 0) { send(ev.peer, {{"type", "create-ticket-resp"}, {"error", "Ranked is not offered by this test service"}}); continue; }
     send(ev.peer, {{"type", "create-ticket-resp"}});
-    waiting.push_back({ev.peer, msg["user"], mode, msg.value("ipAddressLan", "")});
+    waiting.push_back({ev.peer, msg["user"], mode, dead_lan ? std::string("127.0.0.1:9") : msg.value("ipAddressLan", "")});
     for (size_t a = 0; a < waiting.size(); ++a) for (size_t b = a + 1; b < waiting.size(); ++b) {
       if (waiting[a].mode != waiting[b].mode) continue;
       const Ticket pair[2] = {waiting[a], waiting[b]};
