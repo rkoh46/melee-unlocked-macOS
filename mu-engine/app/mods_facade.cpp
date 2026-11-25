@@ -7,12 +7,66 @@
 #include "mods_catalog_json.h"
 
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
+#include <mutex>
+#include <thread>
 
 namespace mu_mods {
 namespace {
 std::unique_ptr<modinstall::Manager> g_manager;
 std::string g_mods_dir;
+// The catalog refreshed online (upstream launcher_mods.inl refresh_catalog, as the Switch build does it): melee-unlocked's own
+// raw catalog file, metadata only, fetched once per launcher start; the copy is kept in Mods/.cache/mods-catalog-2.json for the
+// next start and for the engine's MODS page. Applied in rows() when no job runs, under the same rules as the built-in one.
+// MU_CATALOG_URL points it elsewhere (tests: a file:// URL), MU_NO_CATALOG_REFRESH=1 turns it off.
+constexpr const char* kCatalogUrl = "https://raw.githubusercontent.com/Hero88go/melee-unlocked/main/mods-catalog-2.json";
+std::mutex g_refresh_mutex;
+std::string g_refresh_json, g_refresh_from;
+bool g_refresh_started = false;
+std::string read_text(const std::string& path, size_t cap) {
+  FILE* f = std::fopen(path.c_str(), "rb");
+  if (!f) return {};
+  std::string out; char buf[8192]; size_t n;
+  while ((n = std::fread(buf, 1, sizeof buf, f)) > 0 && out.size() <= cap) out.append(buf, n);
+  std::fclose(f);
+  return out.size() > cap ? std::string() : out;
+}
+void log_line(const std::string& line) { std::fprintf(stderr, "%s\n", line.c_str()); }
+void catalog_poll() {
+  if (!g_manager) return;
+  {
+    std::lock_guard<std::mutex> lock(g_refresh_mutex);
+    if (!g_refresh_started) {
+      g_refresh_started = true;
+      const std::string cache = g_mods_dir + "/.cache/mods-catalog-2.json";
+      g_refresh_json = read_text(cache, 1u << 20); g_refresh_from = "the copy kept from the last refresh";
+      const char* off = std::getenv("MU_NO_CATALOG_REFRESH");
+      if (g_manager->config().fetcher && !(off && *off == '1')) {
+        modinstall::Fetcher* fetcher = g_manager->config().fetcher;
+        const std::string url = std::getenv("MU_CATALOG_URL") ? std::getenv("MU_CATALOG_URL") : kCatalogUrl;
+        std::thread([fetcher, cache, url] {
+          std::error_code ec;
+          std::filesystem::create_directories(std::filesystem::path(cache).parent_path(), ec);
+          const std::string part = cache + ".part";
+          std::remove(part.c_str());
+          const auto r = fetcher->fetch(url, part, 0, [](uint64_t done, uint64_t) { return done < (1u << 20); });
+          const std::string json = r.ok ? read_text(part, 1u << 20) : std::string();
+          if (json.empty()) { log_line("mods: the catalog was not refreshed (" + (r.ok ? std::string("empty or too large") : r.error) + "); the built-in one stays"); std::remove(part.c_str()); return; }
+          std::lock_guard<std::mutex> lock(g_refresh_mutex);
+          g_refresh_json = json; g_refresh_from = "melee-unlocked's catalog online";
+          std::remove(cache.c_str()); std::rename(part.c_str(), cache.c_str());
+        }).detach();
+      }
+    }
+  }
+  std::string json, from;
+  { std::lock_guard<std::mutex> lock(g_refresh_mutex); if (g_refresh_json.empty() || g_manager->busy()) return; json.swap(g_refresh_json); from = g_refresh_from; }
+  std::string error;
+  if (g_manager->replace_catalog(json, &error)) log_line("mods: catalog refreshed from " + from + ": " + std::to_string(g_manager->catalog().size()) + " mods");
+  else log_line("mods: the refreshed catalog (" + from + ") was refused: " + error + "; the built-in one stays");
+}
 }
 bool available() { return true; }
 void configure(const std::string& mods_dir, const std::string& disc_path) {
@@ -22,12 +76,13 @@ void configure(const std::string& mods_dir, const std::string& disc_path) {
   c.mods_dir = mods_dir; c.cache_dir = mods_dir + "/.cache"; c.disc_path = disc_path;
   c.catalog_json = kModsCatalogJson;
   c.fetcher = modinstall::curl_fetcher();
-  c.log = [](const std::string& line) { std::fprintf(stderr, "%s\n", line.c_str()); };
+  c.log = log_line;
   g_manager = std::make_unique<modinstall::Manager>(c);
   g_mods_dir = mods_dir;
 }
 std::vector<Row> rows() {
   std::vector<Row> out;
+  catalog_poll();
   if (!g_manager || !g_manager->catalog_ok()) return out;
   for (const modinstall::ModStatus& s : g_manager->list()) {
     Row r;

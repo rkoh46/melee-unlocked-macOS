@@ -96,7 +96,14 @@ modinstall::Manager& mod_manager() {
     c.catalog_json = kModsCatalogJson;
     c.fetcher = modinstall::curl_fetcher();
     c.log = [](const std::string& line) { say("%s", line.c_str()); };
-    return new modinstall::Manager(c);
+    auto* m = new modinstall::Manager(c);
+    // The catalog the launcher last refreshed from melee-unlocked's (mods_facade.cpp keeps it in Mods/.cache): the engine itself
+    // never goes online for it.
+    std::ifstream in(c.cache_dir + "/mods-catalog-2.json", std::ios::binary);
+    const std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string error;
+    if (!json.empty()) say("mods: %s", m->replace_catalog(json, &error) ? "the catalog the launcher refreshed is used" : ("the refreshed catalog was refused (" + error + ")").c_str());
+    return m;
   }();
   return *manager;
 }
