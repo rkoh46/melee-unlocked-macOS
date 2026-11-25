@@ -107,9 +107,12 @@ lab)
     fresh lab-$look "labview 1\nlook_lab_fighters $look\n"; MELEE_CAPTURE_UI=1 run lab-$look 1720 --capture "$root/lab-$look/lab.ppm" 1700
     grep -h "lab view" "$root/lab-$look/log" | sed 's/^\[ *[0-9.]*\] //' | sort -u | head -3
   done;;
-shader)
-  fresh shader 'shaderpreset crt/crt-test.slangp\n'; mkdir -p "$root/shader/melee-unlocked/Shaders/crt"
-  printf 'shaders = 1\nshader0 = crt-test.slang\n' > "$root/shader/melee-unlocked/Shaders/crt/crt-test.slangp"
-  run shader 1500
-  grep -h "shaders:" "$root/shader/log" | sed 's/^\[ *[0-9.]*\] //' | head -3;;
+shader)   # mu-engine/tests/shaders/scanlines.slangp (written for this test) through librashader (MELEE_LIBRASHADER: the built dylib)
+  lib="${MELEE_LIBRASHADER:-$repo/build/mu-engine/out/librashader.dylib}"
+  fresh shader 'shaderpreset test/scanlines.slangp\n'; mkdir -p "$root/shader/melee-unlocked/Shaders/test"
+  cp "$repo/mu-engine/tests/shaders/scanlines.slang" "$repo/mu-engine/tests/shaders/scanlines.slangp" "$root/shader/melee-unlocked/Shaders/test/"
+  MELEE_LIBRASHADER="$lib" MELEE_CAPTURE_BURST=1600,1 run shader 1720
+  fresh shader-off ''; MELEE_CAPTURE_BURST=1600,1 run shader-off 1720
+  grep -h "shaders:" "$root/shader/log" | sed 's/^\[ *[0-9.]*\] //' | head -3
+  echo "shader: $(mean_diff "$root/shader-off/melee-unlocked/capture/blink_01600.ppm" "$root/shader/melee-unlocked/capture/blink_01600.ppm")";;
 esac; done

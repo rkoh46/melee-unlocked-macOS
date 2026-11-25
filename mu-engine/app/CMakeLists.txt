@@ -273,6 +273,17 @@ set_source_files_properties("${GFX}/lab_mac.cpp" PROPERTIES INCLUDE_DIRECTORIES 
 set_source_files_properties("${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes};${MU_TREE}/port/third_party/librashader"
   COMPILE_OPTIONS "-fobjc-arc")
 target_sources(melee_unlocked_mac PRIVATE ${_gfx_mu_sources} "${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" "${GFX}/lab_mac.cpp")
+# librashader for the shader presets (mu-engine/librashader.sh: its v0.12.0 tag checked against its commit, Metal runtime only),
+# built beside the engine when a Rust toolchain is there; the app bundles it (tools/package_macos_app.sh).
+find_program(MU_CARGO cargo)
+if(MU_CARGO)
+  add_custom_command(OUTPUT "${MU_OUT}/librashader.dylib" COMMAND bash "${MU_REPO}/mu-engine/librashader.sh"
+    DEPENDS "${MU_REPO}/mu-engine/librashader.sh" COMMENT "melee-unlocked engine: librashader (Metal runtime)" VERBATIM)
+  add_custom_target(mu_librashader ALL DEPENDS "${MU_OUT}/librashader.dylib")
+  add_dependencies(melee_unlocked_mac mu_librashader)
+else()
+  message(STATUS "melee-unlocked engine: no cargo; shader presets need librashader.dylib (brew install rust, then build again)")
+endif()
 target_link_libraries(melee_unlocked_mac PRIVATE "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework ImageIO")
 
 # melee-unlocked's PhobGCC menu (PhobVision's screens, PhobScope, Phob Check, named setups, the remap editor: its phob_menu.cpp,

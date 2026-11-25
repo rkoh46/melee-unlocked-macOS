@@ -30,6 +30,15 @@ if COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)"; then
 fi
 cp "$EXE" "$APP/Contents/MacOS/melee-unlocked-macOS"
 cp "$MU_EXE" "$APP/Contents/MacOS/MeleeUnlockedEngine"
+# librashader with its Metal runtime (mu-engine/librashader.sh, MPL-2.0 or GPL-3.0-or-later), for the engine's shader presets:
+# bundled with its licence when it was built; the engine finds it in Contents/Frameworks.
+if [[ -f "$ROOT/build/mu-engine/out/librashader.dylib" ]]; then
+  mkdir -p "$APP/Contents/Frameworks"
+  cp "$ROOT/build/mu-engine/out/librashader.dylib" "$APP/Contents/Frameworks/librashader.dylib"
+  for f in LICENSE.md LICENSE-GPL.md; do
+    [[ -f "$ROOT/build/mu-engine/librashader-src/$f" ]] && cp "$ROOT/build/mu-engine/librashader-src/$f" "$APP/Contents/Frameworks/librashader-$f"
+  done
+fi
 cp -R "$ROOT/port/slippi_sys" "$APP/Contents/Resources/slippi_sys"
 # melee-unlocked's launcher artwork (the MU mark, Bailey) and icon, converted from the fetched tree; never committed.
 python3 -I "$ROOT/tools/mu_launcher_art.py" "$MU_TREE/port/app" "$APP/Contents/Resources/mu-art" >/dev/null

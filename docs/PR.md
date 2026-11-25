@@ -135,3 +135,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - AUDIO page: the output's gaps this session and its buffer (upstream's read-out).
 - 20XX TE pair link: TE's Disable screen rumble and No screen shake follow each other (offline, respects TE's lock); `app_te_test.sh pair`.
 - MSAA in the Metal renderer (launcher.ini `msaa` 2/4/8, a Picture row): multisampled EFB pass resolved at each pass end; `app_graphics_test.sh msaa`.
+- RetroArch shader presets end to end: `mu-engine/librashader.sh` builds librashader v0.12.0 (pinned commit, Cargo.lock) with its Metal runtime in the engine build; the app bundles it (Contents/Frameworks); a test preset `mu-engine/tests/shaders/scanlines.slangp`.
