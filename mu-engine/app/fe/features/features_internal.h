@@ -24,6 +24,7 @@ void register_cosmetics();            // cosmetics.cpp: skins (commands 0xF9, 0x
 void register_looks();               // looks.cpp: look presets, Lightweight, Visual effects (the renderer: patches/0115)
 void register_audio();               // audio.cpp: Audio buffer (Auto, Low latency) and Use custom music (the jukebox)
 void register_gecko();               // gecko.cpp: the player's Gecko codes (GeckoCodes.ini), offline
+void register_phob();                // phob.cpp: PhobGCC settings on a stock controller (the adapter's raw reports), its menu
 void register_graphics();            // graphics.cpp: SSAO, texture packs, menu videos, shader presets, HDR, Lab view, captures
 
 // options.cpp: the session as the modules see it, updated once per retrace and by the netplay commands.

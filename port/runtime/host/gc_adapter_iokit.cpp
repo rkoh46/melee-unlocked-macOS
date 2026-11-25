@@ -54,6 +54,13 @@ std::atomic<int> g_interval_ms{0};        // polling interval the host accepted 
 std::atomic<double> g_report_hz{0.0};     // measured reports per second
 std::atomic<uint32_t> g_ports{0};         // ports with a controller plugged in (bit per port)
 
+}  // namespace
+// The melee-unlocked engine's PhobGCC settings on a stock controller (mu-engine/app/fe/phob_adapter.cpp, Melee-NX-NetPlay's
+// frontend/patches/0123): every raw report on the reader thread, and each port's processed controller at the poll when that
+// port's settings are on. Weak: nothing without it.
+extern "C" __attribute__((weak)) void mu_frontend_adapter_report(const uint8_t* report37, uint64_t time_us);
+extern "C" __attribute__((weak)) int mu_frontend_adapter_pad(int port, uint16_t* buttons, int8_t sticks[4], uint8_t triggers[2]);
+namespace {
 int requested_interval_ms() {
   const char* e = std::getenv("MELEE_ADAPTER_INTERVAL_MS");   // 1 (default, 1000 Hz), 2, 4, 8 (the adapter's own 125 Hz)
   int v = e ? std::atoi(e) : 1;
@@ -88,6 +95,8 @@ void reader_thread() {
         for (int p = 0; p < 4; ++p) if (buf[1 + p * 9] & 0x30) ports |= 1u << p;
         g_ports.store(ports);
       }
+      if (size == 37 && buf[0] == 0x21 && mu_frontend_adapter_report)
+        mu_frontend_adapter_report(buf, uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()));
       ++reports;
       const auto now = std::chrono::steady_clock::now();
       const double elapsed = std::chrono::duration<double>(now - window_start).count();
@@ -249,6 +258,13 @@ uint32_t gcadapter_poll(PadState out[4]) {
     p.sub_x = axis(c[5], o.cx); p.sub_y = axis(c[6], o.cy);
     p.trig_l = (uint8_t)(c[7] > o.tl ? c[7] - o.tl : 0);
     p.trig_r = (uint8_t)(c[8] > o.tr ? c[8] - o.tr : 0);
+    if (mu_frontend_adapter_pad) {   // the port's PhobGCC settings, when on
+      int8_t sticks[4]; uint8_t triggers[2]; uint16_t buttons = 0;
+      if (mu_frontend_adapter_pad(port, &buttons, sticks, triggers)) {
+        p.button = buttons; p.stick_x = sticks[0]; p.stick_y = sticks[1]; p.sub_x = sticks[2]; p.sub_y = sticks[3];
+        p.trig_l = triggers[0]; p.trig_r = triggers[1];
+      }
+    }
     mask |= 1u << port;
   }
   return mask;

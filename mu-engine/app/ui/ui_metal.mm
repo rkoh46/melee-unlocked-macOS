@@ -21,6 +21,7 @@
 #include <mutex>
 
 void mu_gfx_imgui_draw(int width, int height) __attribute__((weak));   // gfx/lab_mac.cpp: the Lab view, under everything else
+void mu_ui_top_draw(int width, int height) __attribute__((weak));      // phob/phob_feed_mac.cpp: the PhobGCC menu, over the panel
 
 namespace {
 id<MTLDevice> g_device = nil;
@@ -75,6 +76,7 @@ void ui_frame(void* encoder, void* pass, void* command_buffer, int w, int h) {
   if (mu_gfx_imgui_draw) mu_gfx_imgui_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));
   fe::overlay_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));   // the feature modules' overlays, the replay viewer, the Practice menu
   fe::mu_ui::panel_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));
+  if (mu_ui_top_draw) mu_ui_top_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));
   ImGui::Render();
   if (enc) ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (__bridge id<MTLCommandBuffer>)command_buffer, enc);
 }

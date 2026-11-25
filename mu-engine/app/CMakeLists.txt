@@ -128,7 +128,7 @@ file(GLOB _zstd_sources "${MU_TREE}/port/third_party/zstd/common/*.c" "${MU_TREE
 add_library(mu_zstd STATIC ${_zstd_sources})   # melee-unlocked's vendored zstd 1.5.7 (BSD-3-Clause): .slpz replays
 target_compile_definitions(mu_zstd PRIVATE ZSTD_DISABLE_ASM=1)
 target_compile_options(mu_zstd PRIVATE -O2 -w)
-add_library(mu_fe OBJECT "${FE}/settings.cpp" "${FE}/mods.cpp" ${_fe_features} "${MU_RUN}/features/snapshot_store.cpp" ${_fe_enet})
+add_library(mu_fe OBJECT "${FE}/settings.cpp" "${FE}/mods.cpp" ${_fe_features} "${FE}/phob_adapter.cpp" "${MU_TREE}/port/runtime/host/phob.cpp" "${MU_RUN}/features/snapshot_store.cpp" ${_fe_enet})
 set_source_files_properties(${_fe_enet} PROPERTIES COMPILE_DEFINITIONS "HAS_FCNTL=1;HAS_POLL=1;HAS_INET_PTON=1;HAS_INET_NTOP=1;HAS_SOCKLEN_T=1;HAS_MSGHDR_FLAGS=1"
   COMPILE_OPTIONS "-w;-include;arpa/inet.h")
 set_target_properties(mu_fe PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
@@ -243,6 +243,27 @@ set_source_files_properties("${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" PROP
   COMPILE_OPTIONS "-fobjc-arc")
 target_sources(melee_unlocked_mac PRIVATE ${_gfx_mu_sources} "${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" "${GFX}/lab_mac.cpp")
 target_link_libraries(melee_unlocked_mac PRIVATE "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework ImageIO")
+
+# melee-unlocked's PhobGCC menu (PhobVision's screens, PhobScope, Phob Check, named setups, the remap editor: its phob_menu.cpp,
+# phobscope.cpp and phob_store.cpp, copied from the fetched tree by phob/gen_phob.sh) on fe/phob_adapter.cpp, compiled against
+# melee-unlocked's own host.h in a library of its own (phob/phob_host_mac.cpp answers the host calls); phob_feed_mac.cpp is the
+# panel's side, against the app's host.h.
+set(PHOB "${MU_APPSRC}/phob")
+set(PHOB_GEN "${CMAKE_CURRENT_BINARY_DIR}/gen/phob")
+execute_process(COMMAND bash "${PHOB}/gen_phob.sh" "${MU_TREE}" "${PHOB_GEN}" RESULT_VARIABLE _phob_rc)
+if(NOT _phob_rc EQUAL 0)
+  message(FATAL_ERROR "melee-unlocked engine: phob/gen_phob.sh could not take its files from ${MU_TREE}")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${PHOB}/gen_phob.sh")
+add_library(mu_phob OBJECT "${PHOB_GEN}/phob_menu.cpp" "${PHOB_GEN}/phobscope.cpp" "${PHOB_GEN}/phob_store.cpp" "${PHOB}/phob_host_mac.cpp")
+set_target_properties(mu_phob PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
+target_include_directories(mu_phob BEFORE PRIVATE "${PHOB}/shim" "${PHOB_GEN}" "${PHOB}")
+target_include_directories(mu_phob PRIVATE "${FE}" "${MU_TREE}/port/runtime/host" "${MU_TREE}/port/runtime/gx" "${MU_TREE}/port/runtime/ppc"
+  "${MU_TREE}/port/runtime/abi" "${MU_TREE}/port/runtime/hle" "${IMGUI}" "${FE_GEN}/proai" "${MU_TREE}/port/third_party")
+target_compile_definitions(mu_phob PRIVATE MU_FOREIGN_ELF MELEE_NO_SLIPPI MU_HIGH_BASE=${MU_HIGH_BASE})
+target_compile_options(mu_phob PRIVATE -O2 -fno-strict-aliasing -Wno-deprecated-declarations)
+set_source_files_properties("${PHOB}/phob_feed_mac.cpp" PROPERTIES INCLUDE_DIRECTORIES "${PHOB};${DD}/host")
+target_sources(melee_unlocked_mac PRIVATE $<TARGET_OBJECTS:mu_phob> "${PHOB}/phob_feed_mac.cpp")
 
 # The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page, linked into the launcher
 # (melee_launcher_mac) as objects. melee-unlocked's catalog and the LZMA SDK decoders come from the fetched tree at build time.

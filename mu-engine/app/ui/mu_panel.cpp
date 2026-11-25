@@ -24,6 +24,9 @@
 #include "input_config.h"
 #include "window.h"
 #include "overlay.h"
+// mumac: melee-unlocked's PhobGCC menu (mu-engine/app/phob) takes the controllers while it is up and is drawn instead of the panel.
+bool mu_phob_menu_open() __attribute__((weak));
+bool mu_phob_menu_feed(host::PadState pads[4]) __attribute__((weak));
 
 #include <aurora/imgui.h>
 #include <imgui.h>
@@ -253,7 +256,7 @@ void place(const std::string& page, int* cat, std::string* title) {
     {"Picture", 0, "Picture"}, {"Game options", 2, "Game"}, {"Picture and HUD", 2, "HUD"}, {"Community codes", 2, "Community codes"},
     {"Computer players", 2, "Computer players"}, {"Game", 2, "Input"}, {"Online", 2, "Online"}, {"Training", 2, "Training"},
     {"Replays", 2, "Replays"}, {"Overlays", 4, "Overlays"}, {"Mods", 7, "Game mods"}, {"Controller setup", 3, "Controller setup"},
-    {"Controller bindings", 3, "Controller bindings"}, {"Controller profiles", 3, "Controller profiles"}, {"Audio", 1, "Output"}};
+    {"Controller bindings", 3, "Controller bindings"}, {"PhobGCC", 3, "PhobGCC"}, {"Controller profiles", 3, "Controller profiles"}, {"Audio", 1, "Output"}};
   for (const P& p : table) if (page == p.page) { *cat = p.cat; *title = p.title; return; }
   *cat = 2; *title = page;
 }
@@ -868,6 +871,7 @@ void panel_feed(const host::PadState pads[4]) {
 
 void panel_draw(int window_w, int window_h) {
   if (!ImGui::GetCurrentContext()) return;
+  if (mu_phob_menu_open && mu_phob_menu_open()) return;   // mumac: the PhobGCC menu covers the panel (it stays open underneath)
   ImGuiIO& io = ImGui::GetIO();
   {   // a panel that has just opened waits for the controller to be let go before it reads it
     static bool was_open = false;
@@ -1023,6 +1027,10 @@ void app_menu_frame(PadState pads[4]) {
   const bool capturing = fe::mac_controls_frame(pads, 0);
   fe::mac_chords(pads);
   if (capturing) for (int i = 0; i < 4; ++i) { const int8_t err = pads[i].err; pads[i] = {}; pads[i].err = err; }   // the capture's presses are not the panel's
+  if (mu_phob_menu_feed && mu_phob_menu_feed(pads)) {   // mumac: the PhobGCC menu has the controllers; the game gets resting ones
+    for (int i = 0; i < 4; ++i) { const int8_t err = pads[i].err; pads[i] = {}; pads[i].err = err; }
+    return;
+  }
   {
     std::lock_guard<std::mutex> lock(fe::g_mutex);
     if (fe::g_open_at_frame >= 0 && int(retrace_count()) >= fe::g_open_at_frame) {
