@@ -2,7 +2,7 @@
 """Render a frame range of a .slp replay with Slippi's own playback Dolphin, one PNG per game frame.
 
 Ground truth for desyncs: Slippi Dolphin re-simulates the game from the recorded inputs, so its frames show
-what real Melee does with those inputs, not what Dashdance recorded.
+what real Melee does with those inputs, not what this app recorded.
 
 Usage: tools/mac/slippi_frames.py REPLAY.slp START END [--out DIR] [--resync] [--scale N]
 
@@ -95,7 +95,7 @@ def set_ini(path, values):
 
 def is_waiting_screen(png):
     """Pre-roll frames are black or the "Waiting for game" text; gameplay always has a lit stage and HUD."""
-    from PIL import Image  # imported here so slippi_ram.py can reuse this module under Xcode's Python
+    from PIL import Image  # imported here: only the PNG step needs it
     hist = Image.open(png).convert("L").histogram()
     return sum(hist[40:]) / sum(hist) < 0.05
 

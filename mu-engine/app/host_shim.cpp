@@ -1,6 +1,7 @@
 // The app-side host services the decoder, renderer, window, controllers, menu and sound output call (port/runtime/host
 // host.h), answered for the melee-unlocked engine: console addresses map to its memory (MU_HIGH_BASE + address), the
-// log is this program's, and the guest-only services the classic engine has are absent.
+// log is this program's, and the guest-only services host.h still declares for the removed static-recompilation engine
+// are absent.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "host.h"
 #include "host_services.h"
@@ -96,7 +97,7 @@ void input_rumble(int game_port, bool on) {
   window_gamepad_rumble(game_port, on);
 }
 
-// As the classic engine does it (port/runtime/host/host.cpp): the render thread asks for a real-time slot.
+// The render thread asks for a real-time slot (a Mach time-constraint policy).
 void thread_realtime(const char* name, double computation_ms, double constraint_ms) {
   if (const char* e = std::getenv("MELEE_REALTIME")) if (*e == '0') return;
   mach_timebase_info_data_t tb; mach_timebase_info(&tb);

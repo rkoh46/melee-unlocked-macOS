@@ -1,6 +1,5 @@
-// SDL3 host: the game window with its CAMetalLayer, events, keyboard and gamepads.
-// Works on macOS, iOS and visionOS. Scripted input and the MELEE_PAD_FILE harness
-// replace physical devices when present.
+// SDL3 host: the game window with its CAMetalLayer, events, keyboard and gamepads (macOS).
+// Scripted input and the MELEE_PAD_FILE harness replace physical devices when present.
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "host.h"
 #include "controller_rate.h"
@@ -12,9 +11,6 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
-#ifdef __APPLE__
-#include <TargetConditionals.h>
-#endif
 
 #include <algorithm>
 #include <atomic>
@@ -27,15 +23,6 @@
 #include <string>
 #include <vector>
 
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-bool window_fold_division_apple(void* uiwindow, float pixels_per_point, float* out);   // window_fold_apple.mm
-// Syncs the SDL Metal view to its window (iPhone Duo rotations) and reports UIKit-truth geometry:
-// pixels, points, then the four safe insets, all in pixels. See window_fold_apple.mm.
-bool window_sync_apple(void* uiwindow, float* out);
-bool window_request_orientation_apple(void* uiwindow, const char* orientation);
-void window_hinge_watch_apple(void* uiwindow);   // pose breadcrumbs into the session log
-#include <dispatch/dispatch.h>
-#endif
 
 namespace host {
 namespace {
@@ -166,11 +153,7 @@ void touch_layout() {
   for (size_t i = 0; i < t.buttons.size() && i < pressed.size(); ++i) t.buttons[i].pressed = pressed[i];
 }
 bool physical_gamepad_connected() {
-#if defined(TARGET_OS_SIMULATOR) && TARGET_OS_SIMULATOR
-  return false;   // the Simulator always exposes a virtual Apple "Gamepad"
-#else
   return !g_gamepads.empty();
-#endif
 }
 bool touch_controls_visible() { return (g_touch_seen || g_touch_forced) && !physical_gamepad_connected() && g_touch_opacity > 0.0f; }
 
@@ -296,29 +279,10 @@ void refresh_client_size() {
   SDL_GetWindowSizeInPixels(g_window, &w, &h);
   int pw = 0, ph = 0;
   SDL_GetWindowSize(g_window, &pw, &ph);
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-  // The inner display of a folding iPhone rotates whether the app likes it or not, and SDL's
-  // bookkeeping can trail that rotation (stale view frame, stale safe areas). The UIKit truth
-  // wins when it is available: it also re-pins the Metal view to its window, which is the fix.
-  float ui[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-  SDL_PropertiesID ui_props = SDL_GetWindowProperties(g_window);
-  void* uiwindow = SDL_GetPointerProperty(ui_props, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr);
-  const bool window_sync_apple_was_used = uiwindow && window_sync_apple(uiwindow, ui);
-  if (window_sync_apple_was_used) {
-    w = (int)ui[0]; h = (int)ui[1]; pw = (int)ui[2]; ph = (int)ui[3];
-  }
-#endif
   std::lock_guard<std::mutex> lock(g_touch_mutex);   // the touch layout reads these from other threads
   g_client_w = std::max(w, 1); g_client_h = std::max(h, 1);
   g_pixels_per_point = pw > 0 ? (float)g_client_w / (float)pw : 1.0f;
   float top = 0, left = 0, right = 0, bottom = 0;
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-  if (uiwindow && window_sync_apple_was_used) {
-    // Safe insets plus any occlusion region reaching further inward (the under-display camera
-    // while it streams; the outer camera beyond the safe inset). Interactive controls dodge.
-    top = ui[4] + ui[8]; left = ui[5] + ui[9]; right = ui[6] + ui[10]; bottom = ui[7] + ui[11];
-  } else
-#endif
   {
     SDL_Rect safe{};
     if (SDL_GetWindowSafeArea(g_window, &safe) && safe.w > 0 && safe.h > 0) {
@@ -336,12 +300,6 @@ void refresh_client_size() {
   static const char* fake_fold = std::getenv("MELEE_FAKE_FOLD");
   if (fake_fold && *fake_fold && std::sscanf(fake_fold, "%f,%f,%f,%f", &div[0], &div[1], &div[2], &div[3]) == 4) {
     div_active = true;
-  } else {
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-    SDL_PropertiesID props = SDL_GetWindowProperties(g_window);
-    void* uiwindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr);
-    if (uiwindow) div_active = window_fold_division_apple(uiwindow, g_pixels_per_point, div);
-#endif
   }
   if (!div_active || div[2] <= div[0] || div[3] <= div[1]) div_active = false;
   if (div_active != g_div_active.load() || (div_active && (div[0] != g_div_x0.load() || div[1] != g_div_y0.load() ||
@@ -470,34 +428,14 @@ bool pad_file(PadState out[4]) {
 void* window_create(int w, int h, const wchar_t* title, bool visible) {
   if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD)) die("SDL: %s", SDL_GetError());
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-  SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2");   // hidden, and the first swipe only shows it
   Uint32 flags = SDL_WINDOW_METAL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
   if (!visible) flags |= SDL_WINDOW_HIDDEN;
-#if defined(__APPLE__) && !TARGET_OS_OSX
-  flags |= SDL_WINDOW_FULLSCREEN;
-  g_touch_seen = true;   // touch devices show the on-screen controller until a gamepad connects
-#endif
   if (const char* force = std::getenv("MELEE_TOUCH_OVERLAY")) g_touch_forced = *force && *force != '0';
   g_window = SDL_CreateWindow(narrow(title).c_str(), w, h, flags);
   if (!g_window) die("SDL window: %s", SDL_GetError());
   g_view = SDL_Metal_CreateView(g_window);
   if (!g_view) die("SDL Metal view: %s", SDL_GetError());
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-  if (const char* orientation = std::getenv("MELEE_ORIENTATION")) {   // screenshot aid, same as the launcher's
-    SDL_PropertiesID props = SDL_GetWindowProperties(g_window);
-    void* uiwindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr);
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(),
-                   ^{ window_request_orientation_apple(uiwindow, orientation); });
-  }
-#endif
   refresh_client_size();
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-  {
-    SDL_PropertiesID hinge_props = SDL_GetWindowProperties(g_window);
-    void* uiwindow = SDL_GetPointerProperty(hinge_props, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr);
-    if (uiwindow) window_hinge_watch_apple(uiwindow);
-  }
-#endif
   int count = 0;
   if (SDL_JoystickID* ids = SDL_GetGamepads(&count)) {
     for (int i = 0; i < count; ++i) open_gamepad(ids[i]);
@@ -542,7 +480,6 @@ void window_pump() {
     refresh_client_size();
     if (g_resize) g_resize(g_client_w, g_client_h);
   }
-#if defined(__APPLE__) && TARGET_OS_OSX
   {
     const bool show = !g_focused.load() || menu_is_open() || SDL_GetTicks() - g_pointer_moved_ms < 2000;
     if (show == g_pointer_hidden) {
@@ -550,7 +487,6 @@ void window_pump() {
       g_pointer_hidden = !show;
     }
   }
-#endif
 }
 
 float window_safe_top_pixels() { return g_safe_top.load(); }
@@ -560,17 +496,8 @@ GameRect window_game_rect(float ww, float wh, float aspect) {
   const float st = g_safe_top.load(), sb = g_safe_bottom.load();
   if (wh > ww * 1.05f) {   // upright
     float w = ww, h = ww / aspect;
-#if defined(__APPLE__) && TARGET_OS_IPHONE   // iPhone, iPad, Vision Pro: touch controls below, and iPhone Duo's fold
-    float cap = std::max(wh * 0.5f - st, wh * 0.25f);   // keep the fold (and room for controls) below the game
-    if (g_div_active.load()) {   // iPhone Duo: the real fold region; cross it visually rather than shrink below a fifth of the screen
-      cap = std::max(g_div_y0.load() - st, wh * 0.2f);
-    }
-    if (h > cap) { h = cap; w = h * aspect; }
-    return {(ww - w) * 0.5f, std::min(st, std::max(0.0f, wh - sb - h)), w, h};
-#else
     (void)sb;
-    return {(ww - w) * 0.5f, (wh - h) * 0.5f, w, h};   // a tall Mac window or portrait display: centred at full width
-#endif
+    return {(ww - w) * 0.5f, (wh - h) * 0.5f, w, h};   // a tall window or portrait display: centred at full width
   }
   float h = wh, w = wh * aspect;
   if (w > ww) { w = ww; h = ww / aspect; }

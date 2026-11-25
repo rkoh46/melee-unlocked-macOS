@@ -1,6 +1,5 @@
-// The Mac launcher's view of the mod installer (mu-engine/modinstall): the launcher (port/runtime/host/mu_launcher.mm)
-// declares these weakly with "no installer" answers; mods_facade.cpp, linked into the app when the melee-unlocked engine
-// is built, answers for real.
+// The Mac launcher's view of the mod installer (mu-engine/modinstall): mods_facade.cpp, linked into the launcher
+// (port/runtime/host/mu_launcher.mm).
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 #include <string>
@@ -14,7 +13,6 @@ struct Row {
   bool automatic = false;    // Install downloads it; otherwise the player puts the file in Downloads
   bool file_ready = false, failed = false;
 };
-bool available();
 void configure(const std::string& mods_dir, const std::string& disc_path);
 std::vector<Row> rows();
 bool install(const std::string& id, std::string* why);

@@ -14,10 +14,11 @@ mkdir -p "$OUT"
   echo "- build: $(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet || echo '+dirty') on $(git -C "$ROOT" branch --show-current)"
   echo "- macOS: $(sw_vers -productVersion), $(sysctl -n machdep.cpu.brand_string)"
 } > "$OUT/notes.md"
-# The two newest session logs: the one that crashed may not be the latest if the app was reopened.
-ls -t "$SUP/Logs"/session-*.log 2>/dev/null | head -2 | while read -r f; do cp "$f" "$OUT/"; done
+# The engine's log and the one before it (the one that crashed may not be the latest if the game was started again), and the
+# launcher's.
+for f in engine.log engine.prev.log launcher.log; do [[ -f "$SUP/melee-unlocked/$f" ]] && cp "$SUP/melee-unlocked/$f" "$OUT/"; done
 # Crash reports from the last 24 hours.
-find "$HOME/Library/Logs/DiagnosticReports" -name 'Dashdance*.ips' -mtime -1 -exec cp {} "$OUT/" \; 2>/dev/null || true
+find "$HOME/Library/Logs/DiagnosticReports" \( -name 'MeleeUnlockedEngine*.ips' -o -name 'melee-unlocked-macOS*.ips' \) -mtime -1 -exec cp {} "$OUT/" \; 2>/dev/null || true
 # The three newest replays: a desync or disconnect is usually in one of them.
 ls -t "$SUP/Replays"/*.slp 2>/dev/null | head -3 | while read -r f; do cp "$f" "$OUT/"; done
 echo "$OUT"

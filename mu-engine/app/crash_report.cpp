@@ -41,7 +41,7 @@ std::string newest_crash_report() {
   const auto week = fs::file_time_type::clock::now() - std::chrono::hours(24 * 7);
   for (const auto& e : fs::directory_iterator(fs::path(home) / "Library/Logs/DiagnosticReports", ec)) {
     const std::string n = e.path().filename().string();
-    if (n.rfind("MeleeUnlockedEngine", 0) != 0 && n.rfind("melee-unlocked-macOS", 0) != 0 && n.rfind("melee_port_mac", 0) != 0) continue;
+    if (n.rfind("MeleeUnlockedEngine", 0) != 0 && n.rfind("melee-unlocked-macOS", 0) != 0) continue;
     const auto t = e.last_write_time(ec);
     if (!ec && t > week && (best.empty() || t > best_time)) { best = e.path(); best_time = t; }
   }
@@ -49,7 +49,6 @@ std::string newest_crash_report() {
 }
 }  // namespace
 
-bool available() { return true; }
 bool save(const std::string& support, const std::string& replay_dir, std::string* where, std::string* error) {
   namespace lc = launcher::crash;
   const std::string mu = support + "/melee-unlocked", logs = mu + "/Logs";

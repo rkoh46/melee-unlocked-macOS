@@ -10,8 +10,8 @@
 #import <AppKit/AppKit.h>
 #include "mac_launcher.h"
 #include "dashboard.h"
-#include "host.h"
 #include "input_config.h"
+#include "mods_facade.h"
 
 #include <algorithm>
 #include <cmath>
@@ -111,34 +111,10 @@ NSImage* art(NSString* name) {
 }
 }  // namespace
 
-// ---- melee-unlocked's crash report (mu-engine/app/crash_report.cpp, linked with the engine) -------------------------------
-// Weak "not in this build" answers, replaced by the real ones when the melee-unlocked engine is built (keep in step).
+// ---- melee-unlocked's crash report (mu-engine/app/crash_report.cpp) and the mod installer (mu-engine/modinstall through
+// mu-engine/app/mods_facade.cpp), both linked into the launcher ----------------------------------------------------------
 namespace mu_crash {
-__attribute__((weak)) bool available() { return false; }
-__attribute__((weak)) bool save(const std::string&, const std::string&, std::string*, std::string* error) {
-  if (error) *error = "this build has no crash report";
-  return false;
-}
-}  // namespace mu_crash
-
-// ---- the mod installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp) -------------------------------------
-// Declared as in mu-engine/app/mods_facade.h (keep the two in step). These weak definitions answer "no installer"; the app
-// links the real ones when the melee-unlocked engine is built.
-namespace mu_mods {
-struct Row {
-  std::string id, name, version, note, line;
-  int state = 0; int percent = -1;
-  bool automatic = false, file_ready = false, failed = false;
-};
-__attribute__((weak)) bool available() { return false; }
-__attribute__((weak)) void configure(const std::string&, const std::string&) {}
-__attribute__((weak)) std::vector<Row> rows() { return {}; }
-__attribute__((weak)) bool install(const std::string&, std::string* why) { if (why) *why = "this build has no mod installer"; return false; }
-__attribute__((weak)) bool remove(const std::string&, std::string* why) { if (why) *why = "this build has no mod installer"; return false; }
-__attribute__((weak)) bool busy() { return false; }
-__attribute__((weak)) void cancel() {}
-__attribute__((weak)) std::string catalog_error() { return "this build has no mod installer"; }
-__attribute__((weak)) std::string downloads_dir() { return {}; }
+bool save(const std::string& support, const std::string& replay_dir, std::string* where, std::string* error);
 }
 // The mod profile the engine loads at its next start: settings.ini's mod_profile (fe/settings.cpp reads it; the engine's
 // MODS page writes the same key).
@@ -162,21 +138,8 @@ std::string disc_check(const std::string& path) {
   if (h[7] != 2) return answer = "Disc: Melee NTSC 1.0" + std::to_string(int(h[7])) + "; melee-unlocked and Slippi need NTSC 1.02";
   return answer = "Disc: Melee NTSC 1.02";
 }
-std::string settings_ini_path() { const char* h = std::getenv("HOME"); return std::string(h ? h : ".") + "/Library/Application Support/Dashdance/melee-unlocked/settings.ini"; }
-std::string mod_profile_next() {
-  std::ifstream in(settings_ini_path());
-  std::string line, out;
-  while (std::getline(in, line)) if (line.rfind("mod_profile ", 0) == 0) { out = line.substr(12); while (!out.empty() && (out.back() == '\r' || out.back() == ' ')) out.pop_back(); }
-  return out;
-}
-void mod_profile_set(const std::string& profile) {
-  std::vector<std::string> lines; bool found = false;
-  { std::ifstream in(settings_ini_path()); std::string line; while (std::getline(in, line)) lines.push_back(line); }
-  for (auto& l : lines) if (l.rfind("mod_profile ", 0) == 0 || l.rfind("# mod_profile ", 0) == 0) { l = "mod_profile " + profile; found = true; }
-  if (!found) lines.push_back("mod_profile " + profile);
-  std::ofstream out(settings_ini_path(), std::ios::trunc);
-  for (const auto& l : lines) out << l << "\n";
-}
+std::string mod_profile_next() { return host::engine_setting("mod_profile"); }
+void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod_profile", profile); }
 }  // namespace
 
 
@@ -377,18 +340,16 @@ void mod_profile_set(const std::string& profile) {
   [self button:@"browse" rect:LR(602, 58, 96, 34) title:@"Browse..." primary:NO enabled:YES];
 
   text(@"GAME BUILD", LR(CX, 102, 130, 19), f_label(), C_FAINT, LEFT, 1);
-  const BOOL mu = s.engine_available;
-  const NSInteger on = !mu ? 1 : s.engine == 1 ? 1 : s.engine == 2 ? 2 : 0;
-  const CGFloat left = CX + 84, total = CW - 84, gap = 6, narrow = 78, w = (total - 2 * gap - narrow) / 2;
-  NSArray<NSString*>* names = @[mu ? @"Source Port" : @"Source Port (not installed)", @"Static Recomp (Legacy)", @"Vanilla"];
-  for (int i = 0; i < 3; ++i) {
-    const NSRect r = LR(i == 0 ? left : i == 1 ? left + w + gap : left + 2 * (w + gap), 98, i == 2 ? narrow : w, 28);
+  const NSInteger on = s.vanilla ? 1 : 0;
+  const CGFloat left = CX + 84, total = CW - 84, gap = 6, w = (total - gap) / 2;
+  NSArray<NSString*>* names = @[@"Source Port", @"Vanilla"];
+  for (int i = 0; i < 2; ++i) {
+    const NSRect r = LR(left + i * (w + gap), 98, w, 28);
     RGB8 top = C_BTN, bot = C_BTN, txt = C_DIM; const RGB8* border = &C_BTN_BORDER;
     if (i == on) { top = acc_top(); bot = acc_bottom(); border = nullptr; txt = on_accent(); }
-    else if (i != 1 && !mu) { top = bot = C_OFF_FILL; border = &C_OFF_BORDER; txt = C_OFF_TEXT; }
     round_rect(r, 7, top, bot, border);
     text(names[i], r, f_small(), txt, CENTER);
-    if (i == 1 || mu) self.buttons[[NSString stringWithFormat:@"build:%d", i]] = [NSValue valueWithRect:r];
+    self.buttons[[NSString stringWithFormat:@"build:%d", i]] = [NSValue valueWithRect:r];
   }
   [self button:@"play" rect:LR(CX, 134, CW, 62) title:@"PLAY" primary:YES enabled:!s.iso.empty()];
 
@@ -397,7 +358,7 @@ void mod_profile_set(const std::string& profile) {
                                                  self.updateText.length ? [@" · " stringByAppendingString:self.updateText] : @""];
   [self row:y dot:self.updateAvailable ? C_WARN : C_OK words:version link:self.updateAvailable ? @"How to update" : @"What's new"
        name:self.updateAvailable ? @"howtoupdate" : @"whatsnew"]; y += pitch;
-  if (s.engine == 2 && mu) {
+  if (s.vanilla) {
     text(@"Vanilla: the game as the disc plays it, with melee-unlocked's engine (no codes, nothing unlocked)", LR(CX, y - 3, CW, 17), f_small(), C_DIM);
   } else if (!s.account_name.empty()) {
     [self row:y dot:C_OK words:ns("Slippi: signed in as " + s.account_name + (s.account_code.empty() ? "" : " (" + s.account_code + ")")) link:nil name:@""];
@@ -425,7 +386,7 @@ void mod_profile_set(const std::string& profile) {
   }
   const CGFloat by = note_y + 40;
   [self button:@"logs" rect:LR(CX, by, 150, 32) title:@"Show game logs" primary:NO enabled:YES];
-  [self button:@"crashreport" rect:LR(CX + 158, by, 160, 32) title:@"Save crash report" primary:NO enabled:mu_crash::available()];
+  [self button:@"crashreport" rect:LR(CX + 158, by, 160, 32) title:@"Save crash report" primary:NO enabled:YES];
   if (!self.error.empty()) text(ns(self.error), LR(CX + 326, by, 120, 32), f_small(), C_BAD, LEFT, 0, true);
   else if (!self.crashNote.empty()) text(ns(self.crashNote), LR(CX + 326, by, 120, 32), f_small(), C_DIM, LEFT, 0, true);
   // The launcher colour button: the compact wheel (theme_wheel, compact).
@@ -462,7 +423,7 @@ void mod_profile_set(const std::string& profile) {
   line(@"Volume", @"volume", @[@"0", @"25", @"50", @"70", @"100"], vol);
   y += 6; heading(@"ONLINE");
   line(@"Slippi Online", @"online", @[@"Off", @"On"], s.online ? 1 : 0);
-  line(@"Input delay (frames)", @"delay", @[@"1", @"2", @"3", @"4"], std::clamp(s.online_delay, 1, 4) - 1);
+  line(@"Input delay (frames)", @"delay", @[@"Auto", @"1", @"2", @"3", @"4"], s.online_delay <= 0 ? 0 : std::clamp(s.online_delay, 1, 4));
   text(@"In game, F1 or Esc opens the menu with the rest of the settings and the controller setup.", LR(CX, y + 4, CW, 32), f_small(), C_FAINT, LEFT, 0, true);
 }
 // ---- Replay Viewer: the newest games as cards ----------------------------------------------------------------------
@@ -470,9 +431,7 @@ void mod_profile_set(const std::string& profile) {
   text(@"REPLAYS", LR(CX, 32, CW, 18), f_label(), C_FAINT, LEFT, 1);
   const std::vector<host::GameRow> rows = self.dashboard.rows();
   CGFloat y = 58;
-  NSString* playback = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/DashdancePlayback"];
-  NSString* mu = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/MeleeUnlockedEngine"];
-  const BOOL can_watch = [NSFileManager.defaultManager isExecutableFileAtPath:mu] || [NSFileManager.defaultManager isExecutableFileAtPath:playback];
+  const BOOL can_watch = !self.settings->iso.empty();
   if (rows.empty()) text(@"No replays yet. Every game you play is saved here as a .slp file.", LR(CX, y, CW, 20), f_body(), C_DIM);
   const size_t shown = self.liveWatch ? 7 : 8;
   for (size_t i = 0; i < rows.size() && i < shown; ++i) {
@@ -492,7 +451,7 @@ void mod_profile_set(const std::string& profile) {
   [self button:@"openreplay" rect:LR(CX + 174, WIN_H - 50, 140, 32) title:@"Open a replay..." primary:NO enabled:can_watch];
   [self button:@"watchlive" rect:LR(CX + 322, WIN_H - 50, CW - 322, 32) title:self.liveWatch ? @"Stop watching live" : @"Watch live"
        primary:NO enabled:can_watch];
-  if (!can_watch) text(@"Watching a replay needs the melee-unlocked engine in this build.", LR(CX, WIN_H - 82, CW, 28), f_small(), C_FAINT, LEFT, 0, true);
+  if (!can_watch) text(@"Watching a replay needs your disc: choose it on the Play page first.", LR(CX, WIN_H - 82, CW, 28), f_small(), C_FAINT, LEFT, 0, true);
 }
 // The Slippi Launcher's spectate folder: its own setting (spectateSlpPath), else <its replay folder>/Spectate, else its default
 // ~/Documents/Slippi/Spectate (as melee-unlocked's live_spectate_folder reads it on Windows).
@@ -588,12 +547,6 @@ void mod_profile_set(const std::string& profile) {
   host::LauncherSettings& st = *self.settings;
   const std::string mods_dir = home() + "/Library/Application Support/Dashdance/melee-unlocked/Mods";
   text(@"MODS", LR(CX, 32, CW, 18), f_label(), C_FAINT, LEFT, 1);
-  if (!mu_mods::available()) {
-    [self row:64 dot:C_FAINT words:@"Mods: none active" link:nil name:@""];
-    text(@"This build has no mod installer (it comes with the melee-unlocked engine).", LR(CX, 92, CW, 40), f_small(), C_DIM, LEFT, 0, true);
-    [self button:@"modsfolder" rect:LR(CX, 140, 170, 32) title:@"Open Mods folder" primary:NO enabled:YES];
-    return;
-  }
   mu_mods::configure(mods_dir, st.iso);
   const std::vector<mu_mods::Row> list = mu_mods::rows();
   if (list.empty()) text(ns("The catalog could not be read: " + mu_mods::catalog_error()), LR(CX, 58, CW, 40), f_small(), C_BAD, LEFT, 0, true);
@@ -666,7 +619,7 @@ void mod_profile_set(const std::string& profile) {
   NSString* key = parts[0]; const int index = parts.count > 1 ? parts[1].intValue : 0;
   const std::string support = home() + "/Library/Application Support/Dashdance";
   if ([key isEqualToString:@"nav"]) { self.tab = index; self.toolTip = nil; }
-  else if ([key isEqualToString:@"build"]) s.engine = index;
+  else if ([key isEqualToString:@"build"]) s.vanilla = index == 1;
   else if ([key isEqualToString:@"play"]) { [NSApp stopModalWithCode:NSModalResponseOK]; return; }
   else if ([key isEqualToString:@"browse"]) {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
@@ -685,9 +638,9 @@ void mod_profile_set(const std::string& profile) {
   }
   else if ([key isEqualToString:@"replaysfolder"]) [self reveal:s.replay_dir create:YES];
   else if ([key isEqualToString:@"openreplay"]) [self openReplay];
-  else if ([key isEqualToString:@"howtoupdate"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];
+  else if ([key isEqualToString:@"howtoupdate"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#install"]];
   else if ([key isEqualToString:@"watchlive"]) [self toggleLive];
-  else if ([key isEqualToString:@"whatsnew"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];
+  else if ([key isEqualToString:@"whatsnew"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS/blob/melee-unlocked-macos/docs/PR.md"]];
   else if ([key isEqualToString:@"show"] || [key isEqualToString:@"watch"]) {
     const std::vector<host::GameRow> rows = self.dashboard.rows();
     if (index < 0 || index >= (int)rows.size()) return;
@@ -712,39 +665,23 @@ void mod_profile_set(const std::string& profile) {
   else if ([key isEqualToString:@"scale"]) { const int v[] = {0, 1, 2, 3, 4}; s.scale = v[std::clamp(index, 0, 4)]; }
   else if ([key isEqualToString:@"fullscreen"]) s.fullscreen = index == 1;
   else if ([key isEqualToString:@"vsync"]) s.vsync = index == 1;
-  else if ([key isEqualToString:@"widescreen"]) s.widescreen = index == 1;
+  else if ([key isEqualToString:@"widescreen"]) { s.widescreen = index == 1; host::set_engine_setting("widescreen", s.widescreen ? "1" : "0"); }
   else if ([key isEqualToString:@"volume"]) { const int v[] = {0, 25, 50, 70, 100}; s.volume = v[std::clamp(index, 0, 4)]; }
   else if ([key isEqualToString:@"online"]) s.online = index == 1;
-  else if ([key isEqualToString:@"delay"]) s.online_delay = index + 1;
+  else if ([key isEqualToString:@"delay"]) s.online_delay = index;   // 0 automatic
   [self setNeedsDisplay:YES];
 }
-// Replays play in the melee-unlocked engine (MeleeUnlockedEngine --replay), beside the launcher; a bundle without it falls
-// back to the classic engine's playback build.
+// Replays play in the melee-unlocked engine (MeleeUnlockedEngine --replay), in its own window beside the launcher.
 - (void)watch:(NSString*)replay {
-  NSString* mu = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/MeleeUnlockedEngine"];
-  if ([NSFileManager.defaultManager isExecutableFileAtPath:mu] && !self.settings->iso.empty()) {
-    NSTask* task = [[NSTask alloc] init];
-    task.executableURL = [NSURL fileURLWithPath:mu];
-    NSString* support = [ns(self.settings->replay_dir) stringByDeletingLastPathComponent];
-    task.arguments = @[@"--iso", ns(self.settings->iso), @"--replay", replay, @"--profile-dir", support,
-                       @"--volume", [NSString stringWithFormat:@"%d", self.settings->volume]];
-    NSError* error = nil;
-    if (![task launchAndReturnError:&error]) host::mac_show_error("The replay could not start", error.localizedDescription.UTF8String);
-    else self.watchTask = task;
-    return;
-  }
-  NSString* exe = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/DashdancePlayback"];
-  NSString* sys = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"slippi_sys_playback"];
   if (self.settings->iso.empty()) { host::mac_show_error("Choose your disc first", "Watching a replay needs the same disc image as playing."); return; }
   NSTask* task = [[NSTask alloc] init];
-  task.executableURL = [NSURL fileURLWithPath:exe];
+  task.executableURL = [NSURL fileURLWithPath:ns(host::engine_path())];
   NSString* support = [ns(self.settings->replay_dir) stringByDeletingLastPathComponent];
-  task.arguments = @[@"--iso", ns(self.settings->iso), @"--replay", replay, @"--sys-dir", sys,
-                     @"--profile-dir", [support stringByAppendingPathComponent:@"PlaybackUser"],
-                     @"--volume", [NSString stringWithFormat:@"%d", self.settings->volume],
-                     @"--replay-codes", [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"playback_codes.bin"], @"--allow-interpreter"];
+  task.arguments = @[@"--iso", ns(self.settings->iso), @"--replay", replay, @"--profile-dir", support,
+                     @"--volume", [NSString stringWithFormat:@"%d", self.settings->volume]];
   NSError* error = nil;
   if (![task launchAndReturnError:&error]) host::mac_show_error("The replay could not start", error.localizedDescription.UTF8String);
+  else { self.watchTask = task; host::log("launcher: watching %s", replay.UTF8String); }
 }
 - (void)openTheme {
   if (self.themePanel) { [self.themePanel makeKeyAndOrderFront:nil]; return; }
@@ -777,6 +714,16 @@ void mod_profile_set(const std::string& profile) {
 @end
 
 namespace host {
+void mac_show_error(const std::string& title, const std::string& detail) {
+  @autoreleasepool {
+    [NSApplication sharedApplication];
+    NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+    NSAlert* alert = [[NSAlert alloc] init];
+    alert.messageText = ns(title);
+    alert.informativeText = ns(detail);
+    [alert runModal];
+  }
+}
 bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
   @autoreleasepool {
     [NSApplication sharedApplication];
@@ -802,7 +749,12 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
         host::Dashboard d;
         d.code = code; d.name = name;   // whose games: WIN and LOSS from this player's side
         host::dashboard_load_games(dir, d, 8);
-        dispatch_async(dispatch_get_main_queue(), ^{ MULaunchView* v = weak_view; if (v) { v.dashboard = d; [v setNeedsDisplay:YES]; } });
+        dispatch_async(dispatch_get_main_queue(), ^{
+          MULaunchView* v = weak_view;
+          if (!v) return;
+          v.dashboard = d; [v setNeedsDisplay:YES];
+          if (const char* n = std::getenv("MELEE_PLAY_REPLAY")) [v activate:[NSString stringWithFormat:@"watch:%d", std::atoi(n)]];   // tests: Watch on recent game n
+        });
       });
     }
     window.contentView = view;
