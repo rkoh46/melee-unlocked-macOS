@@ -84,8 +84,84 @@ void round_rect(NSRect r, CGFloat radius, RGB8 top, RGB8 bottom, const RGB8* bor
   [[[NSGradient alloc] initWithStartingColor:col(top) endingColor:col(bottom)] drawInBezierPath:p angle:90];
   if (border) { [col(*border) setStroke]; p.lineWidth = 1; [p stroke]; }
 }
+// ---- launcher.ini (the app's file in ~/Library/Application Support/Dashdance; the launcher's own keys: language, notesseen) ----
+std::string support_dir() { const char* h = std::getenv("HOME"); return std::string(h ? h : ".") + "/Library/Application Support/Dashdance"; }
+std::string ini_get(const std::string& key) {
+  std::ifstream in(support_dir() + "/launcher.ini");
+  std::string line, out;
+  while (std::getline(in, line)) if (line.compare(0, key.size() + 1, key + "=") == 0) out = line.substr(key.size() + 1);
+  return out;
+}
+void ini_set(const std::string& key, const std::string& value) {
+  std::vector<std::string> lines; bool found = false;
+  { std::ifstream in(support_dir() + "/launcher.ini"); std::string line; while (std::getline(in, line)) lines.push_back(line); }
+  for (auto& l : lines) if (l.compare(0, key.size() + 1, key + "=") == 0) { l = key + "=" + value; found = true; }
+  if (!found) lines.push_back(key + "=" + value);
+  std::ofstream out(support_dir() + "/launcher.ini", std::ios::trunc);
+  for (const auto& l : lines) out << l << "\n";
+}
+
+// ---- melee-unlocked's launcher languages (port/app/launcher_lang.h: its list, its file format, its lookup by English wording) ----
+// The tables are its lang/*.txt, copied from the fetched tree into the bundle at packaging (Resources/mu-lang). Every fixed
+// English string drawn by text() is looked up ("@English = ..." lines); names, paths and lines without a translation stay as
+// they are. Japanese, Chinese and Korean come from the system's fonts (AppKit's font fallback). launcher.ini `language`.
+struct Language { const char* code; const char* native; };
+const Language kLanguages[] = {{"en", "English"}, {"es", "Español"}, {"pt-BR", "Português (Brasil)"}, {"fr", "Français"}, {"de", "Deutsch"},
+                               {"ru", "Русский"}, {"ja", "日本語"}, {"zh-Hans", "简体中文"}, {"ko", "한국어"}};
+std::string g_lang = "en";
+NSMutableDictionary<NSString*, NSString*>* g_words = nil;
+NSString* lang_dir() {
+  if (const char* e = std::getenv("MELEE_MU_LANG")) return [NSString stringWithUTF8String:e];
+  return [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"mu-lang"];
+}
+NSString* unescape(NSString* s) {   // launcher_lang.h detail::unescape
+  NSMutableString* out = [NSMutableString string];
+  for (NSUInteger i = 0; i < s.length; ++i) {
+    const unichar c = [s characterAtIndex:i];
+    if (c == '\\' && i + 1 < s.length) {
+      const unichar n = [s characterAtIndex:i + 1];
+      if (n == 'n') { [out appendString:@"\n"]; ++i; continue; }
+      if (n == 't') { [out appendString:@"\t"]; ++i; continue; }
+      if (n == '\\') { [out appendString:@"\\"]; ++i; continue; }
+    }
+    [out appendFormat:@"%C", c];
+  }
+  return out;
+}
+bool lang_set(const std::string& code) {
+  g_words = nil; g_lang = "en";
+  if (code.empty() || code == "en") return true;
+  bool known = false;
+  for (const Language& l : kLanguages) known = known || code == l.code;
+  if (!known) return false;
+  NSString* file = [lang_dir() stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.txt", code.c_str()]];
+  NSString* all = [NSString stringWithContentsOfFile:file encoding:NSUTF8StringEncoding error:nil];
+  if (!all) { host::log("launcher: language %s: %s is missing", code.c_str(), file.UTF8String); return false; }
+  NSMutableDictionary* words = [NSMutableDictionary dictionary];
+  NSCharacterSet* space = NSCharacterSet.whitespaceCharacterSet;
+  for (NSString* raw in [all componentsSeparatedByCharactersInSet:NSCharacterSet.newlineCharacterSet]) {
+    NSString* t = [raw stringByTrimmingCharactersInSet:space];
+    if ([t hasPrefix:@"\uFEFF"]) t = [t substringFromIndex:1];
+    if (!t.length || [t hasPrefix:@"#"] || [t hasPrefix:@";"]) continue;
+    const NSRange eq = [t rangeOfString:@"="];
+    if (eq.location == NSNotFound) continue;
+    NSString* key = unescape([[t substringToIndex:eq.location] stringByTrimmingCharactersInSet:space]);
+    NSString* value = unescape([[t substringFromIndex:eq.location + 1] stringByTrimmingCharactersInSet:space]);
+    if (key.length && value.length) words[key] = value;
+  }
+  g_words = words; g_lang = code;
+  host::log("launcher: language %s (%lu lines)", code.c_str(), (unsigned long)words.count);
+  return true;
+}
+NSString* tx(NSString* english) {
+  if (!g_words || !english.length) return english;
+  NSString* t = g_words[[@"@" stringByAppendingString:english]];
+  return t.length ? t : english;
+}
+
 enum Align { LEFT, CENTER, RIGHT };
 void text(NSString* s, NSRect r, NSFont* font, RGB8 color, Align align = LEFT, CGFloat kern = 0, bool wrap = false) {
+  s = tx(s);
   NSMutableParagraphStyle* ps = [[NSMutableParagraphStyle alloc] init];
   ps.alignment = align == CENTER ? NSTextAlignmentCenter : align == RIGHT ? NSTextAlignmentRight : NSTextAlignmentLeft;
   ps.lineBreakMode = wrap ? NSLineBreakByWordWrapping : NSLineBreakByTruncatingTail;
@@ -97,7 +173,7 @@ void text(NSString* s, NSRect r, NSFont* font, RGB8 color, Align align = LEFT, C
   }
   [s drawWithRect:box options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingTruncatesLastVisibleLine attributes:a];
 }
-CGFloat text_width(NSString* s, NSFont* font) { return [s sizeWithAttributes:@{NSFontAttributeName: font}].width; }
+CGFloat text_width(NSString* s, NSFont* font) { return [tx(s) sizeWithAttributes:@{NSFontAttributeName: font}].width; }   // as text() draws it
 void dot(CGFloat x, CGFloat y, RGB8 c) { round_rect(LR(x, y, 8, 8), 4, c, c, nullptr); }
 
 std::string home() { const char* h = std::getenv("HOME"); return h ? h : "."; }
@@ -108,6 +184,26 @@ NSImage* art(NSString* name) {
   if (const char* e = std::getenv("MELEE_MU_ART")) dir = ns(e);
   else dir = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"mu-art"];
   return [[NSImage alloc] initWithContentsOfFile:[dir stringByAppendingPathComponent:name]];
+}
+// The player's own rail picture in Bailey's place (upstream's rail-image.*, chosen by clicking Bailey): rail-image.<ext> in the
+// melee-unlocked folder; none, or one that cannot be read: Bailey.
+const char* const kRailExts[] = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".heic"};
+std::string rail_image_path() {
+  for (const char* ext : kRailExts) {
+    const std::string p = support_dir() + "/melee-unlocked/rail-image" + ext;
+    if (FILE* f = std::fopen(p.c_str(), "rb")) { std::fclose(f); return p; }
+  }
+  return {};
+}
+// What's new: this app's notes (whats-new.txt in the bundle, newest first), shown by themselves at the first start of a new
+// version (launcher.ini notesseen, upstream's key) and from the version line's link.
+NSArray<NSString*>* whats_new_lines() {
+  NSString* file = std::getenv("MELEE_WHATS_NEW") ? [NSString stringWithUTF8String:std::getenv("MELEE_WHATS_NEW")]
+                                                  : [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"whats-new.txt"];
+  NSMutableArray* out = [NSMutableArray array];
+  for (NSString* l in [[NSString stringWithContentsOfFile:file encoding:NSUTF8StringEncoding error:nil] ?: @"" componentsSeparatedByString:@"\n"])
+    if (l.length && ![l hasPrefix:@"#"]) [out addObject:l];
+  return out;
 }
 }  // namespace
 
@@ -162,6 +258,16 @@ std::string disc_check(const std::string& path) {
   if (h[7] != 2) return answer = "Disc: Melee NTSC 1.0" + std::to_string(int(h[7])) + "; melee-unlocked and Slippi need NTSC 1.02";
   return answer = "Disc: Melee NTSC 1.02";
 }
+// Each mod disc's costume skins, as the engine's last start counted them (fe/features/cosmetics.cpp writes the file).
+size_t disc_skins(const std::string& profile) {
+  std::ifstream in(support_dir() + "/melee-unlocked/mods-cache/disc-skins.txt");
+  std::string line;
+  while (std::getline(in, line)) {
+    const size_t eq = line.find('=');
+    if (eq != std::string::npos && line.substr(0, eq) == profile) return size_t(std::strtoul(line.c_str() + eq + 1, nullptr, 10));
+  }
+  return 0;
+}
 std::string settings_ini_path() { const char* h = std::getenv("HOME"); return std::string(h ? h : ".") + "/Library/Application Support/Dashdance/melee-unlocked/settings.ini"; }
 std::string mod_profile_next() {
   std::ifstream in(settings_ini_path());
@@ -215,6 +321,8 @@ void mod_profile_set(const std::string& profile) {
 // The update check: this repository's branch on GitHub against the commit this app was built from (Info.plist MUBuildCommit).
 // Never melee-unlocked's own updater: this app is built from source, so an update is the install line run again.
 @property(nonatomic) NSString* updateText;
+@property(nonatomic) BOOL notesOpen;   // What's new over the page
+@property(nonatomic) NSImage* railPicture;
 @property(nonatomic) BOOL updateAvailable;
 - (void)checkForUpdate;
 - (void)openTheme;
@@ -322,17 +430,39 @@ void mod_profile_set(const std::string& profile) {
     case 2: [self paintReplays]; break;
     default: [self paintMods]; break;
   }
+  if (self.notesOpen) [self paintNotes];
+}
+// What's new, a card over the launcher (upstream opens its changelog window).
+- (void)paintNotes {
+  [self.buttons removeAllObjects];
+  [col({0, 0, 0}, .55) setFill]; NSRectFillUsingOperation(self.bounds, NSCompositingOperationSourceOver);
+  NSArray<NSString*>* lines = whats_new_lines();
+  const CGFloat w = 520, x = (WIN_W - w) / 2, h = std::min<CGFloat>(WIN_H - 60, 96 + 40 * std::max<NSUInteger>(lines.count, 1)), y = (WIN_H - h) / 2;
+  round_rect(LR(x, y, w, h), 12, C_CONTENT_TOP, C_CONTENT_BOT, &C_FIELD_BORDER);
+  round_rect(LR(x, y, w, 4), 2, acc_top(), acc_bottom(), nullptr);
+  text(@"What's new", LR(x + 20, y + 16, w - 40, 24), f_nav(), C_TEXT);
+  text(ns(std::string("Version ") + MELEE_PORT_VERSION), LR(x + 20, y + 38, w - 40, 18), f_small(), C_FAINT);
+  CGFloat ly = y + 64;
+  for (NSString* l in lines) {
+    if (ly > y + h - 76) break;
+    dot(x + 22, ly + 5, C_FAINT);   // quiet bullets: the accent stays on the strip and the selection
+    text(l, LR(x + 38, ly, w - 58, 36), f_small(), C_DIM, LEFT, 0, true);
+    ly += 40;
+  }
+  [self button:@"notesok" rect:LR(x + w - 120, y + h - 50, 100, 32) title:@"OK" primary:NO enabled:YES];
 }
 // ---- the rail (paint_rail): gradient, the mark on top, the page nav, Bailey under it -------------------------------
 - (void)paintRail {
   vgrad(LR(0, 0, RAIL_W, WIN_H), C_RAIL_TOP, C_RAIL_BOT);
   NSArray<NSString*>* names = @[@"Play", @"Settings", @"Replay Viewer", @"Mods"];
-  if (self.bailey) {
+  if (NSImage* dog = self.railPicture ?: self.bailey) {
     const CGFloat top = NAV_Y + 4 * NAV_GAP + 10, room_h = WIN_H - top - 12, room_w = RAIL_W - 36;
-    const NSSize s = self.bailey.size;
+    const NSSize s = dog.size;
     const CGFloat k = std::min(room_w / s.width, room_h / s.height), w = s.width * k, h = s.height * k;
-    [self.bailey drawInRect:LR((RAIL_W - w) / 2, top + (WIN_H - top - h) / 2, w, h) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver
-                   fraction:1 respectFlipped:YES hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+    const NSRect at = LR((RAIL_W - w) / 2, top + (WIN_H - top - h) / 2, w, h);
+    [dog drawInRect:at fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES
+              hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
+    self.buttons[@"dog"] = [NSValue valueWithRect:at];   // upstream: a click on the dog chooses the rail picture
   }
   [col(C_DIVIDER) setFill]; NSRectFill(LR(RAIL_W - 1, 0, 1, WIN_H));
   if (self.mark) {
@@ -379,7 +509,8 @@ void mod_profile_set(const std::string& profile) {
   text(@"GAME BUILD", LR(CX, 102, 130, 19), f_label(), C_FAINT, LEFT, 1);
   const BOOL mu = s.engine_available;
   const NSInteger on = !mu ? 1 : s.engine == 1 ? 1 : s.engine == 2 ? 2 : 0;
-  const CGFloat left = CX + 84, total = CW - 84, gap = 6, narrow = 78, w = (total - 2 * gap - narrow) / 2;
+  const CGFloat label_w = std::max<CGFloat>(84, text_width(@"GAME BUILD", f_label()) + 1.0 * 9 + 12);   // a longer translation pushes the row right
+  const CGFloat left = CX + label_w, total = CW - label_w, gap = 6, narrow = 78, w = (total - 2 * gap - narrow) / 2;
   NSArray<NSString*>* names = @[mu ? @"Source Port" : @"Source Port (not installed)", @"Static Recomp (Legacy)", @"Vanilla"];
   for (int i = 0; i < 3; ++i) {
     const NSRect r = LR(i == 0 ? left : i == 1 ? left + w + gap : left + 2 * (w + gap), 98, i == 2 ? narrow : w, 28);
@@ -426,8 +557,12 @@ void mod_profile_set(const std::string& profile) {
   const CGFloat by = note_y + 40;
   [self button:@"logs" rect:LR(CX, by, 150, 32) title:@"Show game logs" primary:NO enabled:YES];
   [self button:@"crashreport" rect:LR(CX + 158, by, 160, 32) title:@"Save crash report" primary:NO enabled:mu_crash::available()];
-  if (!self.error.empty()) text(ns(self.error), LR(CX + 326, by, 120, 32), f_small(), C_BAD, LEFT, 0, true);
-  else if (!self.crashNote.empty()) text(ns(self.crashNote), LR(CX + 326, by, 120, 32), f_small(), C_DIM, LEFT, 0, true);
+  // The Language button (upstream's Play page): each language named in itself.
+  NSString* native = @"English";
+  for (const Language& l : kLanguages) if (g_lang == l.code) native = [NSString stringWithUTF8String:l.native];
+  [self button:@"language" rect:LR(CX + 326, by, 120, 32) title:native primary:NO enabled:YES];
+  if (!self.error.empty()) text(ns(self.error), LR(CX, by + 38, CW, 30), f_small(), C_BAD, LEFT, 0, true);
+  else if (!self.crashNote.empty()) text(ns(self.crashNote), LR(CX, by + 38, CW, 30), f_small(), C_DIM, LEFT, 0, true);
   // The launcher colour button: the compact wheel (theme_wheel, compact).
   const NSRect wr = LR(666, by, 32, 32);
   self.buttons[@"theme"] = [NSValue valueWithRect:wr];
@@ -606,6 +741,10 @@ void mod_profile_set(const std::string& profile) {
                   : r.state == 2 ? ns("Update available · " + r.version) : r.automatic ? ns("Version " + r.version)
                   : r.file_ready ? @"Downloaded file found" : @"Put its download in the Downloads folder";
     if (r.state == 3 && r.percent >= 0) sub = [NSString stringWithFormat:@"%@ (%d%%)", sub, r.percent];
+    if (r.state == 1) {   // its disc's costume skins, as the last game start counted them (mods-cache/disc-skins.txt)
+      const size_t skins = disc_skins(r.id);
+      if (skins) sub = [NSString stringWithFormat:@"%@ · %zu skin%s (Settings > Mods > Choose skins in game)", tx(sub), skins, skins == 1 ? "" : "s"];
+    }
     text(sub, LR(CX + 10, y + 17, CW - 120, 15), f_small(), r.failed ? C_BAD : r.state == 1 ? C_OK : C_FAINT);
     NSString* name = [NSString stringWithFormat:@"mod:%zu", i];
     if (r.state == 3) [self button:@"modcancel" rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Cancel" primary:NO enabled:YES];
@@ -635,13 +774,14 @@ void mod_profile_set(const std::string& profile) {
 }
 // ---- input ------------------------------------------------------------------------------------------------------------
 - (NSString*)buttonAt:(NSPoint)p {
+  if (self.notesOpen) { NSValue* ok = self.buttons[@"notesok"]; return ok && NSPointInRect(p, ok.rectValue) ? @"notesok" : nil; }
   for (NSString* k in self.buttons) if (NSPointInRect(p, self.buttons[k].rectValue)) return k;
   return nil;
 }
 - (void)mouseMoved:(NSEvent*)e {
   const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
   int nav = -1;
-  for (int i = 0; i < 4; ++i) if (NSPointInRect(p, LR(12, NAV_Y + i * NAV_GAP, RAIL_W - 24, NAV_H))) nav = i;
+  for (int i = 0; i < 4 && !self.notesOpen; ++i) if (NSPointInRect(p, LR(12, NAV_Y + i * NAV_GAP, RAIL_W - 24, NAV_H))) nav = i;
   if (nav != self.hotNav) { self.hotNav = nav; [self setNeedsDisplay:YES]; }
   [([self buttonAt:p] ? NSCursor.pointingHandCursor : NSCursor.arrowCursor) set];
 }
@@ -652,7 +792,8 @@ void mod_profile_set(const std::string& profile) {
   if (hit && [hit isEqualToString:pressed]) [self activate:hit];
 }
 - (void)keyDown:(NSEvent*)e {
-  if (e.keyCode == 36 && !self.settings->iso.empty() && self.tab == 0) [self activate:@"play"];   // Return plays
+  if (self.notesOpen && (e.keyCode == 36 || e.keyCode == 53)) [self activate:@"notesok"];   // Return or Esc closes What's new
+  else if (e.keyCode == 36 && !self.settings->iso.empty() && self.tab == 0) [self activate:@"play"];   // Return plays
   else [super keyDown:e];
 }
 - (BOOL)acceptsFirstResponder { return YES; }
@@ -687,7 +828,10 @@ void mod_profile_set(const std::string& profile) {
   else if ([key isEqualToString:@"openreplay"]) [self openReplay];
   else if ([key isEqualToString:@"howtoupdate"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];
   else if ([key isEqualToString:@"watchlive"]) [self toggleLive];
-  else if ([key isEqualToString:@"whatsnew"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];
+  else if ([key isEqualToString:@"whatsnew"]) self.notesOpen = YES;
+  else if ([key isEqualToString:@"notesok"]) self.notesOpen = NO;
+  else if ([key isEqualToString:@"language"]) [self chooseLanguage];
+  else if ([key isEqualToString:@"dog"]) [self chooseRailPicture];
   else if ([key isEqualToString:@"show"] || [key isEqualToString:@"watch"]) {
     const std::vector<host::GameRow> rows = self.dashboard.rows();
     if (index < 0 || index >= (int)rows.size()) return;
@@ -746,6 +890,51 @@ void mod_profile_set(const std::string& profile) {
   NSError* error = nil;
   if (![task launchAndReturnError:&error]) host::mac_show_error("The replay could not start", error.localizedDescription.UTF8String);
 }
+// upstream's Language button: a menu of its languages, each in its own words; the choice is kept in launcher.ini.
+- (void)chooseLanguage {
+  NSMenu* menu = [[NSMenu alloc] init];
+  for (const Language& l : kLanguages) {
+    NSMenuItem* item = [menu addItemWithTitle:[NSString stringWithUTF8String:l.native] action:@selector(pickLanguage:) keyEquivalent:@""];
+    item.target = self; item.representedObject = [NSString stringWithUTF8String:l.code];
+    item.state = g_lang == l.code ? NSControlStateValueOn : NSControlStateValueOff;
+  }
+  const NSRect r = self.buttons[@"language"].rectValue;
+  [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(r.origin.x, NSMaxY(r) + 4) inView:self];
+}
+- (void)pickLanguage:(NSMenuItem*)item {
+  const std::string code = [item.representedObject UTF8String];
+  if (lang_set(code)) ini_set("language", code);
+  [self setNeedsDisplay:YES];
+}
+// upstream's choose_rail_image: Choose a picture... (copied in as rail-image.<ext>), Bring back Bailey.
+- (void)chooseRailPicture {
+  NSMenu* menu = [[NSMenu alloc] init];
+  [menu addItemWithTitle:tx(@"Choose a picture...") action:@selector(pickRailPicture) keyEquivalent:@""].target = self;
+  if (!rail_image_path().empty()) [menu addItemWithTitle:tx(@"Bring back Bailey") action:@selector(bringBackBailey) keyEquivalent:@""].target = self;
+  const NSRect r = self.buttons[@"dog"].rectValue;
+  [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(NSMidX(r), NSMidY(r)) inView:self];
+}
+- (void)bringBackBailey {
+  for (const char* ext : kRailExts) std::remove((support_dir() + "/melee-unlocked/rail-image" + ext).c_str());
+  self.railPicture = nil;
+  [self setNeedsDisplay:YES];
+}
+- (void)pickRailPicture {
+  NSOpenPanel* panel = [NSOpenPanel openPanel];
+  panel.message = tx(@"Choose a picture for the launcher");
+  panel.allowedFileTypes = @[@"png", @"jpg", @"jpeg", @"bmp", @"gif", @"heic"];
+  if ([panel runModal] != NSModalResponseOK) return;
+  NSImage* picture = [[NSImage alloc] initWithContentsOfURL:panel.URL];
+  if (!picture || picture.size.width < 1) { host::mac_show_error("That picture could not be opened.", panel.URL.path.UTF8String); return; }
+  [self bringBackBailey];
+  NSString* dir = ns(support_dir() + "/melee-unlocked");
+  [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  NSString* to = [dir stringByAppendingPathComponent:[@"rail-image." stringByAppendingString:panel.URL.pathExtension.lowercaseString]];
+  [NSFileManager.defaultManager copyItemAtPath:panel.URL.path toPath:to error:nil];
+  self.railPicture = picture;
+  host::log("launcher: rail picture %s", to.UTF8String);
+  [self setNeedsDisplay:YES];
+}
 - (void)openTheme {
   if (self.themePanel) { [self.themePanel makeKeyAndOrderFront:nil]; return; }
   NSPanel* panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 268, 324) styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
@@ -793,6 +982,16 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
     MULaunchView* view = [[MULaunchView alloc] initWithFrame:NSMakeRect(0, 0, WIN_W, WIN_H)];
     view.settings = &settings; view.hotNav = -1; view.error = error;
     view.mark = art(@"melee_mark.png"); view.bailey = art(@"bailey.png");
+    lang_set(ini_get("language"));
+    if (const std::string rail = rail_image_path(); !rail.empty()) view.railPicture = [[NSImage alloc] initWithContentsOfFile:ns(rail)];
+    {   // the first start of a new version shows What's new by itself (screenshots: MELEE_LAUNCHER_NOTES=1 shows it, 0 never)
+      const char* notes = std::getenv("MELEE_LAUNCHER_NOTES");
+      const bool shot_run = std::getenv("MELEE_LAUNCHER_SHOT") != nullptr;
+      if (notes ? *notes == '1' : (!shot_run && ini_get("notesseen") != MELEE_PORT_VERSION && whats_new_lines().count)) {
+        view.notesOpen = YES;
+        if (!notes) ini_set("notesseen", MELEE_PORT_VERSION);
+      }
+    }
     if (const char* page = std::getenv("MELEE_LAUNCHER_PAGE")) view.tab = std::clamp(std::atoi(page), 0, 3);   // screenshots
     // The replay list is read off the main thread (parsing .slp files takes a moment), as the original scans.
     if (!settings.replay_dir.empty()) {

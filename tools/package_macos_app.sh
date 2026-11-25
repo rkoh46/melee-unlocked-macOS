@@ -53,6 +53,9 @@ if [[ -x "$MU_EXE" ]]; then
   # The licences of what else the engine compiles in from the fetched tree: Dear ImGui (MIT) and zstd (BSD-3-Clause).
   cp "$ROOT/build/mu-engine/mu/port/third_party/imgui/LICENSE.txt" "$APP/Contents/Resources/mu-art/imgui-LICENSE.txt"
   cp "$ROOT/build/mu-engine/mu/port/third_party/zstd/LICENSE" "$APP/Contents/Resources/mu-art/zstd-LICENSE.txt"
+  # melee-unlocked's launcher translations (lang/*.txt, GPL-2.0-or-later) for the launcher's Language button; never committed.
+  mkdir -p "$APP/Contents/Resources/mu-lang" && cp "$ROOT/build/mu-engine/mu/lang/"*.txt "$APP/Contents/Resources/mu-lang/"
+  cp "$ROOT/mu-engine/app/whats-new.txt" "$APP/Contents/Resources/whats-new.txt"   # the launcher's What's new
 else
   echo "melee-unlocked engine: no $MU_EXE, this bundle plays the classic engine only"
 fi

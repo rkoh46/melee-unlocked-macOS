@@ -302,9 +302,9 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Version rollback | launcher | not wired (left out: the Mac app is built from source) |
 | Optional part downloads | launcher + host + external | not wired |
 | Lab view and Pro AI asset downloads | host + external | not wired |
-| "What's new" | launcher | partial: the Play page's What's new link opens this repository's README section |
-| Launcher languages | launcher | not wired: the Switch's home screen uses melee-unlocked's lang/ tables (mu_lang.cpp); the Mac launcher is AppKit and has none yet |
-| Launcher colour and rail picture | launcher | active: launcher colour wheel |
+| "What's new" | launcher | active: this app's notes (`mu-engine/app/whats-new.txt`, in the bundle) in a card over the launcher, by themselves at the first start of a new version (launcher.ini `notesseen`, upstream's key) and from the version line's What's new link; screenshot build/shots-ui/launcher-notes.png |
+| Launcher languages | launcher | active: upstream's Language button on the Play page with its nine languages, each named in itself (English, Español, Português (Brasil), Français, Deutsch, Русский, 日本語, 简体中文, 한국어); its lang/*.txt tables copied from the fetched tree into the bundle at packaging and looked up by English wording as upstream does (launcher_lang.h); Japanese, Chinese and Korean through the system's fonts; launcher.ini `language`. The Mac's own lines (Slippi sign-in, the keyboard hint) stay English, as upstream's lines without a translation do. Screenshots build/shots-ui/launcher-play-de.png, launcher-play-ja.png, launcher-rail.png (Korean) |
+| Launcher colour and rail picture | launcher | active: the launcher colour wheel, and upstream's rail picture: a click on Bailey offers Choose a picture... (copied in as `melee-unlocked/rail-image.<ext>`) and Bring back Bailey; screenshot build/shots-ui/launcher-rail.png |
 | Mods page | launcher | active: the launcher's Mods page lists, installs and removes mods with the shared installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp), and Use picks a profile for an offline start |
 | Mods catalog | launcher + external | active: melee-unlocked's mods-catalog-2.json from the fetched tree, installed by the shared installer (`mu-engine/tools/mod_install_test.sh`) |
 | Melee 3D | launcher | not wired |
