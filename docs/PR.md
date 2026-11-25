@@ -120,3 +120,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - `app_te_test.sh lock` (`--feature-test te-lock`, `fe/features/te_lock_test.cpp`): 20XX TE's lock settings through command 0xF8.
 - `mu-engine/tools/app_save_import_test.sh`: a profile's .gci goes onto its card once.
 - Launcher Replay Viewer: a picked game's card with melee-unlocked's stats and the session trace graph (`mu-engine/app/replay_stats_facade.cpp`), Move to Trash; `MELEE_LAUNCHER_PICK` for screenshots.
+- Netplay: `MELEE_SYNC_SMOOTH=1` (upstream's experimental smoother time sync, `mu-engine/net/patches/mac-0003`); `mu-engine/tools/slp_ranks.py` reads the ranked info and bot flags from a replay's game start.
