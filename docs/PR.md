@@ -128,3 +128,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - Diagnostics: the engine's summary lines and startup timing; launcher.log kept across starts up to 256 KB, dated, with the reason when the engine did not start.
 - Crash report: the launcher log in the zip, a GPU-driver line when the crashed thread is in AGX/Metal; the test reads a made-up crash report in a home of its own.
 - Restart the game from the panel (confirmed with a second A, offline) and the Arcade look preset/reset rows (`fe/features/extras.cpp`, `--feature-test extras`).
+- AUDIO page: the output's gaps this session and its buffer (upstream's read-out).

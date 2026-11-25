@@ -285,6 +285,16 @@ void register_rows() {
       if (g_mode.load() == 0 && !g_output.empty()) memory_save(g_output, (int)g_policy.target_ms);
     },
     nullptr, persist_mode});
+  // upstream's read-out under the audio rows (pc_settings.cpp): what the output holds now and its gaps this session.
+  add_menu_entry({"Audio", "Output gaps this session",
+    [] {
+      if (!host::audio_underruns) return std::string("-");
+      uint64_t silent_ms = 0;
+      const uint64_t gaps = host::audio_underruns(&silent_ms);
+      char t[96];
+      std::snprintf(t, sizeof t, "%llu (%llu ms), buffer %d ms", (unsigned long long)gaps, (unsigned long long)silent_ms, g_applied >= 0 ? g_applied : (g_mode.load() == 0 ? kAutoStart : g_fixed_ms.load()));
+      return std::string(t);
+    }, nullptr, nullptr});
   add_menu_entry({"Audio", "Audio buffer size",
     [] {
       char t[48];

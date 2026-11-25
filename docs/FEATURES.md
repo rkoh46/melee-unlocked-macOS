@@ -403,8 +403,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A13 | Input overlay lone-port fallback | not wired; Switch: easy; macOS: easy |
 | A22 | Switch Pro picture binder | not wired; Switch: medium - most relevant on Switch (Pro/Joy-Con); art + hit-testing; macOS: medium |
 | A23 | Deadzone visualiser | not wired; Switch: easy - overlay draw of raw stick; macOS: easy |
-| A40 | Notices in Training | not wired; Switch: easy - text cards over the picture; macOS: easy |
-| A41 | Corner hint and intro | not wired; Switch: easy; macOS: easy |
+| A40 | Notices in Training | active (fe/features/search.cpp, from the Switch): "Search Unranked again?" after an online session sent to Training (D-pad Up searches, D-pad Down keeps training), the found and lost-connection notices of the kept search over Training |
+| A41 | Corner hint and intro | active: upstream's Practice menu code (fe/proai, from the fetched tree) draws the corner hint in every Training match (settings.ini `matchmakinghint`, on by default) and counts `practiceopens`; its big intro banner is off upstream too (kBanner=false) |
 | A47 | Warm-up picture-in-picture window | not wired; Switch: hard - two game pictures at once (second process upstream); macOS: hard |
 | A51 | Menu styles | active (Settings appearances, section 11) |
 | A53 | Radial wheel navigation | active: the Radial style's wheel, with the stick and the D-pad (settings_radial_nav from the fetched tree) |
@@ -419,7 +419,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A72 | Retired keys | not wired; doc only |
 | B7 | Restart game from the panel | active: GAME > Game > Restart the game (A, then A again within 3 s, upstream's confirmation; offline only): the engine starts again with the same arguments (`fe/features/extras.cpp`, the restart path replays.cpp's Watch uses). `--feature-test extras`: `Restart the game confirmed`, `the game starts again`, `started again from the settings panel's Restart the game` |
 | B33b | Arcade preset / Reset buttons | active: VIDEO > Arcade look > "every switch on" (hitboxes, projectile hitboxes, behind fighters, 2D camera, the grid) and "reset" (`fe/features/extras.cpp`). `--feature-test extras`: after the preset `1 1 1 1 2`, after the reset `0 0 0 0 0` |
-| B62 | Audio latency and underrun read-out | not wired; Switch: easy - audout queue depth and an underrun counter from the app's audio path; macOS: easy - AVAudioEngine/CoreAudio IO buffer and dropout count |
+| B62 | Audio latency and underrun read-out | active in the Mac's form: AUDIO > "Output gaps this session": the output's gaps and their silence this session and the buffer it holds now (`fe/features/audio.cpp`, from the app's sound output's counters); build/shots-ui/audio-gaps.png (`0 (0 ms), buffer 20 ms`). ASIO/WASAPI lines are Windows-only |
 | B71 | Per-mod-disc random stage-skin pool | not wired; Switch: medium - needs the stage-skin store (FEATURES: imports not wired) first; macOS: medium - same store, then a list row |
 | B75 | Costume packs: apply a whole set | not wired; Switch: medium - depends on the cosmetic store; UI is a list; macOS: medium - same |
 | B78 | Fighter move-sound replacement | not wired; Switch: medium - SSM bank swap through the disc overlay, after imports exist; macOS: medium - same |
@@ -430,8 +430,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | C3 | Melee's own font from main.dol | not wired; Switch: easy - read dol data, upload one 1024x288 RGBA texture; macOS: easy - same into the glyph atlas |
 | C4 | GameCube button glyph legends | not wired; Switch: easy; macOS: easy |
 | C6 | On-screen keyboard | not wired; Switch: easy - or use libnx swkbd; macOS: easy - native text field or same grid |
-| C8 | Training corner hint | not wired; Switch: easy; macOS: easy |
-| C10 | "CPU now" / plan readout | not wired; Switch: easy - practice_cpu::status() is host code we already build?; macOS: easy |
+| C8 | Training corner hint | active: the Practice menu's own hint (row A41) for the first 15 s of each Training match |
+| C10 | "CPU now" / plan readout | active: the Practice menu's CPU row shows the practice CPU's live plan (practice_cpu::status() in upstream's practice_menu.cpp, compiled from the fetched tree) |
 | C40 | Five looks | not wired; as C39 |
 | C41 | Arena button mode | not wired; as C39 |
 | C42 | Hand into the panel | not wired; as C39 |
