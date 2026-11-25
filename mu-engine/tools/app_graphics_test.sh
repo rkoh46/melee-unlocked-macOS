@@ -98,11 +98,36 @@ video)
   fresh video 'videobackgrounds 1\n'; mkdir -p "$root/video/melee-unlocked/VideoBackgrounds"
   ffmpeg -loglevel error -f lavfi -i testsrc2=size=640x480:rate=30 -t 4 -pix_fmt yuv420p -c:v h264_videotoolbox -b:v 2M "$root/video/melee-unlocked/VideoBackgrounds/css.mp4" -y \
     || ffmpeg -loglevel error -f lavfi -i testsrc2=size=640x480:rate=30 -t 4 -pix_fmt yuv420p "$root/video/melee-unlocked/VideoBackgrounds/css.mp4" -y
+  cp "$root/video/melee-unlocked/VideoBackgrounds/css.mp4" "$root/video/melee-unlocked/VideoBackgrounds/sss.mp4"   # the stage select's slot too
   MELEE_CAPTURE_BURST=800,1 run video 820
-  fresh video-off ''; MELEE_CAPTURE_BURST=800,1 run video-off 820
+  mv "$root/video/melee-unlocked/capture" "$root/video/melee-unlocked/capture-css"; mv "$root/video/log" "$root/video/log-css"
+  MELEE_CAPTURE_BURST=1350,1 run video 1370; mv "$root/video/melee-unlocked/capture/blink_01350.ppm" "$root/video/sss.ppm"
+  mv "$root/video/log" "$root/video/log-sss"; rm -rf "$root/video/melee-unlocked/capture"; mv "$root/video/melee-unlocked/capture-css" "$root/video/melee-unlocked/capture"; mv "$root/video/log-css" "$root/video/log"
+  fresh video-off ''; MELEE_CAPTURE_BURST=800,1 run video-off 820; MELEE_CAPTURE_BURST=1350,1 run video-off 1370
   grep -h "video backgrounds" "$root/video/log" | sed 's/^\[ *[0-9.]*\] //' | sort | uniq -c | sort -rn | head -6
-  echo "video: $(mean_diff "$root/video-off/melee-unlocked/capture/blink_00800.ppm" "$root/video/melee-unlocked/capture/blink_00800.ppm")";;
+  echo "video: character select $(mean_diff "$root/video-off/melee-unlocked/capture/blink_00800.ppm" "$root/video/melee-unlocked/capture/blink_00800.ppm")"
+  grep -h "SSS\|sss" "$root/video/log-sss" | grep -v "scene major" | sed 's/^\[ *[0-9.]*\] //' | sort -u | head -4
+  echo "video: stage select $(mean_diff "$root/video-off/melee-unlocked/capture/blink_01350.ppm" "$root/video/sss.ppm")";;
 lab)
+  # Silhouettes (look 0) from a pack made here in upstream's Lab/<id>.lab format (MLAB version 1, tools/build_lab_assets.py's
+  # layout): one plain figure for every action of every character, standing in for Slippi Lab's art.
+  fresh lab-0 "labview 1\nlook_lab_fighters 0\n"; mkdir -p "$root/lab-0/melee-unlocked/Lab"
+  python3 -I - "$root/lab-0/melee-unlocked/Lab" <<'PY'
+import struct, sys
+# Slippi Lab's model space: 1000 x 1000 with the feet at (500, 500), y down, a tenth of a game unit per step.
+figure = "M465 500L535 500L545 440L530 410L540 370L525 350C525 325 515 310 500 310C485 310 475 325 475 350L460 370L470 410L455 440Z"
+for cid in range(27):
+    out = b"MLAB" + struct.pack("<I4f", 1, 1.0, 0.0, 9.0, 10.0)
+    actions = 400
+    out += struct.pack("<H", actions) + struct.pack("<%dH" % actions, *([0] * actions))
+    name = b"Wait"
+    out += struct.pack("<H", 1) + struct.pack("<B", len(name)) + name + struct.pack("<H", 1) + struct.pack("<H", 0)
+    data = figure.encode()
+    out += struct.pack("<I", 1) + struct.pack("<H", len(data)) + data
+    open(f"{sys.argv[1]}/{cid}.lab", "wb").write(out)
+PY
+  MELEE_CAPTURE_UI=1 run lab-0 1720 --capture "$root/lab-0/lab.ppm" 1700
+  grep -h "lab:" "$root/lab-0/log" | sed 's/^\[ *[0-9.]*\] //' | sort -u | head -3
   for look in 1 2; do
     fresh lab-$look "labview 1\nlook_lab_fighters $look\n"; MELEE_CAPTURE_UI=1 run lab-$look 1720 --capture "$root/lab-$look/lab.ppm" 1700
     grep -h "lab view" "$root/lab-$look/log" | sed 's/^\[ *[0-9.]*\] //' | sort -u | head -3

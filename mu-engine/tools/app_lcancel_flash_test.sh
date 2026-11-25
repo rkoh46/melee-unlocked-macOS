@@ -4,6 +4,8 @@
 # (R pulses before the landing), with settings.ini lcancel_flash_mode 6 (MU: both). The session log names the made and missed
 # L-cancels and how many fighter model draws the flash tinted; pictures every 4 frames from frame 2300 (PPM) show P1's model
 # red (missed) or green (made). Nothing is written outside build/mu-engine/runs.
+# MODE 2, 3 or 4 is 20XX TE's own flash (missed, success, both), drawn by the game from TE's word 2 bits: it needs the TE save
+# as the te mod profile (MU_TE_GCI names the player's own copy of the .gci; never committed), as app_te_test.sh loads it.
 #   app_lcancel_flash_test.sh ISO [MODE]
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
@@ -26,8 +28,12 @@ for k in range(20):                      # one short-hop neutral air every 60 fr
 open(path, "w").write("\n".join(head + match) + "\n")
 PY
 printf 'lcancel_flash_mode %s\nlcancel_success_flash 2\n' "$mode" > "$out/melee-unlocked/settings.ini"
+if [ "$mode" -ge 2 ] && [ "$mode" -le 4 ]; then
+  gci="${MU_TE_GCI:?20XX TE flash modes need MU_TE_GCI (the TE save)}"
+  mkdir -p "$out/melee-unlocked/Mods/te"; cp "$gci" "$out/melee-unlocked/Mods/te/"; echo "mod_profile te" >> "$out/melee-unlocked/settings.ini"
+fi
 MELEE_UPDATE_CHECK=0 MELEE_NO_FINDER=1 MU_TEST_FLASH_FRAMES=12 timeout 600 "$engine" --iso "$iso" --profile-dir "$out" --offline --hidden --volume 0 \
   --no-audio-device --no-record --frames 3500 --play-script "$out/vs.txt" --capture "$out/shots/f.ppm" 2300 --capture-every 4 > "$out/log" 2>&1
 echo "engine exit $?"
-grep -h "overlays: L-cancel\|looks: the L-cancel\|TE L-cancel" "$out/log" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200
+grep -h "overlays: L-cancel\|looks: the L-cancel\|TE L-cancel\|20XX Tournament" "$out/log" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200
 ls "$out/shots" | wc -l | sed 's/^ */pictures: /'
