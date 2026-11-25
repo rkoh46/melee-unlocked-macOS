@@ -182,5 +182,9 @@ void decoder_sync();                 // simulation thread: returns when the deco
 // Simulation-thread time other files measure, running totals in ns: [0] rollback state saves and loads, [1] waiting
 // for the decoder before them, [2] every other netplay command. in_resim: the game is simulating frames again.
 extern uint64_t sim_cost[3];
+// ui/software_keyboard_mac.mm: a line of text from the player (the Switch's keyboard applet): a prompt on the main thread, which
+// blocks until OK or Cancel; call it off the main thread. `text` is the initial text and, on true, the words typed. Tests:
+// MU_TEST_KEYBOARD answers without a prompt.
+bool software_keyboard(const char* header, const char* guide, std::string& text);
 extern bool in_resim;
 }  // namespace fe

@@ -308,7 +308,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Mods page | launcher | active: the launcher's Mods page lists, installs and removes mods with the shared installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp), and Use picks a profile for an offline start |
 | Mods catalog | launcher + external | active: melee-unlocked's mods-catalog-2.json from the fetched tree, installed by the shared installer (`mu-engine/tools/mod_install_test.sh`) |
 | Melee 3D | launcher | not wired |
-| Replay library | launcher | partial: the launcher's Replays page lists the games and Watch plays one in the melee-unlocked engine (`--replay`, the replays module with its viewer); no library page of its own |
+| Replay library | launcher | active: the launcher's Replays page lists the games and Watch plays one in the melee-unlocked engine; in the engine, the panel's Replays page is melee-unlocked's library as the Switch has it (`fe/features/replay_library.cpp`): each replay's line and Slippi-Launcher-style stats, sort, hide short games, the search (a text prompt, `ui/software_keyboard_mac.mm`), the watch queue, "Show it as it was played" (`replayasplayed`, from a replay's .trace), Compress all (.slpz, each read back before its .slp goes; `compressreplays 1` also compresses earlier sessions at the start), Delete to the folder's .trash with Undo the last delete. `mu-engine/tools/app_replay_library_test.sh`: stats read, deleted to .trash and back with Undo, search "fox" 4 shown, watch queue 2, Compress all 4 of 4 to .slpz. The as-played pacing has no Mac test yet (no .trace in the test folder) |
 | Replay stats | launcher | partial: the replays module's coach tips are logged at playback (fe/features/replay_coach_glue.cpp); no stats page |
 | Watch live | launcher | active: the launcher's Replays page Watch live follows the Slippi Launcher's spectate folder (its Settings spectateSlpPath, else rootSlpPath/Spectate, else ~/Documents/Slippi/Spectate) and opens each new game file as it appears; the engine plays a file still being written, waiting at the top of each frame for it to arrive and ending at Game End or after 30 s without growth (replays.cpp, after melee-unlocked's source_host.cpp). Tested with tools/mac/slp_live_writer.py: a 7202-frame game written at 3x played to its Game End (0 differ); one written slower than real time waited for its frames and ended when it stopped growing. Not tried with the Slippi Launcher itself |
 | Multiplayer Lobby | launcher + external | not wired |
@@ -354,7 +354,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | ID | Item | Mac status and port note |
 |---|---|---|
 | M1 | Replays: "Open replay" (browse) | active: the launcher's Replays page "Open a replay..." (an open panel for .slp and .slpz) |
-| M2 | Replays: "Compress all replays now (.slpz)" | not wired; easy |
+| M2 | Replays: "Compress all replays now (.slpz)" | active: the engine panel's Replays page (Replay library row) |
 | M3 | Replays: refuse a replay played on a mod stage | not wired; easy |
 | M4 | Replays: content fingerprint check | not wired; easy |
 | M5 | Replays: delete to Recycle Bin, right-click "Show in Explorer" | not wired; easy: NSWorkspace recycle / reveal in Finder |

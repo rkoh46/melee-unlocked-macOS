@@ -69,6 +69,16 @@ bool overlay_draws_training();       // a picture overlay draws the Training pan
 
 // replays.cpp
 bool replay_playing();               // a .slp is being played back
+// netoverlay.cpp: a session trace record of a replay shown "as it was played" (replay_library.cpp) into the overlay's ring; the
+// panel then shows it during the replay.
+void net_trace_show_replay_record(const void* record);   // a net_trace::Record
+// replay_library.cpp: the watch queue's next replay ("" when it is over), "as it was played" for a frame of a replay that plays
+// (the simulation thread, replays.cpp's viewer, before the frame runs: it holds the picture as the session did), and the
+// compression of earlier sessions' replays at the start (compressreplays 1).
+std::string library_queue_next();
+void library_replay_opened(const std::string& path);
+void library_replay_frame(int32_t frame, bool paced);
+bool replays_compress_on();
 bool replay_word(int which, uint32_t* value);   // the recorded option words during playback (0..2)
 bool replay_pad_hook(MuPadStatus pads[4]);      // playback controls; true when the pads must not reach the game as they are
 std::string replay_folder();                    // where replays are written and listed
