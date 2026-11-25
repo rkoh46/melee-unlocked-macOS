@@ -11,6 +11,8 @@
 #                 plays it
 #   lock          TE's "lock settings" (te_options2 40000): --feature-test te-lock sends command 0xF8 as TE's menu does: a change
 #                 is refused while locked, turning the lock off is taken, the same change then goes through
+#   pair          TE's Disable screen rumble and this app's No screen shake linked (--feature-test te-pair: ours switched on,
+#                 then TE's switched off, each followed by the other)
 # Output: build/mu-engine/runs/app-te/<case>/.
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
@@ -55,8 +57,12 @@ PY
     printf '%s\n' "te_options2 40000" > "$dir/melee-unlocked/settings.ini.state"
     printf '%s\n' "130 A" "140" > "$dir/script.txt"
     run "$dir" 200 "$dir/script.txt" --feature-test te-lock ;;
+  pair)
+    printf '%s\n' "mod_profile te" > "$dir/melee-unlocked/settings.ini"
+    printf '%s\n' "130 A" "140" > "$dir/script.txt"
+    run "$dir" 240 "$dir/script.txt" --feature-test te-pair ;;
   *) echo "unknown case $case" >&2; exit 2 ;;
   esac
   echo "== $case"
-  grep -hE "mods:|jukebox:|te_menu|0xF7|TE |te-lock|second start|engine exit|captured" "$dir/log" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200 | tail -20
+  grep -hE "mods:|jukebox:|te_menu|0xF7|TE |te-lock|te-pair|screen rumble|second start|engine exit|captured" "$dir/log" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200 | tail -20
 done

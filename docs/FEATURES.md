@@ -66,7 +66,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Ping readout | renderer | wired: the HUD and the network overlay read the bridge's ping (the round trip from the game's pad acknowledgements); not run on the Mac |
 | Network and timing overlay | renderer + host | wired: fe/features/netoverlay.cpp (settings.ini `netoverlay 1`) on the bridge's frame trace (time sync waits, halts, offset) and the rollback store; not run on the Mac |
 | Session trace file | host | active: `Game_*.trace` beside an online match's replay when the match had a mark or a long wait (settings.ini `session_trace`, upstream's CSV); the menus test logs `session trace of ... not kept (no mark, no long wait)` |
-| Agreed Gecko codes online | host | not wired (an upstream stub) |
+| Agreed Gecko codes online | host | not ported: melee-unlocked 1.0.5 has it between its own builds (port/runtime/host/gecko_session.cpp and gecko_online.h: each side offers its codes when a Direct or arena connection to another melee-unlocked game opens, the other ticks the ones it accepts on the character select, both games run the agreed ones from a lock exchanged at the match's first frame), carried in melee-unlocked's own netplay messages and announced by its build message 0xE0. This app's netplay is Melee-NX-NetPlay's Slippi 3.7.0 netplay with that project's build message family (0xD0), which has no Gecko messages yet, and the codes would also have to run inside rollback re-simulation; against Slippi peers it stays off in any case |
 | YouGame online: sign-in | host + renderer + external | out of scope |
 | YouGame Ranked | game image + host + external | out of scope |
 | YouGame Unranked, with "Both" search | game image + host + external | out of scope |
@@ -412,7 +412,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A57 | "Restart now" button | not wired; Switch: medium - app relaunch of the game program; macOS: easy |
 | A59 | Settings view memory | active: the panel reopens on the page it was left on (this session; ui/mu_panel.cpp g_reopen_page), and each layout remembers its own palette |
 | A60 | UI scale | not wired; Switch: easy (720/1080 fixed); macOS: easy (Retina backing scale) |
-| A62 | 20XX TE pair link | not wired; Switch: easy - two bit syncs in settings code; macOS: easy |
+| A62 | 20XX TE pair link | active for the screen rumble pair (`fe/features/extras.cpp`): with the TE save's features on (offline), TE's Disable screen rumble and No screen shake follow each other, settling once from TE's side; TE's Lock settings keeps TE's side. TE's input display needs no pair here: the overlays draw TE's pads from its own bit (row "20XX TE input display"). `app_te_test.sh ISO pair`: `No screen shake on: TE's Disable screen rumble follows`, then `TE's Disable screen rumble off: No screen shake follows` |
 | A66 | Advanced groups | not wired; Switch: easy; macOS: easy |
 | A67 | Engine-only and experimental rules | not wired; Switch: easy (n/a mostly: one engine); macOS: easy |
 | A71 | `widescreen` key | not wired; Switch: easy - doc fix |
