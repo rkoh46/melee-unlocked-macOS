@@ -219,7 +219,7 @@ void decide_draw(const Frame& f, const DrawCall& d, gx::LookDecision* out) {
   const Filter& e = g_filter;
   const bool in_world = world(e, d);
   out->widen = e.wide && widen(f, d);
-  out->widen_by = kWiden;
+  out->widen_by = fe::looks::true_widen_scale();   // kWiden at 16:9
   if (e.in_match && effect(e, d)) { out->skip = true; ++g_skipped; return; }
   if (in_world && e.backdrop_off) {
     if (d.owner_player == 0xFF && !d.skinned && fe::looks::load(fe::looks::live().arcade_backdrop) && frustum_backdrop(f, d)) { out->skip = true; ++g_skipped; return; }

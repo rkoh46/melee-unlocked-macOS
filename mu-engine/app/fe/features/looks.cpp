@@ -54,7 +54,7 @@ uint32_t (*orig_display)() = nullptr;
 int32_t owner_tracking() { return fe::looks::active() || live().flash_on.load(std::memory_order_relaxed) ? 1 : 0; }   // looks, the L-cancel flash   // read by the game for every draw: follows the menu at once
 // True widescreen (settings.cpp truewidescreen): how much wider the picture is than the game's cameras (320/219 at 16:9);
 // the game widens the camera Fountain of Dreams' reflection is rendered with by it (mu_host.h picture_widen).
-float picture_widen() { return live().true_widescreen.load(std::memory_order_relaxed) ? 320.0f / 219.0f : 1.0f; }
+float picture_widen() { return live().true_widescreen.load(std::memory_order_relaxed) ? 1.0f / fe::looks::true_widen_scale() : 1.0f; }
 uint32_t display_options() {
   const uint32_t word = orig_display ? orig_display() : 0;
   return word | (fe::looks::load(live().lightweight) >= 1 ? MU_DISPLAY_OPTION_LOW_POLY : 0u);
@@ -116,6 +116,10 @@ void register_looks() {
                     const int now = fe::looks::preset_of();
                     fe::looks::apply_preset(now < 0 ? 0 : (now + (d < 0 ? n - 1 : 1)) % n);
                   }, nullptr, write_all});
+  // melee-unlocked's "Crystal fighter colors": with a Crystal look, the mod's own colours or the players' (presets 5 and 6).
+  add_menu_entry({"Looks", "  Crystal fighter colours",
+                  [] { const int p = fe::looks::preset_of(); return std::string(p == 5 ? "Original mod colours" : p == 6 ? "Player colours" : "Only with Crystal"); },
+                  [](int) { const int p = fe::looks::preset_of(); if (p == 5 || p == 6) fe::looks::apply_preset(p == 5 ? 6 : 5); }, nullptr, write_all});
   add_menu_entry({"Looks", "  Lightweight", [] { return std::to_string(fe::looks::load(live().lightweight)); },
                   [](int d) { step(live().lightweight, d, 6); }, nullptr, write_all});
   add_menu_entry({"Looks", "  Visual effects", [] { return std::string(kEffects[fe::looks::load(live().effects) & 3]); },

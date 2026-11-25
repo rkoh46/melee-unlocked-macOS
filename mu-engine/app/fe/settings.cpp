@@ -41,7 +41,8 @@ struct Settings {
   bool vanilla_only = false;              // upstream's --vanilla-only session: retail gameplay, its own memory card, no mods
   bool lag_test_next = false;             // upstream's lagtestnext: the next start is the Lossless adapter lag test (that start only)
   // Picture
-  bool true_widescreen = false;   // truewidescreen: the renderer widens the picture to 16:9 (upstream's True widescreen at 16:9)
+  bool true_widescreen = false;
+  int true_mode = 0, true_custom_w = 21, true_custom_h = 9;   // truewsaspect, truewscustomw/h (melee-unlocked's Widescreen shape)   // truewidescreen: the renderer widens the picture to 16:9 (upstream's True widescreen at 16:9)
   bool widescreen = false, player_tags = false, hide_ko_explosions = false, hide_hud_emblems = false, freeze_fd = false;
   bool low_poly = false, fod_reflections = false, css_background_free = false, training_hud = true;
   int stock_hud_scale = 100, damage_hud_scale = 100;   // 75..175
@@ -151,6 +152,9 @@ void set(const std::string& key, const std::string& value) {
   else if (key == "freeze_fd") s.freeze_fd = on;
   else if (key == "widescreen") s.widescreen = on;
   else if (key == "truewidescreen") { s.true_widescreen = on; fe::looks::live().true_widescreen.store(on); }
+  else if (key == "truewsaspect") { s.true_mode = std::clamp(n, 0, 3); fe::looks::live().true_mode.store(uint8_t(s.true_mode)); }
+  else if (key == "truewscustomw") { s.true_custom_w = std::clamp(n, 1, 100); fe::looks::live().true_custom_w.store(s.true_custom_w); }
+  else if (key == "truewscustomh") { s.true_custom_h = std::clamp(n, 1, 100); fe::looks::live().true_custom_h.store(s.true_custom_h); }
   else if (key == "clean_replays") s.clean_replays = on;
   else if (key == "arcade_hitboxes") s.arcade_hitboxes = on;
   else if (key == "arcade_projectile_hitboxes") s.arcade_projectile_hitboxes = on;
@@ -217,6 +221,9 @@ std::string get(const std::string& key) {
   if (key == "freeze_fd") return bit(s.freeze_fd);
   if (key == "widescreen") return bit(s.widescreen);
   if (key == "truewidescreen") return bit(s.true_widescreen);
+  if (key == "truewsaspect") return num(s.true_mode);
+  if (key == "truewscustomw") return num(s.true_custom_w);
+  if (key == "truewscustomh") return num(s.true_custom_h);
   if (key == "clean_replays") return bit(s.clean_replays);
   if (key == "arcade_hitboxes") return bit(s.arcade_hitboxes);
   if (key == "arcade_projectile_hitboxes") return bit(s.arcade_projectile_hitboxes);

@@ -63,6 +63,9 @@ float picture_aspect(const overlay::Config& c) {
     case 4: return 0.0f;
     default:   // Auto: 16:9 code fills the screen, else 4:3; True widescreen boxes the opening movie (nothing widens it)
       if (fe::looks::live().true_widescreen.load(std::memory_order_relaxed) && fe::looks::live().scene_major.load(std::memory_order_relaxed) == 0x18) return 4.0f / 3.0f;
+      // True widescreen at a shape other than 16:9 (16:10, a custom one, the window's): the picture takes that shape.
+      if (fe::looks::live().true_widescreen.load(std::memory_order_relaxed) && fe::looks::live().true_mode.load(std::memory_order_relaxed) != 0)
+        return fe::looks::true_aspect();
       return options.stretch ? 0.0f : 4.0f / 3.0f;
   }
 }
@@ -649,6 +652,7 @@ void overlay_draw(int ww, int wh) {
   const overlay::Config c = features::overlay_config();
   apply_picture(c);
   ImDrawList* dl = ImGui::GetForegroundDrawList();
+  if (ww > 0 && wh > 0) fe::looks::live().window_aspect.store(float(ww) / float(wh), std::memory_order_relaxed);   // Widescreen shape: Fit the window
   const Rect g = game_rect(ww, wh, picture_aspect(c));
   draw_border(dl, c, g, ww, wh);
   bool replay_shown = false;

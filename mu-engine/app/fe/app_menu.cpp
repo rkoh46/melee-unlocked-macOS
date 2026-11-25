@@ -75,6 +75,9 @@ const std::vector<Page>& pages() {
       {"arcade_backdrop", "Grid behind the stage", Kind::Grid},
       // melee-unlocked's rows the Mac panel was missing (the keys were read, with no row to change them).
       {"truewidescreen", "True widescreen", Kind::Toggle},
+      {"truewsaspect", "  Widescreen shape", Kind::Choice, 0, 3, 1, {"16:9", "16:10", "Custom", "Fit the window"}},
+      {"truewscustomw", "  Custom shape width", Kind::Range, 1, 100, 1},
+      {"truewscustomh", "  Custom shape height", Kind::Range, 1, 100, 1},
       {"lowpoly", "Low-poly fighters", Kind::Toggle},
       {"training_hud", "Training HUD", Kind::Toggle},
       {"fodreflections", "Fountain of Dreams reflections", Kind::Toggle},

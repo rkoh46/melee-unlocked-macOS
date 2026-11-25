@@ -41,10 +41,29 @@ struct Live {
   std::atomic<uint64_t> flashed{0};                      // draws the flash tinted (render thread; logged at the end)
   std::atomic<bool> true_widescreen{false};              // settings.ini truewidescreen: the renderer widens to 16:9 (bridge, patches/0116)
   std::atomic<uint8_t> scene_major{0};                   // the scene of the newest frame the renderer converted (the opening movie stays 4:3)
+  // melee-unlocked's Widescreen shape (render_options.h TrueAspect, settings.ini truewsaspect): 0 16:9, 1 16:10, 2 Custom
+  // (truewscustomw:truewscustomh), 3 Fit the window (window_aspect, kept by the overlay from the window's size).
+  std::atomic<uint8_t> true_mode{0};
+  std::atomic<int> true_custom_w{21}, true_custom_h{9};
+  std::atomic<float> window_aspect{16.0f / 9.0f};
   // Measurements for the picture test's timing lines (render thread only writes them).
   std::atomic<uint64_t> frames{0}, rule_ns{0}, skipped{0}, drawn{0}, treated_textures{0}, tinted{0}, wired{0};
 };
 inline Live& live() { static Live l; return l; }
+// The aspect True widescreen widens the world to (upstream's true_widescreen_aspect), clamped to 4:3 .. 64:27; 16:9 exactly
+// for the classic mode. The widened projection's x row is scaled by (73/60) / aspect (219/320 at 16:9).
+inline float true_aspect() {
+  const Live& l = live();
+  float a = 16.0f / 9.0f;
+  switch (l.true_mode.load(std::memory_order_relaxed)) {
+    case 1: a = 16.0f / 10.0f; break;
+    case 2: { const int w = l.true_custom_w.load(), h = l.true_custom_h.load(); if (w > 0 && h > 0) a = float(w) / float(h); break; }
+    case 3: a = l.window_aspect.load(std::memory_order_relaxed); break;
+    default: return a;
+  }
+  return a < 4.0f / 3.0f ? 4.0f / 3.0f : a > 64.0f / 27.0f ? 64.0f / 27.0f : a;
+}
+inline float true_widen_scale() { return (73.0f / 60.0f) / true_aspect(); }
 
 inline uint8_t load(const std::atomic<uint8_t>& a) { return a.load(std::memory_order_relaxed); }
 // Something here changes the picture of a match: the renderer needs to know which draws are fighters and stage
