@@ -27,7 +27,7 @@ for side in a b; do
   sleep 2
 done
 wait $pid_a; ra=$?; wait $pid_b; rb=$?
-pkill -P $mock 2>/dev/null; kill $mock $mockhttp 2>/dev/null; wait $mock $mockhttp 2>/dev/null
+pkill -P $mock 2>/dev/null; pkill -P $mockhttp 2>/dev/null; kill $mock $mockhttp 2>/dev/null; wait $mock $mockhttp 2>/dev/null
 echo "side a exit $ra, side b exit $rb"
 grep -h "match" "$out/mock.log" | head -4
 grep -h "mock http:" "$out/http.log" | head -12
