@@ -119,3 +119,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - Tests: `mu-engine/tests/online/online_marks_a.txt` (trace marks pressed in an online match) and `app_online_menus_test.sh` `MU_COSMETICS_A` (the skins-off-online note); `app_online_test.sh` `MU_COSMETICS`.
 - `app_te_test.sh lock` (`--feature-test te-lock`, `fe/features/te_lock_test.cpp`): 20XX TE's lock settings through command 0xF8.
 - `mu-engine/tools/app_save_import_test.sh`: a profile's .gci goes onto its card once.
+- Launcher Replay Viewer: a picked game's card with melee-unlocked's stats and the session trace graph (`mu-engine/app/replay_stats_facade.cpp`), Move to Trash; `MELEE_LAUNCHER_PICK` for screenshots.

@@ -14,6 +14,8 @@
 #include "mods_facade.h"
 
 #include <algorithm>
+#include <array>
+#include <memory>
 #include <cmath>
 #include <fstream>
 #include <cctype>
@@ -212,6 +214,19 @@ NSArray<NSString*>* whats_new_lines() {
 namespace mu_crash {
 bool save(const std::string& support, const std::string& replay_dir, std::string* where, std::string* error);
 }
+// ---- the Replay Viewer's stats card (mu-engine/app/replay_stats_facade.cpp, melee-unlocked's replay data, stats and session
+// trace overview from the fetched tree). Declared as in replay_stats_facade.h (keep the two in step).
+namespace mu_replay_stats {
+struct Card {
+  bool ok = false;
+  std::string title, date;
+  std::vector<std::pair<std::string, std::string>> rows;
+  bool trace = false;
+  std::vector<std::array<float, 5>> bins;
+  std::string trace_summary;
+};
+__attribute__((weak)) Card read(const std::string&) { return {}; }
+}
 // The mod profile the engine loads at its next start: settings.ini's mod_profile (fe/settings.cpp reads it; the engine's
 // MODS page writes the same key).
 namespace {
@@ -281,6 +296,10 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 @property(nonatomic) NSTimer* liveTimer;
 @property(nonatomic) NSTask* watchTask;    // the engine playing a replay now (one at a time)
 @property(nonatomic) NSString* liveStatus;
+// The picked replay's card (upstream's Replay Viewer: its stats and the session trace graph), read off the main thread.
+@property(nonatomic) NSInteger picked;
+@property(nonatomic) std::shared_ptr<mu_replay_stats::Card> card;
+@property(nonatomic) BOOL cardLoading;
 // The update check: this repository's branch on GitHub against the commit this app was built from (Info.plist MUBuildCommit).
 // Never melee-unlocked's own updater: this app is built from source, so an update is the install line run again.
 @property(nonatomic) NSString* updateText;
@@ -562,15 +581,96 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   text(@"In game, F1 or Esc opens the menu with the rest of the settings and the controller setup.", LR(CX, y + 4, CW, 32), f_small(), C_FAINT, LEFT, 0, true);
 }
 // ---- Replay Viewer: the newest games as cards ----------------------------------------------------------------------
+// The picked replay's stats (upstream launcher_replay_stats.inl's rows, two columns) and its session trace graph
+// (launcher_trace_view.cpp's overview: frame time, work, waits, rollbacks, marks across the session), then Move to Trash.
+- (void)paintCard:(const host::GameRow&)row y:(CGFloat)y {
+  const CGFloat h = WIN_H - 58 - y;
+  round_rect(LR(CX, y, CW, h), 10, C_FIELD, C_FIELD, &C_FIELD_BORDER);
+  [self button:@"trash" rect:LR(CX + CW - 120, y + 8, 110, 24) title:@"Move to Trash" primary:NO enabled:!row.path.empty()];
+  [self button:@"unpick" rect:LR(CX + CW - 190, y + 8, 64, 24) title:@"Close" primary:NO enabled:YES];
+  mu_replay_stats::Card* c = self.card.get();
+  if (self.cardLoading || !c) { text(@"Reading the replay...", LR(CX + 14, y + 10, 300, 20), f_small(), C_DIM); return; }
+  if (!c->ok) { text(@"This replay's stats could not be read.", LR(CX + 14, y + 10, 300, 20), f_small(), C_DIM); return; }
+  text(ns(c->date), LR(CX + 14, y + 8, CW - 190, 22), f_small(), C_DIM);
+  static const int kShown[] = {1, 2, 3, 4, 6, 7, 8, 11};   // Kills .. Inputs per minute, Ledge grabs (Players is the list's own line)
+  const CGFloat col_w = (CW - 28) / 2;
+  for (int k = 0; k < 8; ++k) {
+    const int r = kShown[k];
+    if (r >= (int)c->rows.size()) continue;
+    const CGFloat x = CX + 14 + (k % 2) * col_w, ry = y + 36 + (k / 2) * 19;
+    text(ns(c->rows[size_t(r)].first), LR(x, ry, 118, 17), f_label(), C_FAINT);
+    text(ns(c->rows[size_t(r)].second), LR(x + 120, ry, col_w - 124, 17), f_small(), C_TEXT);
+  }
+  const CGFloat gy = y + 36 + 4 * 19 + 6, gh = std::max<CGFloat>(20, h - (gy - y) - 24);
+  if (!c->trace || c->bins.empty()) {
+    text(@"No session trace beside this replay (online matches with a mark or a long wait keep one).", LR(CX + 14, gy, CW - 28, 18), f_small(), C_FAINT);
+    return;
+  }
+  round_rect(LR(CX + 14, gy, CW - 28, gh), 5, C_CONTENT_BOT, C_CONTENT_BOT, &C_FIELD_BORDER);
+  float top = 33.4f;
+  for (const auto& b : c->bins) top = std::max(top, std::max(b[0], b[1]));
+  const CGFloat gx0 = CX + 16, gw = CW - 32, bw = gw / CGFloat(c->bins.size());
+  for (size_t i = 0; i < c->bins.size(); ++i) {
+    const auto& b = c->bins[i];
+    const CGFloat x = gx0 + bw * CGFloat(i), w = std::max<CGFloat>(bw, 0.6);
+    const CGFloat hi = std::min<CGFloat>(gh - 4, (gh - 4) * b[0] / top), wk = std::min<CGFloat>(gh - 4, (gh - 4) * b[1] / top);
+    [col(b[2] > 0 ? C_WARN : mix(g_accent, C_FIELD, .35), .9) setFill]; NSRectFillUsingOperation(LR(x, gy + gh - 2 - hi, w, hi), NSCompositingOperationSourceOver);
+    [col(C_OK, .8) setFill]; NSRectFillUsingOperation(LR(x, gy + gh - 2 - wk, w, wk), NSCompositingOperationSourceOver);
+    if (b[3] > 0) { [col(C_BAD) setFill]; NSRectFill(LR(x, gy + 2, w, 3)); }
+    if (int(b[4]) & 0x78) { [col(C_TEXT) setFill]; NSRectFill(LR(x, gy, std::max<CGFloat>(w, 0.8), 2)); }
+  }
+  const CGFloat line = gy + gh - 2 - (gh - 4) * 16.7f / top;
+  [col(C_TEXT, .25) setFill]; NSRectFill(LR(gx0, line, gw, 1));
+  text(ns("Session trace: " + c->trace_summary + "   (green work, accent frame time, amber waits, red rollbacks, white marks)"),
+       LR(CX + 14, gy + gh + 2, CW - 28, 16), f_small(), C_FAINT);
+}
+- (void)pickReplay:(NSInteger)index {
+  const std::vector<host::GameRow> rows = self.dashboard.rows();
+  if (index < 0 || index >= (NSInteger)rows.size() || rows[size_t(index)].path.empty()) return;
+  self.picked = index; self.card = nullptr; self.cardLoading = YES;
+  const std::string path = rows[size_t(index)].path;
+  __weak MULaunchView* weak = self;
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    auto card = std::make_shared<mu_replay_stats::Card>(mu_replay_stats::read(path));
+    host::log("launcher: replay stats of %s: %s, %zu rows, trace %s", path.c_str(), card->ok ? "read" : "not read", card->rows.size(), card->trace ? card->trace_summary.c_str() : "none");
+    dispatch_async(dispatch_get_main_queue(), ^{ MULaunchView* v = weak; if (v && v.picked == index) { v.card = card; v.cardLoading = NO; [v setNeedsDisplay:YES]; } });
+  });
+}
+- (void)reloadReplays {
+  host::LauncherSettings& settings = *self.settings;
+  if (settings.replay_dir.empty()) return;
+  const std::string dir = settings.replay_dir, code = settings.account_code, name = settings.account_name;
+  __weak MULaunchView* weak_view = self;
+  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+    host::Dashboard d;
+    d.code = code; d.name = name;   // whose games: WIN and LOSS from this player's side
+    host::dashboard_load_games(dir, d, 8);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      MULaunchView* v = weak_view;
+      if (!v) return;
+      v.dashboard = d; [v setNeedsDisplay:YES];
+      static bool first = true;
+      if (!first) return;
+      first = false;
+      if (const char* n = std::getenv("MELEE_PLAY_REPLAY")) [v activate:[NSString stringWithFormat:@"watch:%d", std::atoi(n)]];   // tests: Watch on recent game n
+      if (const char* n = std::getenv("MELEE_LAUNCHER_PICK")) [v pickReplay:std::atoi(n)];   // screenshots: recent game n's stats card
+    });
+  });
+}
 - (void)paintReplays {
   text(@"REPLAYS", LR(CX, 32, CW, 18), f_label(), C_FAINT, LEFT, 1);
   const std::vector<host::GameRow> rows = self.dashboard.rows();
   CGFloat y = 58;
   const BOOL can_watch = !self.settings->iso.empty();
   if (rows.empty()) text(@"No replays yet. Every game you play is saved here as a .slp file.", LR(CX, y, CW, 20), f_body(), C_DIM);
-  const size_t shown = self.liveWatch ? 7 : 8;
-  for (size_t i = 0; i < rows.size() && i < shown; ++i) {
+  const BOOL picking = self.picked >= 0 && self.picked < (NSInteger)rows.size();
+  const size_t shown = picking ? 3 : self.liveWatch ? 7 : 8;
+  const size_t first = picking ? size_t(std::max<NSInteger>(0, std::min<NSInteger>(self.picked - 1, (NSInteger)rows.size() - 3))) : 0;
+  for (size_t i = first; i < rows.size() && i < first + shown; ++i) {
     const host::GameRow& r = rows[i];
+    self.buttons[[NSString stringWithFormat:@"pick:%zu", i]] = [NSValue valueWithRect:LR(CX, y, CW - 126, 38)];   // the card opens its stats
+    if (picking && (NSInteger)i == self.picked) { round_rect(LR(CX, y, CW, 38), 8, C_NAV_ON, C_NAV_ON, nullptr); round_rect(LR(CX, y + 9, 3, 20), 1.5, acc_top(), acc_bottom(), nullptr); }
+    else
     round_rect(LR(CX, y, CW, 38), 8, C_FIELD, C_FIELD, &C_FIELD_BORDER);
     text(ns(r.title), LR(CX + 12, y + 3, CW - 190, 18), f_body(), C_TEXT);
     text(ns(r.subtitle), LR(CX + 12, y + 19, CW - 190, 16), f_small(), C_FAINT);
@@ -581,7 +681,8 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
     }
     y += 44;
   }
-  if (self.liveWatch) text(self.liveStatus ?: @"", LR(CX, 58 + 7 * 44 + 6, CW, 34), f_small(), C_DIM, LEFT, 0, true);
+  if (picking) [self paintCard:rows[size_t(self.picked)] y:58 + std::min<size_t>(3, rows.size()) * 44];
+  else if (self.liveWatch) text(self.liveStatus ?: @"", LR(CX, 58 + 7 * 44 + 6, CW, 34), f_small(), C_DIM, LEFT, 0, true);
   [self button:@"replaysfolder" rect:LR(CX, WIN_H - 50, 166, 32) title:@"Open Replays folder" primary:NO enabled:YES];
   [self button:@"openreplay" rect:LR(CX + 174, WIN_H - 50, 140, 32) title:@"Open a replay..." primary:NO enabled:can_watch];
   [self button:@"watchlive" rect:LR(CX + 322, WIN_H - 50, CW - 322, 32) title:self.liveWatch ? @"Stop watching live" : @"Watch live"
@@ -728,6 +829,7 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 // ---- input ------------------------------------------------------------------------------------------------------------
 - (NSString*)buttonAt:(NSPoint)p {
   if (self.notesOpen) { NSValue* ok = self.buttons[@"notesok"]; return ok && NSPointInRect(p, ok.rectValue) ? @"notesok" : nil; }
+  for (NSString* k in self.buttons) if (![k hasPrefix:@"pick:"] && NSPointInRect(p, self.buttons[k].rectValue)) return k;
   for (NSString* k in self.buttons) if (NSPointInRect(p, self.buttons[k].rectValue)) return k;
   return nil;
 }
@@ -783,6 +885,19 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   else if ([key isEqualToString:@"watchlive"]) [self toggleLive];
   else if ([key isEqualToString:@"whatsnew"]) self.notesOpen = YES;
   else if ([key isEqualToString:@"notesok"]) self.notesOpen = NO;
+  else if ([key isEqualToString:@"pick"]) [self pickReplay:index];
+  else if ([key isEqualToString:@"unpick"]) { self.picked = -1; self.card = nullptr; }
+  else if ([key isEqualToString:@"trash"]) {   // upstream: delete to the Recycle Bin; here the Finder's Trash (Put Back works)
+    const std::vector<host::GameRow> rows = self.dashboard.rows();
+    if (self.picked >= 0 && self.picked < (NSInteger)rows.size()) {
+      NSURL* url = [NSURL fileURLWithPath:ns(rows[size_t(self.picked)].path)];
+      [NSWorkspace.sharedWorkspace recycleURLs:@[url] completionHandler:^(NSDictionary*, NSError* error) {
+        host::log("launcher: %s moved to the Trash%s", url.path.UTF8String, error ? " (failed)" : "");
+        if (!error) dispatch_async(dispatch_get_main_queue(), ^{ [self reloadReplays]; });
+      }];
+      self.picked = -1; self.card = nullptr;
+    }
+  }
   else if ([key isEqualToString:@"language"]) [self chooseLanguage];
   else if ([key isEqualToString:@"dog"]) [self chooseRailPicture];
   else if ([key isEqualToString:@"show"] || [key isEqualToString:@"watch"]) {
@@ -941,21 +1056,8 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
     }
     if (const char* page = std::getenv("MELEE_LAUNCHER_PAGE")) view.tab = std::clamp(std::atoi(page), 0, 3);   // screenshots
     // The replay list is read off the main thread (parsing .slp files takes a moment), as the original scans.
-    if (!settings.replay_dir.empty()) {
-      const std::string dir = settings.replay_dir, code = settings.account_code, name = settings.account_name;
-      __weak MULaunchView* weak_view = view;
-      dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        host::Dashboard d;
-        d.code = code; d.name = name;   // whose games: WIN and LOSS from this player's side
-        host::dashboard_load_games(dir, d, 8);
-        dispatch_async(dispatch_get_main_queue(), ^{
-          MULaunchView* v = weak_view;
-          if (!v) return;
-          v.dashboard = d; [v setNeedsDisplay:YES];
-          if (const char* n = std::getenv("MELEE_PLAY_REPLAY")) [v activate:[NSString stringWithFormat:@"watch:%d", std::atoi(n)]];   // tests: Watch on recent game n
-        });
-      });
-    }
+    view.picked = -1;
+    [view reloadReplays];
     window.contentView = view;
     // MELEE_LAUNCHER_SHOT=<file.png> (screenshots, tests): the window opens off every screen, is drawn into that file after
     // two seconds (the update check and the replay list have answered by then) and closes as if dismissed.
