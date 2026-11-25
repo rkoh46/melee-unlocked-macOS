@@ -22,6 +22,8 @@
 #include "features_internal.h"
 #include "frontend.h"
 #include "overlay_state.h"
+#include "looks_live.h"
+#include "mu_lcancel_flash.h"   // melee-unlocked port/runtime/abi (the fetched tree): the flash modes and TE's word 2 bits
 
 #include <algorithm>
 #include <atomic>
@@ -31,6 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <vector>
 
 namespace fe::features {
 namespace {
@@ -39,7 +42,8 @@ std::mutex config_mutex;
 overlay::Config cfg;          // under config_mutex
 std::mutex snap_mutex;
 overlay::Snapshot snap;       // under snap_mutex
-std::atomic<bool> drawn{false};   // a drawer has asked for the snapshot (the Training panel is on screen)
+std::atomic<bool> drawn{false};
+bool lc_mode_given = false;              // lcancel_flash_mode was in settings.ini or changed on the menu   // a drawer has asked for the snapshot (the Training panel is on screen)
 
 // ---- settings ----
 float to_float(const std::string& v, float lo, float hi, float fallback) {
@@ -63,7 +67,7 @@ bool setting(const std::string& key, const std::string& value) {
   else if (key == "performance") c.graph = on;
   else if (key == "playernicknames") c.nicknames = on;
   else if (key == "arcade_combo_counter") c.combo = on;
-  else if (key == "lcancel_flash_mode") c.lcancel = (n == 1 || n == 5 || n == 6) ? n : 0;
+  else if (key == "lcancel_flash_mode") { c.lcancel = std::clamp(n, 0, 6); lc_mode_given = true; }
   else if (key == "lcancel_success_flash") c.lcancel_success = std::clamp(n, 0, 2);
   else if (key == "latencytest") c.latency_test = on;
   else if (key == "adapterrate") c.adapter_rate = on;
@@ -205,6 +209,43 @@ void watch_lcancel(int mode, bool online, int local, uint32_t now) {
   }
 }
 
+// The flash on the fighter's model (Melee-NX-NetPlay frontend 0.4.7, upstream publish_tints: the slot's skinned model of the
+// world camera tinted, not its shadow or effects): through the looks' renderer hook (looks_live.h flash, the per-draw tint in
+// mu-engine/app/gx_looks_mac.cpp). Upstream blends 85 % of the colour in for 6 frames and fades it over 4 more; the renderer's
+// tint is solid (light and shade kept), so the model takes the colour for the 6 solid frames and 2 of the fade. Display only:
+// the game is asked to mark draw owners while a renderer mode is chosen.
+uint32_t test_flash_frames() {   // tests: MU_TEST_FLASH_FRAMES keeps a flash on long enough for a screenshot
+  static const uint32_t n = std::getenv("MU_TEST_FLASH_FRAMES") ? uint32_t(std::atoi(std::getenv("MU_TEST_FLASH_FRAMES"))) : 0u;
+  return n;
+}
+void lcancel_tints(const overlay::Config& c, uint32_t now) {
+  auto& l = fe::looks::live();
+  l.flash_on.store(mu_lcancel_renderer_mode(c.lcancel) != 0, std::memory_order_relaxed);
+  const uint32_t frames = test_flash_frames() ? test_flash_frames() : 8u;
+  for (int slot = 0; slot < 4; ++slot) {
+    const overlay::Flash& f = flashes[slot];
+    uint32_t rgb = 0;
+    if (f.on && now - f.start < frames && !(f.success && c.lcancel_success == 0))
+      rgb = !f.success ? 0xFF1F1A : c.lcancel_success == 1 ? 0xFFFFFF : 0x1FFF2E;
+    l.flash[slot].store(rgb ? 0x1000000u | rgb : 0u, std::memory_order_relaxed);
+  }
+}
+// 20XX TE's own flash (modes 2..4, upstream mu_lcancel_with_flash_mode): the game draws it from TE's word 2 bits, offline with
+// the TE save; the success colour from lcancel_success_flash. Only when lcancel_flash_mode was given or changed here, so TE's
+// own menu keeps its choice otherwise. Picking a TE effect also turns TE's features on (word 1 bit 0x10), as upstream does.
+void lcancel_te_word(const overlay::Config& c) {
+  if (!lc_mode_given || !mods_te_owned()) return;
+  uint32_t& w2 = settings_te_word(2);
+  const bool te = c.lcancel >= MU_LCFLASH_TE_MISSED && c.lcancel <= MU_LCFLASH_TE_BOTH;
+  uint32_t want = mu_lcancel_with_flash_mode(w2, c.lcancel);
+  if (te) want = mu_lcancel_with_success_color(want, c.lcancel_success);
+  if (want == w2 && (!te || (settings_te_word(1) & 0x10))) return;
+  w2 = want;
+  if (te) settings_te_word(1) |= 0x10;
+  settings_state_changed();
+  say("overlays: 20XX TE L-cancel flash %s (te_options2 %X)", te ? "on" : "off", w2);
+}
+
 // Display latency test (upstream gx_core.cpp latency_test_fill): from the pads the game read for this frame.
 int fill = -1;
 uint16_t held_before = 0;
@@ -248,8 +289,10 @@ void on_retrace(const Retrace& info) {
     for (int i = 0; i < 4; ++i) player_names[i] = info.online ? names[i] : std::string();
   }
   count_combos(match && !info.online, state ? state->match_frame : 0, info.retrace);
-  watch_lcancel(match ? c.lcancel : 0, info.online, local, info.retrace);
-  for (auto& f : flashes) if (f.on && info.retrace - f.start > 10) f.on = false;
+  watch_lcancel(match && mu_lcancel_renderer_mode(c.lcancel) ? c.lcancel : 0, info.online, local, info.retrace);
+  for (auto& f : flashes) if (f.on && info.retrace - f.start > std::max<uint32_t>(10, test_flash_frames())) f.on = false;
+  lcancel_tints(c, info.retrace);
+  lcancel_te_word(c);
   const MuPadStatus* pads = pads_out();
   latency_test(c.latency_test, pads);
 
@@ -367,8 +410,14 @@ void register_overlays() {
   add_menu_entry({"Overlays", "Combo counter (offline)", [] { return on_off(overlay_config().combo); }, [](int) { edit([](overlay::Config& c) { c.combo = !c.combo; }); }, nullptr,
                   [](Write w) { w("arcade_combo_counter", overlay_config().combo ? "1" : "0"); }});
   add_menu_entry({"Overlays", "L-cancel flash",
-                  [] { const int m = overlay_config().lcancel; return std::string(m == 1 ? "Missed" : m == 5 ? "Made" : m == 6 ? "Both" : "Off"); },
-                  [](int d) { edit([d](overlay::Config& c) { static const int order[] = {0, 1, 5, 6}; int i = 0; while (i < 4 && order[i] != c.lcancel) ++i; c.lcancel = order[((i % 4) + (d < 0 ? 3 : 1)) % 4]; }); }, nullptr,
+                  [] { static const char* names[] = {"Off", "MU: missed (red)", "TE: missed (red)", "TE: success", "TE: both", "MU: success (green)", "MU: both (red / green)"};
+                       return std::string(names[std::clamp(overlay_config().lcancel, 0, 6)]); },
+                  // upstream's order; the TE effects only with the 20XX TE save loaded
+                  [](int d) { edit([d](overlay::Config& c) {
+                    std::vector<int> order = {0, 1, 5, 6};
+                    if (mods_te_owned()) order.insert(order.end(), {2, 3, 4});
+                    size_t i = 0; while (i < order.size() && order[i] != c.lcancel) ++i;
+                    const size_t n = order.size(); c.lcancel = order[((i % n) + (d < 0 ? n - 1 : 1)) % n]; lc_mode_given = true; }); }, nullptr,
                   [](Write w) { w("lcancel_flash_mode", std::to_string(overlay_config().lcancel)); }});
   add_menu_entry({"Overlays", "  Made L-cancel colour",
                   [] { const int m = overlay_config().lcancel_success; return std::string(m == 1 ? "White" : m == 2 ? "Green" : "None"); },

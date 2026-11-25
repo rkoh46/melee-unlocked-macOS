@@ -90,7 +90,7 @@ Filter build(const Frame& f) {
   // True widescreen: never on the opening movie (upstream's frame_has_widenable_scene).
   e.wide = l.true_widescreen.load(std::memory_order_relaxed) && f.scene_major != 0x18;
   fe::looks::live().scene_major.store(f.scene_major, std::memory_order_relaxed);
-  e.on = fe::looks::active() || e.menus || e.wide;
+  e.on = fe::looks::active() || e.menus || e.wide || l.flash_on.load(std::memory_order_relaxed);   // the L-cancel flash too
   if (!e.on || !in_match(f)) return e;
   const DrawCall* first = nullptr; bool have = false;
   struct Model { uint32_t projection[6]; float z; };
@@ -240,6 +240,18 @@ void decide_draw(const Frame& f, const DrawCall& d, gx::LookDecision* out) {
   if (out->wire) ++g_wired;
   if (s == Surface::Wire) s = Surface::Textured;
   out->mark = uint8_t(s) | ((e.unfiltered && s != Surface::Textured) ? 8 : 0);
+  // The L-cancel flash (Melee-NX-NetPlay frontend/patches/0120; upstream gx_shader.cpp's player tint): the flashing slot's
+  // skinned model of the perspective camera takes the colour (fe/features/overlays.cpp sets it), not its shadow pass or
+  // effects, over every look.
+  if (d.skinned && d.owner_player < 6 && d.xf_regs[0x26] == 0) {
+    const uint32_t flash = fe::looks::live().flash[d.owner_player].load(std::memory_order_relaxed);
+    if (flash) {
+      out->tint = true;
+      out->rgb[0] = float((flash >> 16) & 0xFF) / 255.0f; out->rgb[1] = float((flash >> 8) & 0xFF) / 255.0f; out->rgb[2] = float(flash & 0xFF) / 255.0f;
+      ++g_tinted; fe::looks::live().flashed.fetch_add(1, std::memory_order_relaxed);
+      return;
+    }
+  }
   // The look's port colours (fighters' models) and its white stage (opaque stage pieces): one plain colour, light and shade kept.
   if (e.colours == 1 && d.skinned && d.owner_player < 4 && d.xf_regs[0x26] == 0) {
     out->tint = true; std::memcpy(out->rgb, fe::looks::port_colour(d.owner_player), sizeof out->rgb);

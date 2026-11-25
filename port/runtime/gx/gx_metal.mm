@@ -1282,7 +1282,7 @@ class MetalBackend final : public Backend {
             // number keys on executed frames, which still tick one per retrace.
             if (!opts_.capture_path.empty() && !capture_staging_) {
               const uint64_t n = frame_counter_ + 1;   // executed frames: deterministic and 1:1 with retraces
-              const bool wanted = (opts_.capture_frame && n == opts_.capture_frame) || (opts_.capture_every && n % opts_.capture_every == 0);
+              const bool wanted = (opts_.capture_frame && n == opts_.capture_frame) || (opts_.capture_every && n >= opts_.capture_frame && n % opts_.capture_every == 0);
               if (wanted && command_) {
                   end_pass();   // a lazily-opened draw pass must close first (drain mode never presents)
                 capture_bgra_ = false;
@@ -1303,6 +1303,7 @@ class MetalBackend final : public Backend {
                   if (opts_.capture_ui) td.usage = MTLTextureUsageShaderRead | MTLTextureUsageRenderTarget;
                   capture_staging_ = [device_ newTextureWithDescriptor:td];
                   capture_path_pending_ = opts_.capture_path;
+                  capture_number_ = n;   // the executed frame (a hidden window presents nothing, so presented frames stand still)
                   capture_cmd_ = command_;
                   id<MTLBlitCommandEncoder> blit = [command_ blitCommandEncoder];
                   [blit copyFromTexture:source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(x, y, 0) sourceSize:MTLSizeMake(w, h, 1)
@@ -1378,7 +1379,7 @@ class MetalBackend final : public Backend {
         [capture_cmd_ waitUntilCompleted];
         std::string path = capture_path_pending_;
         if (opts_.capture_every) {
-          char suffix[32]; std::snprintf(suffix, sizeof suffix, "_%05llu.ppm", (unsigned long long)(frames_presented_ + 1));
+          char suffix[32]; std::snprintf(suffix, sizeof suffix, "_%05llu.ppm", (unsigned long long)capture_number_);
           const bool ppm = path.size() > 4 && path.compare(path.size() - 4, 4, ".ppm") == 0;
           path = path.substr(0, ppm ? path.size() - 4 : path.size()) + suffix;
         }
@@ -1506,6 +1507,7 @@ class MetalBackend final : public Backend {
   id<MTLCommandBuffer> capture_cmd_ = nil;
   std::string capture_path_pending_;
   uint32_t capture_w_ = 0, capture_h_ = 0;
+  uint64_t capture_number_ = 0;
   bool capture_bgra_ = false, fx_presented_ = false;
   std::unordered_map<PsoKey, id<MTLRenderPipelineState>, PsoKeyHash> pipelines_;
   std::unordered_map<uint64_t, id<MTLFunction>> vs_functions_, ps_functions_;

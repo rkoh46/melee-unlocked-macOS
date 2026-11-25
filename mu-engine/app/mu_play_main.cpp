@@ -327,7 +327,7 @@ int main(int argc, char** argv) {
   net_host::Options net;
   bool offline = false;
   int volume = 70, scale = 0;
-  uint32_t capture_frame = 0;
+  uint32_t capture_frame = 0, capture_every = 0;
   bool fullscreen = false, hidden = false, vsync = true, vanilla = false;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -356,9 +356,10 @@ int main(int argc, char** argv) {
     else if (a == "--digest") g_digest = std::fopen(next().c_str(), "w");
     else if (a == "--frames") g_frames_limit = uint32_t(std::strtoul(next().c_str(), nullptr, 0));
     else if (a == "--capture") { capture_path = next(); capture_frame = uint32_t(std::strtoul(next().c_str(), nullptr, 0)); }
+    else if (a == "--capture-every") capture_every = uint32_t(std::strtoul(next().c_str(), nullptr, 0));   // with --capture: FILE_<n>.ppm every N frames
     else if (a == "--help") {
       std::printf("MeleeUnlockedEngine --iso PATH [--profile-dir DIR] [--log-file F] [--cache-dir DIR] [--volume 0..100]\n"
-                  "  [--scale auto|1..8] [--fullscreen] [--no-vsync] [--frames N] [--capture FILE.ppm FRAME] [--script FILE]\n"
+                  "  [--scale auto|1..8] [--fullscreen] [--no-vsync] [--frames N] [--capture FILE.ppm FRAME] [--capture-every N] [--script FILE]\n"
                   "  [--sys-dir DIR] [--offline] [--online unranked|direct:CODE|teams|party] [--user-dir DIR] [--net-delay N]\n"
                   "  [--replay FILE.slp] [--replay-dir DIR] [--no-record]\n");
       return 0;
@@ -445,7 +446,7 @@ int main(int argc, char** argv) {
 
   gx::MetalOptions gfx;
   gfx.efb_scale = scale; gfx.vsync = vsync; gfx.cache_dir = cache_dir;
-  gfx.capture_path = capture_path; gfx.capture_frame = capture_frame;
+  gfx.capture_path = capture_path; gfx.capture_frame = capture_frame; gfx.capture_every = capture_every;
   gfx.capture_ui = std::getenv("MELEE_CAPTURE_UI") != nullptr;   // screenshots of the settings panel (MELEE_MENU_OPEN)
   // Display-rate presentation and sub-frames (settings.ini subframe / fps, or --frame-mode / --fps): off by default.
   if (g_play)

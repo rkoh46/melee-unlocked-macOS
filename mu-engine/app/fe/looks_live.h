@@ -33,6 +33,12 @@ struct Live {
   std::atomic<uint8_t> arcade_backdrop{0};               // settings.ini arcade_backdrop: 1 plain colour, 2 the grid (also plain behind)
   std::atomic<uint32_t> arcade_rgb{0x1E2430};            // arcade_background_rgb
   std::atomic<bool> owners{false};                       // the game marks draw owners (MuHostApi.native_owner_tracking), set by the module
+  // The L-cancel flash (features/overlays.cpp, upstream host/lcancel.cpp publish_tints): per player slot 0..5, 0 none or
+  // 0x1000000 | RGB, the colour that slot's fighter model takes while it flashes (gx_looks_mac.cpp's tint);
+  // flash_on: a renderer flash mode is chosen, so the game marks draw owners.
+  std::atomic<uint32_t> flash[6] = {};
+  std::atomic<bool> flash_on{false};
+  std::atomic<uint64_t> flashed{0};                      // draws the flash tinted (render thread; logged at the end)
   std::atomic<bool> true_widescreen{false};              // settings.ini truewidescreen: the renderer widens to 16:9 (bridge, patches/0116)
   std::atomic<uint8_t> scene_major{0};                   // the scene of the newest frame the renderer converted (the opening movie stays 4:3)
   // Measurements for the picture test's timing lines (render thread only writes them).
