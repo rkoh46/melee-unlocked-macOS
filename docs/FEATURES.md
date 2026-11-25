@@ -261,7 +261,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Memory card as a folder of .gci files | host | active: memory card files in ~/Library/Application Support/Dashdance/melee-unlocked/Card A |
 | Automatic save backups | host | active: memory card files in ~/Library/Application Support/Dashdance/melee-unlocked/Card A |
 | Unlock everything without touching the save | game image | active: memory card files in ~/Library/Application Support/Dashdance/melee-unlocked/Card A |
-| Save import for mods | host | active as on the Switch (fe/mods.cpp): a .gci in a profile's folder goes onto that profile's card once, then the player's own saves win; the 20XX TE save is recognised and switches TE's native features instead (`app_te_test.sh`: `20XXTE-v2d-r4-USA.gci is the 20XX Tournament Edition save (v2d r4): its features are the game's native ones`); another game save's import not tried on the Mac |
+| Save import for mods | host | active (fe/mods.cpp, as on the Switch): a .gci in a profile's folder (or `gci =` in Profiles/<name>.ini) goes onto that profile's card once, then the player's own saves win; the 20XX TE save is recognised and switches TE's native features instead. `mu-engine/tools/app_save_import_test.sh`: a save the game wrote elsewhere, `copied to the profile's memory card (not recognised as 20XX TE: an ordinary save for the game to read)`, the game's card then has 1 file; the second start `is already on the profile's memory card` |
 
 ## 11. In-game UI, overlays, accessibility, diagnostics
 
