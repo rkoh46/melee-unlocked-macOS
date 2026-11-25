@@ -40,6 +40,7 @@ void set_frame_buffer_aspect(float aspect);
 void set_frame_buffer_scale(float scale);
 }
 
+namespace host { bool menu_is_open(); }   // ui/mu_panel.cpp
 namespace fe {
 namespace {
 #include "action_names.inc"   // const char* const kActionNames[] (build.sh sync, from the fetched training_overlay.cpp)
@@ -306,11 +307,7 @@ void draw_stats(ImDrawList* dl, const overlay::Config& c, const overlay::Snapsho
       if (st.report_hz > 0) std::snprintf(line, sizeof line, "GameCube adapter %.0f reports/s (polled every %d ms)", st.report_hz, st.interval_ms);
       else std::snprintf(line, sizeof line, "GameCube adapter: no reports yet");
     } else {
-#ifdef __SWITCH__
-      std::snprintf(line, sizeof line, "GameCube adapter: none found");
-#else
-      std::snprintf(line, sizeof line, "GameCube adapter: not read in this build (console only)");
-#endif
+      std::snprintf(line, sizeof line, "GameCube adapter: none found");   // mumac: the Mac reads the adapter over IOKit
     }
     lines.push_back({line, IM_COL32(200, 206, 218, 255)});
     // The system's controllers (Pro Controller, Joy-Con, the Switch Online GameCube controller): controls.cpp.
@@ -674,10 +671,12 @@ void overlay_draw(int ww, int wh) {
   ImDrawList* dl = ImGui::GetForegroundDrawList();
   const Rect g = game_rect(ww, wh, picture_aspect(c));
   draw_border(dl, c, g, ww, wh);
+  bool replay_shown = false;
   if (&features::replay_view) {
     replay::View rv;
     features::replay_view(rv);
     if (rv.active) draw_replay(dl, rv, g);
+    replay_shown = rv.active;
   }
   // The Practice menu (Start + D-pad Up + Z in offline Training; src/proai/practice_overlay.cpp), or its corner hint.
   if (&practice_menu_draw) practice_menu_draw(float(ww), float(wh), g.x0, g.y0, g.x1, g.y1);
@@ -696,6 +695,14 @@ void overlay_draw(int ww, int wh) {
   if (s.lab_panel) draw_training(dl, s, g, base);
   else draw_inputs(dl, c, s, g, base);
   draw_stats(dl, c, s, ww, base);
+  // mumac: melee-unlocked's "Settings: F1" reminder, in the menus only (not over a match, Training or a replay), top right.
+  if (c.settings_hint && !s.match && !s.replay && !replay_shown && !host::menu_is_open()) {
+    const float size = std::max(13.0f, 14.0f * base);
+    const char* hint = "Settings: F1  /  START + DOWN + Z";
+    const float w = text_width(size, hint), x1 = float(ww) - 12.0f, y0 = (c.fps || c.graph || c.adapter_rate) ? 8.0f + 150.0f * base : 12.0f;
+    dl->AddRectFilled(ImVec2(x1 - w - 16, y0), ImVec2(x1, y0 + size + 10), IM_COL32(10, 12, 18, 170), 5.0f);
+    text(dl, size, ImVec2(x1 - w - 8, y0 + 5), IM_COL32(236, 240, 246, 255), hint);
+  }
   // The network panel: top right, below the statistics box when that is on.
   draw_net(dl, ww, wh, (c.fps || c.graph || c.adapter_rate) ? 8.0f + 150.0f * base : 12.0f);
 }

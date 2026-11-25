@@ -581,6 +581,7 @@ int main(int argc, char** argv) {
     if (&fe::features::online_replay_for_report) net_host::set_replay_path_hook(fe::features::online_replay_for_report);   // Slippi's replay upload
     net.discord = discord_on && menus_online;   // Discord Rich Presence for the player's own sign-in (never a test's)
     if (g_play) netplay_bridge::set_suggestion_hooks(suggest_read, mu_net_suggest_setting);   // Slippi 3.7.0's input suggestions, sent
+    net_host::set_speed_hook([](double speed) { host::audio_set_speed(speed); });   // the sound follows time sync's speed (Switch 0110)
     if (const int start = net_host::start(net, net_say)) {
       host::log("online: the netplay host could not start (%d); playing offline", start);
     } else {

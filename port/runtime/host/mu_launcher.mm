@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -131,6 +133,25 @@ __attribute__((weak)) std::string downloads_dir() { return {}; }
 // The mod profile the engine loads at its next start: settings.ini's mod_profile (fe/settings.cpp reads it; the engine's
 // MODS page writes the same key).
 namespace {
+// The disc check: a GameCube disc image starts with its game code (GALE01 is Melee NTSC) and has the revision at byte 7
+// (2 for NTSC 1.02, the one melee-unlocked and Slippi play). Compressed images (.ciso, .rvz) are named, not read.
+std::string disc_check(const std::string& path) {
+  static std::string for_path, answer;
+  if (path == for_path) return answer;
+  for_path = path;
+  std::string ext = path.size() > 4 ? path.substr(path.find_last_of('.') + 1) : "";
+  for (auto& c : ext) c = char(std::tolower((unsigned char)c));
+  if (ext == "rvz" || ext == "ciso" || ext == "gcz" || ext == "wia") return answer = "Disc: a compressed image (." + ext + "); melee-unlocked reads a plain .iso";
+  FILE* f = std::fopen(path.c_str(), "rb");
+  unsigned char h[8] = {};
+  const bool read = f && std::fread(h, 1, sizeof h, f) == sizeof h;
+  if (f) std::fclose(f);
+  if (!read) return answer = "Disc: the image cannot be read (moved or renamed?)";
+  const std::string code(reinterpret_cast<const char*>(h), 6);
+  if (code != "GALE01") return answer = "Disc: " + code + " is not Melee NTSC (GALE01)";
+  if (h[7] != 2) return answer = "Disc: Melee NTSC 1.0" + std::to_string(int(h[7])) + "; melee-unlocked and Slippi need NTSC 1.02";
+  return answer = "Disc: Melee NTSC 1.02";
+}
 std::string settings_ini_path() { const char* h = std::getenv("HOME"); return std::string(h ? h : ".") + "/Library/Application Support/Dashdance/melee-unlocked/settings.ini"; }
 std::string mod_profile_next() {
   std::ifstream in(settings_ini_path());
@@ -374,6 +395,11 @@ void mod_profile_set(const std::string& profile) {
   }
   y += pitch;
   [self row:y dot:C_FAINT words:@"Mods: none active" link:@"Open Mods folder" name:@"modsfolder"]; y += pitch;
+  if (!s.iso.empty()) {   // the disc check (melee-unlocked's launcher checks the disc before a start): its header, read once per path
+    const std::string check = disc_check(s.iso);
+    const bool ok = check.rfind("Disc: Melee NTSC 1.02", 0) == 0;
+    [self row:y dot:ok ? C_OK : C_WARN words:ns(check) link:nil name:@""]; y += pitch;
+  }
   [col(C_SEP) setFill]; NSRectFill(LR(CX, y + 1, CW, 1));
   const CGFloat note_y = y + 10;
   if (s.iso.empty())
@@ -452,7 +478,7 @@ void mod_profile_set(const std::string& profile) {
   [self button:@"replaysfolder" rect:LR(CX, WIN_H - 50, 166, 32) title:@"Open Replays folder" primary:NO enabled:YES];
   [self button:@"openreplay" rect:LR(CX + 174, WIN_H - 50, 140, 32) title:@"Open a replay..." primary:NO enabled:can_watch];
   [self button:@"watchlive" rect:LR(CX + 322, WIN_H - 50, CW - 322, 32) title:self.liveWatch ? @"Stop watching live" : @"Watch live"
-       primary:self.liveWatch enabled:can_watch];
+       primary:NO enabled:can_watch];
   if (!can_watch) text(@"Watching a replay needs the melee-unlocked engine in this build.", LR(CX, WIN_H - 82, CW, 28), f_small(), C_FAINT, LEFT, 0, true);
 }
 // The Slippi Launcher's spectate folder: its own setting (spectateSlpPath), else <its replay folder>/Spectate, else its default
@@ -760,10 +786,28 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
       });
     }
     window.contentView = view;
-    [window center];
-    [window makeKeyAndOrderFront:nil];
+    // MELEE_LAUNCHER_SHOT=<file.png> (screenshots, tests): the window opens off every screen, is drawn into that file after
+    // two seconds (the update check and the replay list have answered by then) and closes as if dismissed.
+    const char* shot = std::getenv("MELEE_LAUNCHER_SHOT");
+    if (shot) [window setFrameOrigin:NSMakePoint(-20000, -20000)];
+    else [window center];
+    if (shot) [window orderFront:nil]; else [window makeKeyAndOrderFront:nil];
     [window makeFirstResponder:view];
-    [NSApp activateIgnoringOtherApps:YES];
+    if (!shot) [NSApp activateIgnoringOtherApps:YES];
+    if (shot) {
+      // Off every screen the window counts as hidden, and App Nap would hold the timer back: keep the app awake.
+      static id activity = [NSProcessInfo.processInfo beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep reason:@"launcher screenshot"];
+      (void)activity;
+      NSString* out = ns(shot);
+      NSTimer* timer = [NSTimer timerWithTimeInterval:2.0 repeats:NO block:^(NSTimer*) {
+        NSBitmapImageRep* rep = [view bitmapImageRepForCachingDisplayInRect:view.bounds];
+        [view cacheDisplayInRect:view.bounds toBitmapImageRep:rep];
+        [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:out atomically:YES];
+        std::printf("launcher: screenshot %s\n", out.UTF8String); std::fflush(stdout);
+        [NSApp abortModal];
+      }];
+      [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];   // the launcher runs modally
+    }
     if (std::getenv("MELEE_LAUNCHER_PLAY") && !settings.iso.empty())   // test runs: press PLAY a moment after the window shows
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [NSApp stopModalWithCode:NSModalResponseOK]; });
     if (std::getenv("MELEE_LAUNCHER_THEME")) dispatch_async(dispatch_get_main_queue(), ^{ [view openTheme]; });   // screenshots

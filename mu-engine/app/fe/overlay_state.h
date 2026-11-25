@@ -23,6 +23,7 @@ struct Config {
   int lcancel_success = 2;                      // lcancel_success_flash: 0 none, 1 white, 2 green
   bool latency_test = false;                    // latencytest: X + D-pad Down paints black, then white, X + D-pad Up ends
   bool adapter_rate = false;                    // adapterrate: the GameCube adapter's measured report rate on screen
+  bool settings_hint = false;                   // settingsreminder: "Settings: F1" in a corner of the menus (off by default, as upstream)
   // Picture (renderer). aspect: 0 Auto (4:3, 16:9 with the widescreen code), 1 73:60 (the console's own pixel shape),
   // 2 4:3, 3 16:9, 4 stretched to the screen (upstream's AspectMode numbers).
   int aspect = 0;

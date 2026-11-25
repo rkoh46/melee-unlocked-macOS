@@ -15,6 +15,8 @@ void audio_push(const uint8_t* be_samples, size_t bytes);
 uint64_t audio_pushed_frames();
 uint64_t audio_dropped_blocks();
 uint64_t audio_underruns(uint64_t* silent_ms);   // output gaps (ring empty), and the total time they held the last sample
+void audio_set_buffer_ms(int ms);                 // queued sound beyond the device's own buffer (5..120 ms, default 20); before audio_open
+void audio_set_speed(double speed);                // the game's speed against real time (online time sync): the output follows it
 void audio_rate_range(double* low, double* high);  // resampling ratio extremes used to track the sound card's clock
 uint32_t audio_buffered_ms();                      // how much audio is queued for the device right now
 }  // namespace host

@@ -22,7 +22,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Sub-frame animation: Interpolate | same | active: settings.ini subframe 2 |
 | Generic matrix modes | renderer | active: the sub-frame solver's matrix modes (port/runtime/gx/subframe.cpp) |
 | Frame cap | renderer | active: settings.ini fps N |
-| Sub-frame pause when the game falls behind online | host | not wired |
+| Sub-frame pause when the game falls behind online | host | partial (as on the Switch): fe/features/present pauses sub-frames online when 90% of the presented frames of the last 3 s overran a refresh and resumes below 50%, `present: sub-frames paused (online, ...)`; not upstream's late-frame count. Not run online on the Mac |
 
 ## 3. Online
 
@@ -87,8 +87,8 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Feature | Side | Mac status |
 |---|---|---|
 | Slippi General Codes + Lagless FoD | game image | in the engine |
-| UCF 0.84 | game image | engine option, no setting |
-| UCF 0.8 | game image | engine option, no setting |
+| UCF 0.84 | game image | in the engine: part of the General Codes, always on (as upstream and on the Switch) |
+| UCF 0.8 | game image | wired with replay playback: a replay whose code list carries UCF 0.8 gets MU_REPLAY_CODE_UCF08 (replays.cpp, as on the Switch); no UCF 0.8 replay tried |
 | Unlock everything | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Show results screen | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Freeze Pokemon Stadium | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
@@ -120,13 +120,13 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Player-pasted Gecko codes | host + game image | engine option, no setting |
 | Gecko code kinds accepted | host | not wired |
 | Gecko code kinds refused | host | not wired |
-| 20XX TE: master switch and Tournament Mode | game image + host | engine option, no setting |
-| 20XX TE word 1: hold Start to pause, frozen stages, no Star KO, infinite shields, taunt cancel, play after GAME!, fixed camera, CPU Zelda as Sheik, handicap sets stocks | game image | engine option, no setting |
-| 20XX TE word 2: neutral spawns, v1.00 rules, quieter DL64, reset tournament rules, Y toggles frozen, skip results, random music, shield colours on L/R, no screen rumble, TE L-cancel flash, spoof plugins, collision bubbles, CPU smart DI, colour overlays, hand-warmers, stage striking | game image (quieter DL64 is host: jukebox gain) | engine option, no setting |
+| 20XX TE: master switch and Tournament Mode | game image + host | wired offline as on the Switch: the released TE save in a mod profile sets MU_GAME_OPTION_TE (`mod_te_enabled 0` keeps it off; fe/settings.cpp); not tried on the Mac |
+| 20XX TE word 1: hold Start to pause, frozen stages, no Star KO, infinite shields, taunt cancel, play after GAME!, fixed camera, CPU Zelda as Sheik, handicap sets stocks | game image | wired offline: TE's own settings menu or settings.ini `te_options` (hex), kept in settings.ini.state (fe/settings.cpp, as on the Switch); not tried on the Mac |
+| 20XX TE word 2: neutral spawns, v1.00 rules, quieter DL64, reset tournament rules, Y toggles frozen, skip results, random music, shield colours on L/R, no screen rumble, TE L-cancel flash, spoof plugins, collision bubbles, CPU smart DI, colour overlays, hand-warmers, stage striking | game image (quieter DL64 is host: jukebox gain) | wired offline: as word 1 (`te_options2`); not tried on the Mac |
 | 20XX TE input display, lock settings | renderer / host | not wired |
-| 20XX TE in-game settings menu | game image + host | engine option, no setting |
-| 20XX TE menu music from Sound Test | game image + host | engine option, no setting |
-| 20XX TE L-cancel training wheels | game image | engine option, no setting |
+| 20XX TE in-game settings menu | game image + host | wired offline: VS Mode > Tournament Melee with the TE profile; changes arrive through 0xF8 (fe/settings.cpp, as on the Switch); not tried on the Mac |
+| 20XX TE menu music from Sound Test | game image + host | wired: command 0xF7 and `te_menu_music`; not tried |
+| 20XX TE L-cancel training wheels | game image | upstream stub |
 | 20XX TE memory-card replay browser, eight-character tags, save extensions | n/a | not wired |
 | 20XX CPUs | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | CPU training options | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
@@ -140,19 +140,19 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Practice menu | renderer + host | active: melee-unlocked's Practice menu (Start + D-pad Up + Z in offline Training, or the panel's Training row), drawn with ImGui; tested in Training |
 | Practice CPU | game image + host | active: from the Practice menu (the Training module, `fe/features/training.cpp`) |
 | Save states in Training | game image + host | active: the Training module (snapshot store) |
-| Record and play back the CPU | game image | engine option, no setting |
-| Collision bubbles | game image | engine option, no setting |
+| Record and play back the CPU | game image | active: settings.ini `lab 1`, `lab_loop 1` (the Training module, fe/features/training.cpp) |
+| Collision bubbles | game image | active: settings.ini `lab_bubbles 1` (over the model) or `2` (bubbles only), the Training module |
 | Frame data and input overlay | renderer + host | active: the overlays module and `fe/overlay_draw.cpp` |
-| Lab dummy DI, after-hitstun reaction, tech choice | game image | engine option, no setting |
+| Lab dummy DI, after-hitstun reaction, tech choice | game image | upstream stub |
 | Frame advance | host + game image | active: the Training module |
-| Fixed or frozen random seed | host + game image | engine option, no setting |
+| Fixed or frozen random seed | host + game image | active: settings.ini `practice_rng 1` (the same seed at each Training start and state load) or `2` (frozen), `practice_rng_seed` (the Training module) |
 | Fight a pro (Phillip) | host + game image + external | active: Phillip's policies on the Switch build's own ONNX engine (`fe/proai`, onnxruntime-shaped calls, no onnxruntime library); downloaded when the player asks (Hugging Face, SHA-256 checked); tested: Zain's Marth policy fought in Training (0.6 ms per step) |
 | Practice ghost AI | host | active: `fe/features/proai.cpp` |
 | Pro habit tables | host | active: `fe/features/proai.cpp` (melee-unlocked's tables) |
 | Training Mode CE events | game image + host | engine option, no setting; the Lab's Export and the Lab character select's Import now finish (mu-engine/patches/0013, Melee-NX-NetPlay's game-image fix: TM-CE's card wait had no native completion); not run on the Mac |
 | Training Mode CE on-screen displays | game image | engine option, no setting |
 | TM-CE console global OSD shortcut | n/a | not wired |
-| Practice from replays | game image + host + renderer | engine option, no setting |
+| Practice from replays | game image + host + renderer | active: X / Y jump to a player's last / next coach tip, A takes over there (the replays module; see section 3) |
 | Lossless adapter lag test | game image + host | engine option, no setting |
 | Display latency test | renderer | active: the overlays (latencytest) |
 
@@ -161,23 +161,23 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Feature | Side | Mac status |
 |---|---|---|
 | Mod profiles and disc-file overlay | host | active: the profile chosen for the next start (settings.ini mod_profile: the launcher's Mods page Use button, or the panel's MODS page) is loaded at an offline start (`fe/mods.cpp`); tested with a save layer |
-| Content view switch | game image + host | engine option, no setting |
-| m-ex content | game image | engine option, no setting |
-| m-ex stages | game image | engine option, no setting |
-| Akaneia fighters | game image + host | engine option, no setting |
-| ACE fighters | game image | engine option, no setting |
-| ACE Games menu | game image | engine option, no setting |
-| Rogue Mode | game image + host | engine option, no setting |
-| Melee Maker | game image + host | engine option, no setting |
-| 20XX Hack Pack: stage variants and stage select pages | game image + host | engine option, no setting |
-| 20XX Hack Pack: music playlists | game image + host | engine option, no setting |
-| 20XX Hack Pack: debug menu, training displays, hidden characters | game image | engine option, no setting |
+| Content view switch | game image + host | wired as on the Switch: command 0xF5 (fe/mods.cpp); an online mode that plays the retail game gets the retail files back; not tried on the Mac |
+| m-ex content | game image | wired with a mod disc's profile (Mods page, Use), as on the Switch; not tried on the Mac |
+| m-ex stages | game image | wired offline with an m-ex disc's profile (built into the game image), as on the Switch; not tried on the Mac |
+| Akaneia fighters | game image + host | wired offline with the Akaneia disc's profile, as on the Switch; not tried on the Mac |
+| ACE fighters | game image | upstream stub ("experimental") |
+| ACE Games menu | game image | upstream stub (all but Volleyball) |
+| Rogue Mode | game image + host | wired offline with the rogueMelee disc's profile, as on the Switch; not tried on the Mac |
+| Melee Maker | game image + host | wired offline with its disc's profile (bone tables through the host), as on the Switch; not tried on the Mac |
+| 20XX Hack Pack: stage variants and stage select pages | game image + host | wired offline with the Hack Pack's profile, as on the Switch; not tried on the Mac |
+| 20XX Hack Pack: music playlists | game image + host | wired offline with the Hack Pack's profile, as on the Switch; not tried on the Mac |
+| 20XX Hack Pack: debug menu, training displays, hidden characters | game image | wired offline with the Hack Pack's profile, as on the Switch; not tried on the Mac |
 | Per-profile and vanilla-only memory cards | host | active: `fe/mods.cpp` (card-<profile>), settings.ini vanilla_only |
 | Costume, stage and effect imports | host + renderer | partial (fe/features/cosmetics.cpp from the Switch): costume and stage files copied to `~/Library/Application Support/Dashdance/melee-unlocked/Cosmetics/Costumes` and `Stages` are skins; the mod discs in the launcher's Mods folder add theirs. No import window, effect variants, pause screens or portraits |
 | Skin cycling on the select screens | game image + host | active offline: L / R on a picked costume (command 0xF9), X / Y on a highlighted stage (0xFB), the title demo's memory check (0xFC); picks kept in Cosmetics/selection.txt; settings.ini `cosmetics 0` turns it off. Not tried by hand on the Mac yet |
 | Voice mods | host + game image | engine option, no setting |
 | Texture packs | renderer | not wired |
-| Game music | game image | engine option, no setting |
+| Game music | game image | active: the game's own music through the app's sound output |
 | Music volume | host / game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Custom music packs / jukebox | host | not wired |
 | Look presets | renderer | active: the Looks page of the settings panel and settings.ini (`look`, `look_fighter`, `look_stage`, `look_menus`, `look_unfiltered`, `look_colours`, `look_background`), fe/features/looks.cpp from the Switch; the rules (surfaces flat colour, white, posterize, 64 x 64, wire; port colours; the look's background) run per draw on the Metal renderer (gx::LookHooks, mu-engine/app/gx_looks_mac.cpp) on the game's draw owner tokens (0xF1, 0xF2, 0xF7, asked for only while a look needs them). Off by default; display only. The three presets that need the Lab's stick figures are left out, as on the Switch. Replay screenshots in build/looks (crystal-ports, wireframe, potato, 64-style, widescreen) from a recorded game played back with each setting |
@@ -193,7 +193,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Border art | renderer | active: the overlays (a .bmp in the Borders folder) |
 | Built-in CRT look | renderer | active: settings.ini crt_filter 1/2 and crt_curve, drawn in the Metal present pass; off by default |
 | RetroArch shader presets | renderer | not wired |
-| Easter egg | renderer + game image | engine option, no setting |
+| Easter egg | renderer + game image | not wired (not on the Switch either) |
 
 ## 7. Controllers
 
@@ -211,7 +211,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Box controllers | host | active: fe/controls.cpp box mode (melee-unlocked's box_melee.h) |
 | PhobGCC settings on a stock controller | host + renderer | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | PhobScope and Phob Check | renderer + host | not wired |
-| "Play as P2/P3/P4" | host + renderer | not wired |
+| "Play as P2/P3/P4" | host + renderer | active in the app's form: a controller's fixed port in its configuration (input_config, the launcher's controller pages; window_sdl.cpp gives fixed ports first) |
 | Rumble and its switch | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | Button chords | host | active: Start + D-pad Down/Up + Z (ui/chords_mac.cpp, melee-unlocked's settings_chord.h) |
 | Background input | host | active: settings.ini `background_input` (on by default, as upstream) with a row on the panel's Game page; off, every controller port reads neutral while another window has focus (port/runtime/host/window_sdl.cpp); the keyboard only counts with focus either way. Not tried by hand |
@@ -223,23 +223,23 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Picture from the GX stream | renderer | active: the app's GX decoder and Metal renderer |
 | Aspect ratio | renderer | active: settings.ini aspect (the picture's shape) and the widescreen code |
 | V-Sync | renderer | active: the launcher and the panel |
-| Quality presets | renderer | not wired |
-| "Low spec" switch | renderer | not wired |
+| Quality presets | renderer | active: the Picture page's Quality preset row sets internal resolution, sharpening and anisotropy (fe/features/overlays.cpp, from the Switch); its MSAA value is not used (the Mac's Metal renderer has no MSAA) |
+| "Low spec" switch | renderer | upstream stub (replaced by Lightweight, which is active) |
 | Internal resolution | renderer | active: the app's Metal renderer and launcher settings |
-| Anti-aliasing | renderer | not wired |
+| Anti-aliasing | renderer | partial: supersampling through Internal resolution above the display's size; no MSAA in the Metal renderer |
 | Anisotropic filtering | renderer | active: the panel's texture filtering row |
 | Sharpening | renderer | active: settings.ini sharpness (the present pass's sharpening) |
 | Brightness, contrast, vibrance | renderer | active: settings.ini brightness / contrast / vibrance, in the Metal present pass; off by default |
 | Screen-space ambient occlusion | renderer | not wired |
 | Window size, borderless and exclusive fullscreen | renderer | active: the app's Metal renderer and launcher settings |
-| Graphics backend picker | renderer | not wired |
-| DLSS, DLAA, XeSS, FSR upscaling | renderer | not wired |
-| Frame generation | renderer | not wired |
-| NVIDIA Reflex and latency readout | renderer | not wired |
+| Graphics backend picker | renderer | not applicable: one renderer on the Mac (Metal) |
+| DLSS, DLAA, XeSS, FSR upscaling | renderer | not applicable on the Mac (PC vendor libraries) |
+| Frame generation | renderer | not applicable on the Mac (PC vendor libraries) |
+| NVIDIA Reflex and latency readout | renderer | not applicable (NVIDIA PC driver); the overlays' Display latency test is active |
 | HDR output | renderer | not wired |
-| Path tracing, RTX Pack, RTX Remix, Ray Reconstruction | renderer + external | not wired |
-| DLSS 5 neural rendering | renderer + external | not wired |
-| Shader pipeline precompile | renderer | not wired |
+| Path tracing, RTX Pack, RTX Remix, Ray Reconstruction | renderer + external | not applicable on the Mac (NVIDIA runtimes) |
+| DLSS 5 neural rendering | renderer + external | not applicable on the Mac (NVIDIA model and runtime) |
+| Shader pipeline precompile | renderer | active (the Metal renderer's own cache): every pipeline the game needed is kept in `melee-unlocked/shaders/pipelines.bin` and compiled ahead at the next start, on a background thread |
 
 ## 9. Audio
 
@@ -248,8 +248,8 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Audio mixing | game image + host | active: the app's audio output (32 kHz, volume from the launcher) |
 | Sound output | host | active: the app's audio output (32 kHz, volume from the launcher) |
 | Master volume | host | active: the app's audio output (32 kHz, volume from the launcher) |
-| Audio buffer | host | not wired |
-| Speed nudging for online time sync | host | not wired |
+| Audio buffer | host | active: settings.ini `audio_buffer_ms` (5..120, default 20; the sound queued beyond the device's own buffer) with an Audio row (next start); `audio: device buffer 256 frames at 44100 Hz, ring target 2105 frames (66 ms of queued audio)` with 60 |
+| Speed nudging for online time sync | host | active: Slippi's time-sync speed goes to the host's pacing and to the sound output's resampling ratio (audio_set_speed, the Switch's frontend/patches/0110 applied to port/runtime/host/audio_sdl.cpp); not run online |
 | Mono / Stereo | game image + host | in the engine |
 | Audio mode: shared, low latency, exclusive, ASIO; output device picker | host | active: the app's audio output (32 kHz, volume from the launcher) |
 | Menu sounds in the settings UI | renderer | not wired |
@@ -272,37 +272,37 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Settings search | renderer | active: melee-unlocked's search code in the panel |
 | Settings file | host | active: what the panel changes is saved to launcher.ini for the next start |
 | Pause menu on Esc | renderer | active: Escape opens the settings panel |
-| "Settings: F1" reminder | renderer | not wired |
+| "Settings: F1" reminder | renderer | active: settings.ini `settingsreminder 1` (off by default, as upstream) or the Overlays row: "Settings: F1 / START + DOWN + Z" top right in the menus, never over a match, Training or a replay (fe/overlay_draw.cpp); seen in a screenshot |
 | Frame counter and performance graph | renderer | active: settings.ini `showfps 1` (presented and game frames a second, simulation time) and `performance 1` (the last seconds of simulation time), the overlays module (fe/features/overlays.cpp, fe/overlay_draw.cpp); seen in a playback screenshot |
 | Player nicknames above fighters | renderer | wired: settings.ini `playernicknames 1` draws the netplay host's names over the fighters online (the overlays module); not run online on the Mac |
 | Controller input overlay | renderer | active: settings.ini `inputoverlay 1` with `inputoverlayvalues`, `inputoverlaystick`, `inputoverlayports`, `inputoverlayhideborder` (the overlays module); seen in a playback screenshot. Fixed place (no dragging) |
 | Note when skins are off online | renderer | not wired |
 | Accessibility-type options | see sections 4, 8 | not wired |
-| Text size or colour-blind setting | n/a | not wired |
-| Logs | host | not wired |
+| Text size or colour-blind setting | n/a | upstream stub (does not exist) |
+| Logs | host | active: one timestamped session log per launch in ~/Library/Application Support/Dashdance/Logs (newest 50, latest.log), the engine's engine.log and engine.log.host in melee-unlocked/ |
 | Trace-mark keys | host | not wired |
 | Frame capture burst | renderer | not wired |
 | One-frame glitch detector | renderer | not wired |
-| Frame time CSV, simulation time CSV, latency trace | host / renderer | not wired |
-| Scripted runs | host | not wired |
-| Benchmark mode | n/a | not wired |
+| Frame time CSV, simulation time CSV, latency trace | host / renderer | partial, in this app's own form: `--digest` CSVs, the `[frame N] ... sim:` log lines, `MELEE_METAL_LATENCY=1` |
+| Scripted runs | host | active: `--script` (the reference scripts, digests) and `--play-script` (play mode through the app's input path) |
+| Benchmark mode | n/a | upstream stub (does not exist in the game) |
 
 ## 12. Launcher and desktop
 
 | Feature | Side | Mac status |
 |---|---|---|
-| Play page | launcher | not wired |
-| Engine picker | launcher | not wired |
+| Play page | launcher | active: melee-unlocked's Play page in the Mac launcher (port/runtime/host/mu_launcher.mm): disc, Game Build, PLAY, version and update line, Slippi account, mods |
+| Engine picker | launcher | active: the Play page's Game Build row (Source Port, Static Recomp (Legacy), Vanilla) |
 | CPU build auto-pick | launcher | not wired (left out: the Mac app is built from source) |
-| Disc check | launcher + host | not wired |
+| Disc check | launcher + host | active: the launcher's Play page has a Disc line from the image's header (game code GALE01, revision 2 = NTSC 1.02; another revision, another game or a compressed image is named with what is needed), and the engine checks the disc again at start (`disc: retail NTSC 1.02, ...`); online the disc MD5 goes in game reports. No full MD5 check in the launcher |
 | RVZ and WIA conversion | launcher | not wired (left out: the Mac app is built from source) |
-| CISO, GCZ | launcher | not wired |
-| Pipeline precompile page | launcher | not wired |
+| CISO, GCZ | launcher | upstream stub |
+| Pipeline precompile page | launcher | not applicable: the Metal pipeline cache compiles ahead at each start (section 8); no page |
 | Update check and one-click update | launcher + host + external | partial: the launcher's Play page compares the commit the app was built from (Info.plist MUBuildCommit, written by tools/package_macos_app.sh) with this repository's branch on GitHub (rkoh46/melee-unlocked-macOS, never melee-unlocked's updater) and says "N newer changes on GitHub" with How to update (the install line again) or "up to date"; `MELEE_UPDATE_CHECK=0` turns it off. No one-click update (the app is built from source) |
 | Version rollback | launcher | not wired (left out: the Mac app is built from source) |
 | Optional part downloads | launcher + host + external | not wired |
 | Lab view and Pro AI asset downloads | host + external | not wired |
-| "What's new" | launcher | not wired |
+| "What's new" | launcher | partial: the Play page's What's new link opens this repository's README section |
 | Launcher languages | launcher | not wired |
 | Launcher colour and rail picture | launcher | active: launcher colour wheel |
 | Mods page | launcher | active: the launcher's Mods page lists, installs and removes mods with the shared installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp), and Use picks a profile for an offline start |
@@ -312,12 +312,12 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Replay stats | launcher | partial: the replays module's coach tips are logged at playback (fe/features/replay_coach_glue.cpp); no stats page |
 | Watch live | launcher | active: the launcher's Replays page Watch live follows the Slippi Launcher's spectate folder (its Settings spectateSlpPath, else rootSlpPath/Spectate, else ~/Documents/Slippi/Spectate) and opens each new game file as it appears; the engine plays a file still being written, waiting at the top of each frame for it to arrive and ending at Game End or after 30 s without growth (replays.cpp, after melee-unlocked's source_host.cpp). Tested with tools/mac/slp_live_writer.py: a 7202-frame game written at 3x played to its Game End (0 differ); one written slower than real time waited for its frames and ended when it stopped growing. Not tried with the Slippi Launcher itself |
 | Multiplayer Lobby | launcher + external | not wired |
-| Hosted lobby service | launcher | not wired |
-| Slippi account line | launcher | not wired |
+| Hosted lobby service | launcher | upstream stub |
+| Slippi account line | launcher | active: the Play page names the account (name and connect code) or says there is none |
 | YouGame connect | launcher + external | out of scope |
 | Crash report upload | launcher + external | not wired |
-| Settings window from the launcher | launcher | not wired |
-| Standalone double-click start | host | not wired |
+| Settings window from the launcher | launcher | partial: the launcher's Settings page (window, picture, sound, online); the rest is the in-game panel |
+| Standalone double-click start | host | active: the app opens from Finder or the Dock into the launcher |
 
 ## Additions from the full audit of melee-unlocked 1.0.5
 

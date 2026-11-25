@@ -40,6 +40,7 @@ double g_ring_phase = 0.0, g_rate = 1.0, g_fill_average = 0.0;
 int16_t g_last_output[2] = {0, 0};
 std::atomic<uint64_t> g_underruns{0}, g_underrun_frames{0};
 std::atomic<double> g_rate_min{1.0}, g_rate_max{1.0};
+std::atomic<double> g_speed{1.0};   // the game's speed against real time (Slippi's time sync nudges it online)
 SDL_AudioStream* g_stream = nullptr;
 bool g_audio_subsystem = false;
 
@@ -67,7 +68,9 @@ void render(int16_t* out, uint32_t want) {
   if (g_fill_average == 0.0) g_fill_average = double(buffered);
   g_fill_average += (double(buffered) - g_fill_average) * 0.02;
   const double error = (g_fill_average - double(g_target_frames)) / double(g_target_frames);
-  const double target_rate = 1.0 + std::clamp(error * 0.25, -MAX_RATE_SHIFT, MAX_RATE_SHIFT);
+  // The game makes its sound at its own speed (online time sync: up to 1 % off): the output follows that directly, the
+  // fill correction (capped far below it) only tracks the device's clock on top.
+  const double target_rate = g_speed.load(std::memory_order_relaxed) * (1.0 + std::clamp(error * 0.25, -MAX_RATE_SHIFT, MAX_RATE_SHIFT));
   g_rate += (target_rate - g_rate) * 0.05;
   if (g_rate < g_rate_min.load()) g_rate_min.store(g_rate);
   if (g_rate > g_rate_max.load()) g_rate_max.store(g_rate);
@@ -115,7 +118,8 @@ void SDLCALL stream_callback(void*, SDL_AudioStream* stream, int additional_amou
 // frame, so the ring must hold at least one frame (16.7 ms) plus scheduling jitter: 20 ms measured
 // underrun-free; 12 ms starved several times a second. MELEE_AUDIO_SLACK_MS overrides. Underruns are
 // logged as they happen.
-int ring_slack_ms() { const char* e = std::getenv("MELEE_AUDIO_SLACK_MS"); int v = e ? std::atoi(e) : 20; return std::clamp(v, 4, 200); }
+std::atomic<int> g_slack_ms{20};   // audio_set_buffer_ms (melee-unlocked's Audio buffer setting); MELEE_AUDIO_SLACK_MS wins
+int ring_slack_ms() { const char* e = std::getenv("MELEE_AUDIO_SLACK_MS"); int v = e ? std::atoi(e) : g_slack_ms.load(); return std::clamp(v, 4, 200); }
 bool device_open() {
   if (!SDL_WasInit(SDL_INIT_AUDIO)) {
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) { log("audio: SDL audio init failed: %s", SDL_GetError()); return false; }
@@ -221,6 +225,8 @@ void audio_push(const uint8_t* be_samples, size_t bytes) {
 uint64_t audio_pushed_frames() { return g_frames; }
 uint64_t audio_dropped_blocks() { return g_dropped; }
 uint64_t audio_underruns(uint64_t* silent_ms) { if (silent_ms) *silent_ms = g_underrun_frames.load() * 1000 / SAMPLE_RATE; return g_underruns.load(); }
+void audio_set_buffer_ms(int ms) { g_slack_ms.store(std::clamp(ms, 5, 120)); }
+void audio_set_speed(double speed) { g_speed.store(std::clamp(speed, 0.5, 2.0), std::memory_order_relaxed); }
 void audio_rate_range(double* low, double* high) { if (low) *low = g_rate_min.load(); if (high) *high = g_rate_max.load(); }
 uint32_t audio_buffered_ms() { return uint32_t((g_ring_write.load() - g_ring_read.load()) * 1000 / SAMPLE_RATE); }
 bool headless_audio_output_ok() { return g_output_ok; }

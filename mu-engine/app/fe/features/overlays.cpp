@@ -67,6 +67,7 @@ bool setting(const std::string& key, const std::string& value) {
   else if (key == "lcancel_success_flash") c.lcancel_success = std::clamp(n, 0, 2);
   else if (key == "latencytest") c.latency_test = on;
   else if (key == "adapterrate") c.adapter_rate = on;
+  else if (key == "settingsreminder") c.settings_hint = on;
   else if (key == "aspect") { c.aspect = std::clamp(n, 0, 4); ++c.generation; }
   else if (key == "brightness") { c.brightness = to_float(value, 0.5f, 1.5f, 1.0f); ++c.generation; }
   else if (key == "contrast") { c.contrast = to_float(value, 0.5f, 1.5f, 1.0f); ++c.generation; }
@@ -375,6 +376,8 @@ void register_overlays() {
                   [](Write w) { w("lcancel_success_flash", std::to_string(overlay_config().lcancel_success)); }});
   add_menu_entry({"Overlays", "Display latency test (X + D-pad Down)", [] { return on_off(overlay_config().latency_test); }, [](int) { edit([](overlay::Config& c) { c.latency_test = !c.latency_test; }); }, nullptr,
                   [](Write w) { w("latencytest", overlay_config().latency_test ? "1" : "0"); }});
+  add_menu_entry({"Overlays", "\"Settings: F1\" reminder in menus", [] { return on_off(overlay_config().settings_hint); }, [](int) { edit([](overlay::Config& c) { c.settings_hint = !c.settings_hint; }); }, nullptr,
+                  [](Write w) { w("settingsreminder", overlay_config().settings_hint ? "1" : "0"); }});
   add_menu_entry({"Overlays", "GameCube adapter report rate", [] { return on_off(overlay_config().adapter_rate); }, [](int) { edit([](overlay::Config& c) { c.adapter_rate = !c.adapter_rate; }); }, nullptr,
                   [](Write w) { w("adapterrate", overlay_config().adapter_rate ? "1" : "0"); }});
   // Picture page.
