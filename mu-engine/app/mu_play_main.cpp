@@ -142,7 +142,9 @@ void on_retrace(void*) {
   if (host::window_closed() || g_quit.load()) linux_host::request_stop(0);
 }
 
+std::atomic<uint32_t> g_trace_retrace{0};   // the command trace's retrace column (below)
 void on_frame(const MuStatePod& state, const linux_host::Counters& counters, void*) {
+  g_trace_retrace.store(counters.retraces, std::memory_order_relaxed);
   host::mu_shim_set_scene(uint8_t(state.scene_major), uint8_t(state.scene));
   // The parity runner's per-retrace state row: the digest (--digest) and the netplay host's record of shown states.
   char row[1400]; int n = std::snprintf(row, sizeof row, "%u,%u,%u,%u,%u", counters.retraces, state.scene_major, state.scene, state.match_frame, state.rng);
@@ -199,7 +201,7 @@ void on_frame(const MuStatePod& state, const linux_host::Counters& counters, voi
 // The host's slippi_command with the netplay host on: the frontend's commands (fe/mods.cpp, the feature modules) first,
 // then the netplay host, whose answers the modules may read.
 int32_t (*g_net_command)(uint8_t, const uint8_t*, uint32_t, uint8_t*, uint32_t, uint32_t*) = nullptr;
-int32_t command(uint8_t c, const uint8_t* payload, uint32_t size, uint8_t* response, uint32_t capacity, uint32_t* response_size) {
+int32_t command_inner(uint8_t c, const uint8_t* payload, uint32_t size, uint8_t* response, uint32_t capacity, uint32_t* response_size) {
   if (response_size) *response_size = 0;
   const int32_t mine = mu_frontend_command(c, payload, size, response, capacity, response_size);
   if (mine != INT32_MIN) return mine;
@@ -207,6 +209,35 @@ int32_t command(uint8_t c, const uint8_t* payload, uint32_t size, uint8_t* respo
   const int32_t result = g_net_command(c, payload, size, response, capacity, response_size);
   if (result == 0 && response && response_size) fe::features::call_reply(c, response, *response_size);
   fe::features::call_exchange(c, payload, size, response, response_size ? *response_size : 0, result, false);
+  return result;
+}
+// MELEE_TRACE_SLIPPI_CMDS=1 (a test aid, upstream hle/slippi_online.cpp's command trace, as the Switch build has it): one log line
+// per menu or online command with its payload and reply (FNV-1a of the reply), runs of identical lines collapsed into one with
+// a count; the per-frame streams (0xB0-0xB2) and the pick previews are left out. Read only: nothing the game gets changes.
+bool trace_cmds() { static const bool on = [] { const char* v = std::getenv("MELEE_TRACE_SLIPPI_CMDS"); return v && v[0] == '1'; }(); return on; }
+struct CmdTrace { std::string key; uint32_t count = 0, first_retrace = 0; uint64_t seq = 0; } g_cmd_trace;
+uint64_t g_cmd_seq = 0;
+int32_t command(uint8_t c, const uint8_t* payload, uint32_t size, uint8_t* response, uint32_t capacity, uint32_t* response_size) {
+  const int32_t result = command_inner(c, payload, size, response, capacity, response_size);
+  if (!trace_cmds() || c == 0xB0 || c == 0xB1 || c == 0xB2 || c == 0xED) return result;
+  char buf[16];
+  std::snprintf(buf, sizeof buf, "cmd %02X len %u", c, size);
+  std::string key = buf;
+  key += " payload ";
+  const uint32_t shown = payload ? std::min<uint32_t>(size, 64) : 0;
+  for (uint32_t i = 0; i < shown; ++i) { std::snprintf(buf, sizeof buf, "%02X", payload[i]); key += buf; }
+  if (shown < size) key += "..";
+  const uint32_t got = result == 0 && response && response_size ? *response_size : 0;
+  uint32_t h = 2166136261u;
+  for (uint32_t i = 0; i < got; ++i) { h ^= response[i]; h *= 16777619u; }
+  char tail[64];
+  std::snprintf(tail, sizeof tail, " reply %u fnv %08X%s", got, result == 0 ? h : 0u, result == 0 ? "" : " unhandled");
+  key += tail;
+  ++g_cmd_seq;
+  if (g_cmd_trace.count && key == g_cmd_trace.key) { ++g_cmd_trace.count; return result; }
+  if (g_cmd_trace.count > 1) host::log("slippi-cmd: seq %llu retrace %u %s (x%u)", (unsigned long long)g_cmd_trace.seq, g_cmd_trace.first_retrace, g_cmd_trace.key.c_str(), g_cmd_trace.count);
+  g_cmd_trace = {key, 1, g_trace_retrace.load(), g_cmd_seq};
+  host::log("slippi-cmd: seq %llu retrace %u %s", (unsigned long long)g_cmd_seq, g_cmd_trace.first_retrace, key.c_str());
   return result;
 }
 void tables_hook(MuHostApi* host, MuGameApi* game) {

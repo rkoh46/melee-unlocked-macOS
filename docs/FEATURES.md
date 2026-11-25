@@ -345,8 +345,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M15 | Slippi 3.7.0 rank, MMR and bot flags in replays | not wired; easy / easy |
 | M16 | Player drop read by own frames (sub-item) | not wired; easy / easy |
 | M17 | Slow first frame is not "gone" | active (mu-engine/net, net-0007): 30 s before the other player's first online frame, Slippi's 7 s after. online_loopback_test.sh with `MU_B_ENV=MELEE_NET_TEST_SLOW_FIRST_FRAME_MS=12000`: side a waited 714 retraces (12 s) at frame 8, no drop, net check equal |
-| M18 | Network condition simulator (developer) | not wired; easy / easy (FEATURES only lists this repo's `--net-clock-skew`) |
-| M19 | Slippi command trace (developer) | not wired; easy / easy |
+| M18 | Network condition simulator (developer) | active (test aid): `MELEE_NET_LOSS_PCT`, `MELEE_NET_LAG_MS`, `MELEE_NET_JITTER_MS` as upstream's hle/slippi_net.cpp (`mu-engine/net/patches/net-0012`, the Switch's). `app_online_test.sh` with 5 % loss, 40 ms lag and 10 ms jitter on both sides: `dropping 5% of received datagrams (testing)`, 463 and 464 rollbacks, net check EQUAL (9 checkpoints), 0 desync messages |
+| M19 | Slippi command trace (developer) | active (test aid): `MELEE_TRACE_SLIPPI_CMDS=1` logs each menu and online command with its payload and the reply's FNV-1a, runs collapsed with a count, the per-frame streams left out (`mu_play_main.cpp`, as the Switch's play_main.cpp); the same online test: `slippi-cmd: seq 1 retrace 2 cmd F5 len 1 payload FE reply 1 fnv ...`, `cmd B3 ... (x106)` |
 | M20 | Smoother time sync (experimental) | not wired; easy / easy |
 
 ### audit-app-host
