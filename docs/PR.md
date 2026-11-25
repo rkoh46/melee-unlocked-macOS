@@ -121,3 +121,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - `mu-engine/tools/app_save_import_test.sh`: a profile's .gci goes onto its card once.
 - Launcher Replay Viewer: a picked game's card with melee-unlocked's stats and the session trace graph (`mu-engine/app/replay_stats_facade.cpp`), Move to Trash; `MELEE_LAUNCHER_PICK` for screenshots.
 - Netplay: `MELEE_SYNC_SMOOTH=1` (upstream's experimental smoother time sync, `mu-engine/net/patches/mac-0003`); `mu-engine/tools/slp_ranks.py` reads the ranked info and bot flags from a replay's game start.
+- Keyboard key names in the game's prompts (command 0xDF from the keyboard layout, `fe/features/key_labels.cpp`).
