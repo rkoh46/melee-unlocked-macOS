@@ -1,204 +1,104 @@
-<div align="center">
+# melee-unlocked-macOS
 
-<img src="docs/images/store/icon.png" width="128" alt="Dashdance app icon">
+**Super Smash Bros. Melee with Slippi Online, native on Apple silicon Macs.**
 
-# Dashdance
+melee-unlocked-macOS runs [melee-unlocked](https://github.com/Hero88go/melee-unlocked)'s Source Port on the Mac: Melee
+rebuilt from the decompilation's source code, with melee-unlocked's modes, options and mods, in melee-unlocked's own
+launcher and with its icon. The game is compiled on your Mac when you install it and plays from your own disc image.
 
-**Melee online, native on Mac, iPhone, iPad and Apple Vision Pro.**
+<sub>An independent community project. It is not affiliated with or endorsed by the Slippi team, the melee-unlocked
+authors or Nintendo.</sub>
 
-Games &nbsp;·&nbsp; Free &nbsp;·&nbsp; Open source &nbsp;·&nbsp; For Slippi Online
-
-<a href="#get-dashdance"><img src="docs/images/store/get.png" height="52" alt="Get Dashdance"></a>
-
-<br><br>
-
-<img src="docs/images/store/hero.jpg" width="880" alt="Dashdance on a MacBook and an iPhone">
-
-<br>
-
-<img src="docs/images/store/card-1-native.jpg" width="19%" alt="Not emulated. Native.">
-<img src="docs/images/store/card-2-online.jpg" width="19%" alt="Online, built in.">
-<img src="docs/images/store/card-3-controller.jpg" width="19%" alt="Your controller, your way.">
-<img src="docs/images/store/card-4-connect.jpg" width="19%" alt="Connect in seconds.">
-<img src="docs/images/store/card-5-menu.jpg" width="19%" alt="Settings, mid-match.">
-
-<sub>Dashdance is an independent community app. It is not affiliated with or endorsed by the Slippi team or Nintendo.</sub>
-
-</div>
-
-<br>
-
-| Platforms | Price | Size | Category |
-|:---:|:---:|:---:|:---:|
-| Mac · iPhone · iPad · Vision Pro | Free | 73 MB on Mac | Games |
-
-## melee-unlocked-macOS (this branch)
-
-This branch turns the app into **melee-unlocked-macOS**: [melee-unlocked](https://github.com/Hero88go/melee-unlocked)'s
-Source Port (Melee rebuilt from the decompilation's source code, with melee-unlocked's modes and features) running natively
-on Apple silicon, in melee-unlocked's own launcher and with its icon.
-
-**Install.** Paste this into Terminal. It needs [OrbStack](https://orbstack.dev) or Docker Desktop running, because
-melee-unlocked's game is compiled from source in a container on your Mac (nothing from the game is downloaded):
-
-```
-curl -fsSL https://raw.githubusercontent.com/rkoh46/melee-unlocked-macOS/melee-unlocked-macos/install.sh | zsh
-```
-
-It builds from your own Melee NTSC 1.02 disc image, replaces DashDance2 in Applications with melee-unlocked-macOS, and keeps
-your settings, Slippi sign-in, replays and memory card where they were.
-
-**In the launcher**, the Game Build row picks what PLAY starts:
-
-| Game Build | What it is |
-|---|---|
-| Source Port | melee-unlocked's engine (the default). |
-| Static Recomp (Legacy) | The recompiled game this app started with. It stays until the Source Port has online play and replays. |
-| Vanilla | melee-unlocked's engine playing the game as the disc does: no codes, nothing unlocked. |
-
-**What works with the Source Port today:** offline play with picture, sound and controllers (keyboard, controllers macOS
-sees, the GameCube adapter), memory card saves, Slippi online from the game's own Online Play page (Unranked, Direct,
-Teams; Ranked is refused, as melee-unlocked refuses it), a replay of every match and Watch from the Replay Viewer, and the
-mod catalog on the Mods page (download and install). **Not yet:** melee-unlocked's own in-game settings panel (F1 or Esc
-opens the app's menu), loading an installed mod in the Source Port, and the replay viewer's controls (pause, jumps,
-takeover). The full list, row by row, is in [docs/FEATURES.md](docs/FEATURES.md).
-
-## About this fork
-
-This repository ([rkoh46/melee-unlocked-macOS](https://github.com/rkoh46/melee-unlocked-macOS)) grew out of rkoh46's playtest fork of [TheAndersMadsen/dashdance](https://github.com/TheAndersMadsen/dashdance). Everything here is the original Dashdance plus fixes found by playing it on a Mac, kept on the `dashdance2` branch until they go upstream. What is different from the original:
-
-- **Online games no longer drop 30 seconds after connecting** when the opponent's router remaps their port. An expired connection attempt to the advertised port no longer counts the player as gone.
-- **Characters no longer stay invisible after an app update.** A draw whose shader is still waiting in the boot-time precompile queue compiles it at once instead of waiting up to a minute and a half.
-- **Recent games can be watched.** Every recent game has a Watch button, which plays the replay back in its own window, and a Show in Finder button that selects the `.slp` so it can be shared.
-- **Ready to compete warns about AirDrop and AirPlay** on Wi-Fi, a known source of ping spikes and rollbacks.
-- **M2 Pro tuning:** the simulation thread's real-time budget goes from 5 to 8 ms so it stops competing with the render and audio threads.
-- **GameCube adapter shutdown fixes:** the adapter is closed and its reader thread joined cleanly at exit.
-- **Side-by-side install:** `tools/mac/rebuild.sh` builds and installs the fork as *DashDance2* with an orange icon and its own bundle identifier, so it can live next to the original app.
-- **More netplay logging:** every ENet peer event is logged, so a dropped game can be explained from the session log.
-- **The one-line installer works on a fresh Mac.** It used to stop at *"--decomp-root HEAD must equal pinned revision"*: `setup.sh` now fetches the exact doldecomp/melee commit the build is pinned to, and `install.sh` downloads the full history the build checks the Slippi files against. An install that already failed is repaired by running the installer again.
-
-The full list, with evidence and method for each fix, is in [docs/PR.md](docs/PR.md) and [docs/MAC_FIXES.md](docs/MAC_FIXES.md). Build it the same way as the original (see [Get Dashdance](#get-dashdance)); developers rebuild with `tools/mac/rebuild.sh`.
-
-## What's New
-
-**Version 0.1.5-beta**
-
-- A new name and an original icon: meet Dashdance.
-- **Ready to compete:** the dashboard checks your setup and tells you what costs you milliseconds.
-- **MetalFX upscaling** (new): render the game at half the internal resolution and let Apple's MetalFX reconstruct the full picture — Off, Balanced, or Quality, in the dashboard, the in-game menu, or `--upscaler`. Where the GPU budget is tight (iPhone, iPad, 4K), it keeps the image crisp at a fraction of the fill rate.
-- Choose your own online input delay, from 1 frame for the lowest latency.
-- Lower latency on iPhone and iPad: the display stays at full refresh while you play.
-- Connect a Controller walks you through Bluetooth pairing.
-- Layouts made for every screen, including iPhone Duo.
-- Fixes for stale textures, a freeze when entering full screen, and the installer.
-
-## About
-
-Every other way to play Melee on a Mac runs a GameCube in software, one instruction at a time. Dashdance leaves the console out. The game is translated once, ahead of time, into native code for Apple silicon and drawn with Metal. What's left is Melee, fast, with your Slippi Online account built in.
-
-<div align="center">
-<img src="docs/images/store/banner-mac-match.jpg" width="880" alt="Every frame, right on time.">
-<br><br>
-<img src="docs/images/store/banner-mac-dashboard.jpg" width="880" alt="Ready when you are.">
-<br><br>
-<img src="docs/images/store/banner-mac-menu.jpg" width="880" alt="Settings, mid-match.">
-<br><br>
-<img src="docs/images/store/banner-iphone.jpg" width="880" alt="Pick up and play.">
-<br><br>
-<img src="docs/images/store/banner-ipad.jpg" width="880" alt="Room to breathe.">
-<br><br>
-<img src="docs/images/store/banner-vision.jpg" width="880" alt="Melee, in your space.">
-</div>
-
-### Built to compete
-
-- **Shown on the next refresh.** Each finished frame goes to your display's very next refresh, at whatever rate your display runs.
-- **Your inputs, read last.** Controllers are read right before each frame starts.
-- **GameCube controllers at 1000 Hz.** Plug in a GameCube adapter for Wii U and Switch. No driver, no security changes.
-- **Your delay, your call.** Pick Slippi's online input delay yourself, from 1 frame.
-- **Ready to compete.** The dashboard flags a 60 Hz display, Wi-Fi instead of a cable, a slow controller, Low Power Mode and Bluetooth audio.
-
-## Get Dashdance
+## Install
 
 **You'll need:**
 
-- A Mac with Apple silicon (M1 or newer).
-- Your own copy of Super Smash Bros. Melee (NTSC 1.02) as a disc image. Dashdance doesn't include the game.
+- A Mac with Apple silicon (M1 or newer), macOS 14 or later.
+- [OrbStack](https://orbstack.dev) or Docker Desktop, running. melee-unlocked's game is compiled from source in a
+  container on your Mac; nothing from the game is downloaded.
+- Your own copy of Super Smash Bros. Melee (NTSC 1.02) as a disc image (.iso, .gcm, or .rvz).
 - A free [Slippi account](https://slippi.gg) to play online.
 
-**Install.** Open Terminal: press ⌘ Space, type *Terminal* and press Return. Paste this line and press Return:
+Open Terminal (press ⌘ Space, type *Terminal*, press Return), paste this line and press Return:
 
-```bash
+```
 curl -fsSL https://raw.githubusercontent.com/rkoh46/melee-unlocked-macOS/melee-unlocked-macos/install.sh | zsh
 ```
 
-When it asks, drag your Melee disc image into the Terminal window and press Return. Dashdance builds itself on your Mac from your own disc, which takes fifteen to twenty minutes the first time. Then it's in your Applications folder as **DashDance2**, with an orange icon, and it opens. It installs next to the original Dashdance and leaves it alone, so you can keep both. To update, paste the same line again.
+When it asks, drag your disc image into the Terminal window and press Return. The first build takes about fifteen
+minutes. Then **melee-unlocked-macOS** is in your Applications folder and opens. To update, paste the same line again.
 
-**If the install stopped partway** (for example with *"must equal pinned revision"* from an older version of the installer), paste the same line again. It fixes the download in `~/Dashdance` and picks up where it left off; it remembers your disc, so you won't be asked again.
-
-**Building by hand.** Clone the full repository (not `--depth 1`: the build checks the Slippi files against a commit in its history), then run `setup.sh` with your disc. It fetches doldecomp/melee at the revision pinned in [`tools/port_source_pins.json`](tools/port_source_pins.json).
+**Building by hand:**
 
 ```bash
 git clone --branch melee-unlocked-macos https://github.com/rkoh46/melee-unlocked-macOS.git ~/Dashdance
 ~/Dashdance/setup.sh /path/to/melee.iso
 ```
 
-**On iPhone or iPad.** Dashdance can't be on the App Store, because it's built from your own disc. You can still put it on your own device with AltStore, SideStore or Sideloadly. For iPhone Duo, build with Xcode 27.1 or later so it fills both displays. [See how](docs/TECHNICAL.md#iphone-and-ipad-your-own-device).
+## Playing
 
-## Information
+The launcher has four pages:
 
-| | |
-|---|---|
-| **Developer** | rkoh (this fork), on Dashdance by TheAndersMadsen and contributors |
-| **Size** | 73 MB on Mac · 19 MB for iPhone and iPad |
-| **Category** | Games |
-| **Mac** | Apple silicon, macOS 14 or later (Liquid Glass on macOS 26) |
-| **iPhone** | iOS 17 or later |
-| **iPad** | iPadOS 17 or later |
-| **Apple Vision Pro** | Tested on visionOS 26 in the Simulator |
-| **Languages** | English |
-| **Price** | Free |
-| **License** | GPL-2.0-or-later (GPL-3.0 for builds with the controller artwork) |
+- **Play:** your disc, the Game Build (**Source Port**, melee-unlocked's game with its codes and unlocks, or **Vanilla**,
+  the game exactly as the disc plays it) and PLAY.
+- **Settings:** internal resolution, full screen, display sync, widescreen, volume, Slippi Online and the online input
+  delay (Auto or 1 to 4 frames; the in-game menu goes higher).
+- **Replay Viewer:** every game you play is saved as a Slippi replay. Watch plays one back in the engine, with
+  melee-unlocked's viewer controls; Watch live follows a game the Slippi Launcher is broadcasting to its spectate folder.
+- **Mods:** melee-unlocked's mod catalog, installed from your own disc. A chosen mod loads at the next offline start.
 
-## App Privacy
+In game, **F1** or **Esc** (or L + R + Start) opens melee-unlocked's settings panel: controls and remapping, graphics,
+Training, overlays, replays and the rest. Keyboard, every controller macOS sees and the GameCube adapter for Wii U and
+Switch (no driver) work.
 
-**Dashdance collects no data.** It has no analytics, no tracking and no account of its own. Your disc image stays on your device.
+**Online:** Slippi Unranked, Direct and Teams from the game's own Online Play page, with your Slippi sign-in (this app's,
+or the Slippi Launcher's when you are signed in there). Ranked is refused, as melee-unlocked refuses it.
 
-It connects only to what it needs:
+The full feature list, row by row against melee-unlocked's, is in [docs/FEATURES.md](docs/FEATURES.md).
 
-- **Slippi Online**, to sign in, load your profile and rank, and find and report matches. Slippi's sign-in runs on Google's Firebase.
-- **ipify**, to show the public IP address Slippi's matchmaking sees, on the Matchmaking region card.
-- **The Discord app on your Mac**, locally, when Discord presence is on.
+## Coming from Dashdance or DashDance2
+
+This app replaces the earlier builds of this repository (Dashdance's statically recompiled engine, installed as
+DashDance2). The installer removes DashDance2 from Applications. Your settings, Slippi sign-in, replays and memory card
+stay where they were (`~/Library/Application Support/Dashdance`), and the launcher reads the earlier settings: the disc,
+resolution, display sync, full screen, volume, Slippi Online, input delay, widescreen, controller mappings, the keyboard
+layout, Discord presence, anisotropic filtering and the HUD carry over. A few of the earlier engine's settings have no
+counterpart and are ignored: sharpening, MetalFX upscaling and the touch controls. The earlier engine's memory card
+(`User/GC/CardA`) is not read: melee-unlocked keeps its own card in `melee-unlocked/Card A`. Replays recorded by the
+earlier engine still play, but not frame for frame exactly. The iPhone, iPad and Vision Pro builds belonged to the
+earlier engine and are gone: melee-unlocked's engine runs on the Mac only.
+
+## Privacy
+
+The app collects no data and has no analytics. Your disc image stays on your Mac. It connects only to Slippi Online (to
+sign in and to find and report matches), to GitHub (the launcher's update check: whether this repository has newer
+changes), to the mod downloads you start, and, locally, to the Discord app when Discord presence is on.
 
 ## Questions
 
-**Is this official?**
-No. Dashdance is an independent community project. It isn't made, endorsed or supported by the Slippi team or Nintendo.
+**Can I just download the app?** No, and there will never be a download: the finished app contains the compiled game, so
+it is built on your own Mac and plays from your own disc.
 
-**Can I just download the app?**
-No, and there will never be a download. The finished app contains Melee's code, so it has to be built from your own disc, on your own Mac.
+**Can I play people who use Slippi Dolphin?** Yes: the engine speaks Slippi 3.7.0's matchmaking and netcode.
 
-**Can I play people who use Slippi Dolphin?**
-Yes. Dashdance uses Slippi's own matchmaking and netcode.
-
-**Does it change anything on my Mac?**
-It installs Apple's developer tools and a few build tools, then builds the app. It doesn't install drivers or change your Mac's security settings.
-
-**Something isn't working.**
-Dashdance is still in alpha. Please [open an issue](https://github.com/rkoh46/melee-unlocked-macOS/issues) on this fork and tell us what happened.
+**Something isn't working.** Please [open an issue](https://github.com/rkoh46/melee-unlocked-macOS/issues). The launcher's
+*Save crash report* writes a report with names, codes and addresses removed; it stays on your Mac until you attach it.
 
 ## For developers
 
-How it works, the latency work, controller and adapter internals, device builds and building from source are in the [technical guide](docs/TECHNICAL.md). Measurements are in [PERFORMANCE.md](docs/PERFORMANCE.md). Contributors and coding agents should start with [CLAUDE.md](CLAUDE.md).
+How the app is put together, how to build and test it, and the exactness gate are in the
+[technical guide](docs/TECHNICAL.md). Contributors and coding agents should start with [CLAUDE.md](CLAUDE.md).
 
 ## Credits and legal
 
-Built on the work of the [Slippi](https://slippi.gg) team, the [Dolphin](https://dolphin-emu.org) project, [SDL](https://libsdl.org), [Aurora](https://github.com/encounter/aurora), the [doldecomp/melee](https://github.com/doldecomp/melee) contributors, and [Hero88go/melee-unlocked](https://github.com/Hero88go/melee-unlocked), the Windows build this project tracks.
+Built on [Hero88go/melee-unlocked](https://github.com/Hero88go/melee-unlocked), the [doldecomp/melee](https://github.com/doldecomp/melee)
+contributors, the [Slippi](https://slippi.gg) team, the [Dolphin](https://dolphin-emu.org) project, [SDL](https://libsdl.org),
+Dashdance by TheAndersMadsen and contributors, and Melee-NX-NetPlay (the same engine on the Nintendo Switch). melee-unlocked's
+name, icon and launcher artwork are melee-unlocked's.
 
-The GameCube controller in the controller editor is the indigo controller from [ControllerOverlays](https://github.com/datkat21/ControllerOverlays) by Kat21 (GPL-3.0). The on-screen controller follows [VirtualFriend](https://github.com/agg23/virtualfriend) by Adam Gastineau (MIT). The Dashdance name, icon and mark are original to this project. Slippi is a trademark of its authors; Dashdance is an independent client that connects to Slippi Online and is not affiliated with it. Device frames in the images are drawn for this project. Design references: [dimillian/Skills](https://github.com/dimillian/Skills), Apple's Human Interface Guidelines, including [Designing for iPhone Duo](https://developer.apple.com/design/human-interface-guidelines/designing-for-iphone-duo), and [PwrGit](https://github.com/pwrdrvr/PwrGit/pull/196) for the Icon Composer layout.
+**Licence.** This project's own code is GPL-2.0-or-later; with melee-unlocked's engine (GPL-3.0-or-later) the app is
+distributed under GPL-3.0. Parts under other licences, and the evidence for each, are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), which also explains how AI-assisted development bears on copyright.
 
-**Licence.** Dashdance is distributed under GPL-2.0-or-later, the licence of the project it forks ([Hero88go/melee-unlocked](https://github.com/Hero88go/melee-unlocked)) and of the Dolphin and Slippi Ishiiruka code it ports. Parts under other licences, and the evidence for each, are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Builds that include the controller artwork are covered by GPL-3.0.
-
-**AI-assisted.** Much of Dashdance was written with AI coding assistants. The U.S. Copyright Office concludes that copyright does not extend to purely AI-generated material, but does protect human-authored expression, including human selection, arrangement and modification of AI output. The licence covers every part that is protected. That doesn't make the project public domain: code derived from the GPL projects it builds on stays under the GPL. Details and sources are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md#ai-assisted-development).
-
-Super Smash Bros. Melee is the property of Nintendo and HAL Laboratory. This repository contains no game code or data. You must supply your own legally obtained disc image. This is a factual summary, not legal advice.
+Super Smash Bros. Melee is the property of Nintendo and HAL Laboratory. This repository contains no game code or data.
+You must supply your own legally obtained disc image. This is a factual summary, not legal advice.
