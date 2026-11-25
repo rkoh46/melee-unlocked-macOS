@@ -9,6 +9,8 @@
 #   menumusic     TE's "menu music from Sound Test": Data > Sound Test, the fourth song played with A (command 0xF7 keeps it as
 #                 te_menu_music in settings.ini.state; musicpacks 1 so the jukebox names each song); a second start's main menu
 #                 plays it
+#   lock          TE's "lock settings" (te_options2 40000): --feature-test te-lock sends command 0xF8 as TE's menu does: a change
+#                 is refused while locked, turning the lock off is taken, the same change then goes through
 # Output: build/mu-engine/runs/app-te/<case>/.
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
@@ -48,8 +50,13 @@ PY
     echo "settings.ini.state: $(grep te_menu_music "$dir/melee-unlocked/settings.ini.state" 2>/dev/null)"
     printf '%s\n' "130 A" "140" "400 START" "410" > "$dir/script2.txt"; echo "--- second start" >> "$dir/log"
     run "$dir" 900 "$dir/script2.txt" ;;
+  lock)
+    printf '%s\n' "mod_profile te" > "$dir/melee-unlocked/settings.ini"
+    printf '%s\n' "te_options2 40000" > "$dir/melee-unlocked/settings.ini.state"
+    printf '%s\n' "130 A" "140" > "$dir/script.txt"
+    run "$dir" 200 "$dir/script.txt" --feature-test te-lock ;;
   *) echo "unknown case $case" >&2; exit 2 ;;
   esac
   echo "== $case"
-  grep -hE "mods:|jukebox:|te_menu|0xF7|TE |second start|engine exit|captured" "$dir/log" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200 | tail -20
+  grep -hE "mods:|jukebox:|te_menu|0xF7|TE |te-lock|second start|engine exit|captured" "$dir/log" | sed 's/^\[ *[0-9.]*\] //' | cut -c1-200 | tail -20
 done
