@@ -32,3 +32,9 @@ grep -q "costume_skeleton_matches" "$work/cosmetics_skeleton.inc" && grep -q '"F
 put "$work/cosmetics_skeleton.inc" "$gen/cosmetics_skeleton.inc"
 put "$work/cosmetics_families.inc" "$gen/cosmetics_families.inc"
 for f in pack_skin_rule.h pack_skin_rule.cpp; do put "$mu/port/runtime/host/$f" "$gen/$f"; done
+# Use custom music (fe/features/audio.cpp): melee-unlocked's jukebox, LF line ends and no byte-order mark, with patches/0118
+# (the app's MusicPacks folder), as Melee-NX-NetPlay's build.sh sync makes it.
+mkdir -p "$gen/jukebox" "$work/jb/port/runtime/hle"
+perl -pe 's/\r$//; s/^\xEF\xBB\xBF// if $. == 1' "$mu/port/runtime/hle/jukebox.cpp" > "$work/jb/port/runtime/hle/jukebox.cpp"
+patch -s -p1 -d "$work/jb" < "$here/patches/0118-jukebox-on-the-mac.patch"
+put "$work/jb/port/runtime/hle/jukebox.cpp" "$gen/jukebox/jukebox.cpp"

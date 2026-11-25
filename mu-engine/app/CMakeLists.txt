@@ -112,7 +112,7 @@ execute_process(COMMAND bash "${FE}/gen_fe.sh" "${MU_TREE}" "${FE_GEN}" RESULT_V
 if(NOT _fe_rc EQUAL 0)
   message(FATAL_ERROR "melee-unlocked engine: fe/gen_fe.sh could not take its files from ${MU_TREE}")
 endif()
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FE}/gen_fe.sh" "${FE}/patches/0112-phillip-ai-own-engine.patch"
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FE}/gen_fe.sh" "${FE}/patches/0118-jukebox-on-the-mac.patch" "${FE}/patches/0112-phillip-ai-own-engine.patch"
   "${FE}/patches/0113-practice-menu-download-question.patch" "${FE}/proai/catalog.json")
 file(READ "${FE}/proai/catalog.json" _proai_catalog)
 file(WRITE "${FE_GEN}/proai_catalog.cpp.new"
@@ -153,6 +153,19 @@ set_target_properties(mu_proai PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
 target_include_directories(mu_proai PRIVATE "${MU_REPO}/port/third_party" "${FE}/proai/include" "${FE}/proai" "${FE_GEN}/proai" "${FE_GEN}/abi" "${FE}" "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/runtime/abi" "${DD}/host")
 target_compile_definitions(mu_proai PRIVATE MU_PROAI_FRONTEND=1)
 target_compile_options(mu_proai PRIVATE -O2 -fno-strict-aliasing)
+# Use custom music (fe/features/audio.cpp): melee-unlocked's jukebox (gen/fe/jukebox/jukebox.cpp: fe/gen_fe.sh's copy with
+# fe/patches/0118, on the few host services fe/jukebox_shim/ declares) and the player-file decoders (fe/media_decode.cpp over
+# minimp3, stb_vorbis, dr_wav and dr_flac, fetched by mu-engine/fetch.sh into build/mu-engine/audio-decoders, and AudioToolbox).
+set(MU_AUDIO_DECODERS "${MU_REPO}/build/mu-engine/audio-decoders")
+if(NOT EXISTS "${MU_AUDIO_DECODERS}/minimp3_ex.h")
+  message(FATAL_ERROR "melee-unlocked engine: the audio decoders are missing: run mu-engine/fetch.sh")
+endif()
+add_library(mu_jukebox OBJECT "${FE_GEN}/jukebox/jukebox.cpp" "${FE}/media_decode.cpp")
+set_target_properties(mu_jukebox PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)   # upstream builds it as C++17
+target_include_directories(mu_jukebox BEFORE PRIVATE "${FE}/jukebox_shim")
+target_include_directories(mu_jukebox PRIVATE "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/linux" "${MU_AUDIO_DECODERS}" "${MU_TREE}/port/runtime/host")
+target_compile_options(mu_jukebox PRIVATE -O2 -g -fno-strict-aliasing)
+set_source_files_properties("${FE}/media_decode.cpp" PROPERTIES COMPILE_OPTIONS "-w")   # the decoders' own warnings
 set(_mu_fe_ui_sources "${FE}/app_menu.cpp" "${FE}/overlay_draw.cpp" "${FE_GEN}/proai/practice_menu.cpp" "${FE}/proai/practice_overlay.cpp")
 set_source_files_properties("${FE}/overlay_draw.cpp" PROPERTIES INCLUDE_DIRECTORIES "${FE};${FE_GEN};${DD}/host")
 set_source_files_properties("${FE}/controls.cpp" "${FE}/controls_files.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_TREE}/port/linux;${MU_TREE}/port/runtime/abi;${DD}/host;${MU_TREE}/port/runtime/host")
@@ -184,9 +197,9 @@ add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engi
   COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
 add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
 add_dependencies(melee_unlocked_mac mu_netplay_object)
-target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
+target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_jukebox mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
-  "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX")
+  "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX" "-framework AudioToolbox" "-framework CoreAudio")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")
 # mu_panel.cpp asks for the Practice menu weakly (the Switch's features/proai.cpp): absent, its row is left out.
 target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi")

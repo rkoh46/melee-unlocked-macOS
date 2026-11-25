@@ -34,7 +34,8 @@ uint32_t g_wav_bytes = 0;
 
 int16_t g_ring[RING_FRAMES][2];
 std::atomic<uint64_t> g_ring_write{0}, g_ring_read{0};
-size_t g_target_frames = SAMPLE_RATE * 35 / 1000;
+std::atomic<size_t> g_target_frames{SAMPLE_RATE * 35 / 1000};
+size_t g_device_part = 0;              // the device's own buffer, in ring frames (device_open)
 bool g_priming = true;
 double g_ring_phase = 0.0, g_rate = 1.0, g_fill_average = 0.0;
 int16_t g_last_output[2] = {0, 0};
@@ -140,10 +141,13 @@ bool device_open() {
   // buffer is whatever CoreAudio chose, our ring target adds the game-side slack.
   int device_frames = 0;
   SDL_AudioSpec device_spec{};
-  if (SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_stream), &device_spec, &device_frames) && device_frames > 0)
-    g_target_frames = size_t(device_frames) * SAMPLE_RATE / std::max(device_spec.freq, 1) + SAMPLE_RATE * ring_slack_ms() / 1000;
+  g_device_part = 0;
+  if (SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(g_stream), &device_spec, &device_frames) && device_frames > 0) {
+    g_device_part = size_t(device_frames) * SAMPLE_RATE / std::max(device_spec.freq, 1);
+    g_target_frames = g_device_part + SAMPLE_RATE * ring_slack_ms() / 1000;
+  }
   if (g_target_frames > RING_FRAMES / 2) g_target_frames = RING_FRAMES / 2;
-  log("audio: device buffer %d frames at %d Hz, ring target %zu frames (%.0f ms of queued audio)", device_frames, device_spec.freq, g_target_frames, g_target_frames * 1000.0 / SAMPLE_RATE);
+  log("audio: device buffer %d frames at %d Hz, ring target %zu frames (%.0f ms of queued audio)", device_frames, device_spec.freq, g_target_frames.load(), g_target_frames * 1000.0 / SAMPLE_RATE);
   audio_session_report();   // iPhone, iPad, Vision Pro: the buffer and route the system granted
   g_priming = true;
   g_fill_average = 0.0;
@@ -225,7 +229,14 @@ void audio_push(const uint8_t* be_samples, size_t bytes) {
 uint64_t audio_pushed_frames() { return g_frames; }
 uint64_t audio_dropped_blocks() { return g_dropped; }
 uint64_t audio_underruns(uint64_t* silent_ms) { if (silent_ms) *silent_ms = g_underrun_frames.load() * 1000 / SAMPLE_RATE; return g_underruns.load(); }
-void audio_set_buffer_ms(int ms) { g_slack_ms.store(std::clamp(ms, 5, 120)); }
+// melee-unlocked's Audio buffer (Auto or Low latency): the ring's slack on top of the device buffer, now and at the next open.
+void audio_set_buffer_ms(int ms) {
+  ms = std::clamp(ms, 4, 120);
+  g_slack_ms.store(ms);
+  std::lock_guard<std::mutex> lock(g_mutex);
+  if (g_stream && g_device_part) g_target_frames = std::min<size_t>(g_device_part + size_t(SAMPLE_RATE) * ring_slack_ms() / 1000, RING_FRAMES / 2);
+}
+int audio_buffer_ms() { return ring_slack_ms(); }
 void audio_set_speed(double speed) { g_speed.store(std::clamp(speed, 0.5, 2.0), std::memory_order_relaxed); }
 void audio_rate_range(double* low, double* high) { if (low) *low = g_rate_min.load(); if (high) *high = g_rate_max.load(); }
 uint32_t audio_buffered_ms() { return uint32_t((g_ring_write.load() - g_ring_read.load()) * 1000 / SAMPLE_RATE); }

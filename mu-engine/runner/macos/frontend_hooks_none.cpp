@@ -18,4 +18,5 @@ __attribute__((weak)) int mu_frontend_option(int, uint32_t*) { return 0; }
 __attribute__((weak)) void mu_frontend_disc_ready(void) {}
 __attribute__((weak)) int mu_frontend_disc_read(uint64_t, void*, size_t) { return -1; }
 __attribute__((weak)) int32_t mu_frontend_command(uint8_t, const uint8_t*, uint32_t, uint8_t*, uint32_t, uint32_t*) { return INT32_MIN; }
+__attribute__((weak)) int mu_frontend_jukebox(void) { return 0; }   // patches/0015: the game plays its own music
 }

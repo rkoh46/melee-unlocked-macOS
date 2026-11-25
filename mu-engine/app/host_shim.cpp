@@ -100,8 +100,11 @@ void thread_realtime(const char* name, double computation_ms, double constraint_
 }
 }  // namespace host
 
-// The classic engine's Slippi jukebox plays music over the output; the melee-unlocked engine plays its own.
-namespace slippi { namespace jukebox { void mix(short*, unsigned long) {} } }
+// audio_sdl.cpp's device thread calls the music player here, after the game's sound (at the player's volume) is in `out`:
+// melee-unlocked's jukebox when Use custom music is on (fe/features/audio.cpp), else nothing (the game plays its own songs).
+namespace host { int audio_volume(); }
+extern "C" __attribute__((weak)) void fe_jukebox_mix(int16_t* out, size_t frames, int volume);
+namespace slippi { namespace jukebox { void mix(short* out, unsigned long frames) { if (fe_jukebox_mix) fe_jukebox_mix(out, frames, host::audio_volume()); } } }
 
 // Every log line of the host services, the decoder and the renderer: this program's log file and stderr.
 extern "C" int mu_frontend_log(const char* line) {
