@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 
+namespace fe::features { bool replay_playing() __attribute__((weak)); }   // features/replays.cpp
 namespace fe {
 namespace {
 struct Settings {
@@ -45,6 +46,7 @@ struct Settings {
   bool low_poly = false, fod_reflections = false, css_background_free = false, training_hud = true;
   int stock_hud_scale = 100, damage_hud_scale = 100;   // 75..175
   uint32_t community_codes = 0;           // MU_DISPLAY_OPTION_* community code bits, hex
+  bool clean_replays = false;            // clean_replays: no Arcade hitboxes while a replay plays (melee-unlocked's Overlays row)
   bool arcade_hitboxes = false, arcade_projectile_hitboxes = false, arcade_hitboxes_behind = false, arcade_camera_2d = false;
   int arcade_backdrop = 0;                // 2: grid
   uint32_t arcade_grid_rgb = 0xFFFFFF;
@@ -149,6 +151,7 @@ void set(const std::string& key, const std::string& value) {
   else if (key == "freeze_fd") s.freeze_fd = on;
   else if (key == "widescreen") s.widescreen = on;
   else if (key == "truewidescreen") { s.true_widescreen = on; fe::looks::live().true_widescreen.store(on); }
+  else if (key == "clean_replays") s.clean_replays = on;
   else if (key == "arcade_hitboxes") s.arcade_hitboxes = on;
   else if (key == "arcade_projectile_hitboxes") s.arcade_projectile_hitboxes = on;
   else if (key == "arcade_hitboxes_behind") s.arcade_hitboxes_behind = on;
@@ -214,6 +217,7 @@ std::string get(const std::string& key) {
   if (key == "freeze_fd") return bit(s.freeze_fd);
   if (key == "widescreen") return bit(s.widescreen);
   if (key == "truewidescreen") return bit(s.true_widescreen);
+  if (key == "clean_replays") return bit(s.clean_replays);
   if (key == "arcade_hitboxes") return bit(s.arcade_hitboxes);
   if (key == "arcade_projectile_hitboxes") return bit(s.arcade_projectile_hitboxes);
   if (key == "arcade_hitboxes_behind") return bit(s.arcade_hitboxes_behind);
@@ -333,6 +337,8 @@ uint32_t word_display() {
   fe::looks::live().arcade_backdrop.store(uint8_t(s.arcade_backdrop), std::memory_order_relaxed);   // the renderer's plain background (patches/0115)
   fe::looks::live().arcade_rgb.store(s.arcade_background_rgb, std::memory_order_relaxed);
   const bool net = online.load(std::memory_order_relaxed);
+  // Clean replays (upstream's clean_replay_active): a replay plays without the Arcade look's hitboxes. Display only.
+  const bool clean = s.clean_replays && &fe::features::replay_playing && fe::features::replay_playing();
   return (s.low_poly ? MU_DISPLAY_OPTION_LOW_POLY : 0u) | (s.training_hud ? 0u : MU_DISPLAY_OPTION_NO_TRAINING_HUD) |
          (s.player_tags ? MU_DISPLAY_OPTION_PLAYER_TAGS : 0u) | (s.fod_reflections ? MU_DISPLAY_OPTION_FOD_REFLECTIONS : 0u) |
          (s.css_background_free ? MU_DISPLAY_OPTION_CSS_BACKGROUND_FREE : 0u) | (s.freeze_fd ? MU_DISPLAY_OPTION_FREEZE_FD : 0u) |
@@ -340,8 +346,8 @@ uint32_t word_display() {
          (s.community_codes & MU_DISPLAY_OPTION_CODES_ALL) |
          // Never in a network session: the offline codes (menu timing, the pause), the Arcade look's hitboxes and its camera.
          (net ? 0u : (s.community_codes & MU_DISPLAY_OPTION_OFFLINE_CODES) |
-                     (s.arcade_hitboxes ? MU_DISPLAY_OPTION_HITBOXES : 0u) | (s.arcade_projectile_hitboxes ? MU_DISPLAY_OPTION_PROJECTILE_HITBOXES : 0u) |
-                     (s.arcade_hitboxes_behind ? MU_DISPLAY_OPTION_HITBOXES_BEHIND : 0u) | (s.arcade_camera_2d ? MU_DISPLAY_OPTION_ARCADE_CAMERA : 0u) |
+                     (s.arcade_hitboxes && !clean ? MU_DISPLAY_OPTION_HITBOXES : 0u) | (s.arcade_projectile_hitboxes && !clean ? MU_DISPLAY_OPTION_PROJECTILE_HITBOXES : 0u) |
+                     (s.arcade_hitboxes_behind && !clean ? MU_DISPLAY_OPTION_HITBOXES_BEHIND : 0u) | (s.arcade_camera_2d ? MU_DISPLAY_OPTION_ARCADE_CAMERA : 0u) |
                      (boot_to_css ? MU_DISPLAY_OPTION_BOOT_TO_CSS : 0u)) |  // --auto-vs
          (s.arcade_backdrop == 2 ? MU_DISPLAY_OPTION_GRID : 0u) |
          // Online 1v1 port colours, agreed with another Melee-NX-NetPlay build (patches/net-0004); 0 against anyone else.

@@ -1867,3 +1867,6 @@ void menu_overlay(OverlayFrame& out, int ww, int wh, bool) {
 }
 }  // namespace host
 
+
+// melee-unlocked's "Auto-open in-game overlay on startup" (settings.ini autoopenoverlay, fe/features/options.cpp).
+namespace fe { void panel_open_at(int frame) { if (g_open_at_frame < 0) g_open_at_frame = frame; } }

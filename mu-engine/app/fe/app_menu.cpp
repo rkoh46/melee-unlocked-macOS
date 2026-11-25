@@ -56,6 +56,8 @@ const std::vector<Page>& pages() {
       {"vanilla", "Retail game (no built-in codes)", Kind::Toggle, 0, 1, 1, {}, true, true},
       {"slippi_menus", "Slippi menus (Online Play)", Kind::Toggle, 0, 1, 1, {}, true, true},
       {"lagtestnext", "Lossless adapter lag test (next start only)", Kind::Toggle, 0, 1, 1, {}, true, true},
+      {"directpause", "Pause in Direct", Kind::Toggle, 0, 1, 1, {}, false, true},
+      {"mod_te_enabled", "20XX TE features with its save", Kind::Toggle, 0, 1, 1, {}, true, true},
     }},
     {"Picture and HUD", {
       {"palstockicons", "PAL stock icons", Kind::Toggle},
@@ -71,6 +73,13 @@ const std::vector<Page>& pages() {
       {"arcade_hitboxes_behind", "Hitboxes behind fighters", Kind::Toggle, 0, 1, 1, {}, true},
       {"arcade_camera_2d", "2D camera", Kind::Toggle, 0, 1, 1, {}, true},
       {"arcade_backdrop", "Grid behind the stage", Kind::Grid},
+      // melee-unlocked's rows the Mac panel was missing (the keys were read, with no row to change them).
+      {"truewidescreen", "True widescreen", Kind::Toggle},
+      {"lowpoly", "Low-poly fighters", Kind::Toggle},
+      {"training_hud", "Training HUD", Kind::Toggle},
+      {"fodreflections", "Fountain of Dreams reflections", Kind::Toggle},
+      {"cssbackgroundfree", "Character select background keeps playing", Kind::Toggle},
+      {"clean_replays", "Clean replays (no hitboxes while watching)", Kind::Toggle},
     }},
     {"Community codes", {
       {"community_codes", "HUD fades behind fighters", Kind::Bit, 0x1000},

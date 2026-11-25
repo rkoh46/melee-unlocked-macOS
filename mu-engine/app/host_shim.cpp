@@ -91,7 +91,11 @@ const char* latency_warning() { return ""; }
 void audio_session_report() {}
 void haptic_tap(bool) {}
 
+// melee-unlocked's Controller rumble (settings.ini rumble): off keeps every controller's motor still, the adapter's and SDL pads'.
+std::atomic<bool> g_rumble_on{true};
+void input_set_rumble(bool on) { g_rumble_on.store(on, std::memory_order_relaxed); }   // a motor already running stops at the game's next rumble command
 void input_rumble(int game_port, bool on) {
+  if (!g_rumble_on.load(std::memory_order_relaxed)) on = false;
   if (game_port < 0 || game_port > 3) return;
   gcadapter_rumble(game_port, on);
   window_gamepad_rumble(game_port, on);

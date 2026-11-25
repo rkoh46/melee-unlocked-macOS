@@ -33,7 +33,8 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-namespace host { void window_set_background_input(bool on); }   // port/runtime/host/window_sdl.cpp
+namespace host { void window_set_background_input(bool on); void input_set_rumble(bool on); }   // window_sdl.cpp, host_shim.cpp
+namespace fe { void panel_open_at(int frame) __attribute__((weak)); }   // ui/mu_panel.cpp: the panel opens by itself at this retrace   // port/runtime/host/window_sdl.cpp
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -62,6 +63,8 @@ bool zelda_sheik = false;
 bool squad_strike = false;
 bool dsp_lowpass = false;          // the console's DSP low-pass on voices (upstream MELEE_AUDIO_POLYPHASE, off by default as upstream)        // offline Squad Strike in ordinary VS (Z on the select adds fighters); patches/0006
 std::atomic<bool> input_suggestions{true};
+bool rumble_on = true;              // rumble: melee-unlocked's Controller rumble (every controller; each SDL pad keeps its own switch too)
+bool auto_open = false;             // autoopenoverlay: the settings panel opens by itself when the game starts
 bool background_input = true;      // mumac: controllers play while another window is in front (melee-unlocked's Game option)
 
 uint32_t colour_value(const std::string& value) {
@@ -77,7 +80,9 @@ bool setting(const std::string& key, const std::string& value) {
   else if (key == "squad_strike") squad_strike = value == "1";
   else if (key == "dsp_lowpass") dsp_lowpass = value == "1";
   else if (key == "input_suggestions") input_suggestions = value != "0";
-  else if (key == "background_input") { background_input = value != "0"; host::window_set_background_input(background_input); }
+  else if (key == "rumble") { rumble_on = value != "0"; host::input_set_rumble(rumble_on); }
+  else if (key == "autoopenoverlay") { auto_open = value == "1"; if (auto_open && &fe::panel_open_at) fe::panel_open_at(90); }
+  else if (key == "background_input" || key == "backgroundinput") { background_input = value != "0"; host::window_set_background_input(background_input); }
   else return false;
   return true;
 }
@@ -428,6 +433,11 @@ void register_options() {
   add_menu_entry({"Game", "Input suggestions (online, next game)", [] { return on_off(input_suggestions.load()); },
                   [](int) { input_suggestions = !input_suggestions.load(); }, nullptr,
                   [](fe::features::MenuEntry::Write w) { w("input_suggestions", input_suggestions.load() ? "1" : "0"); }});
+  add_menu_entry({"Game", "Controller rumble", [] { return on_off(rumble_on); },
+                  [](int) { rumble_on = !rumble_on; host::input_set_rumble(rumble_on); }, nullptr,
+                  [](fe::features::MenuEntry::Write w) { w("rumble", rumble_on ? "1" : "0"); }});
+  add_menu_entry({"Game", "Open the settings when the game starts", [] { return on_off(auto_open); }, [](int) { auto_open = !auto_open; }, nullptr,
+                  [](fe::features::MenuEntry::Write w) { w("autoopenoverlay", auto_open ? "1" : "0"); }});
   add_menu_entry({"Game", "Background input (controllers play while another window is in front)", [] { return on_off(background_input); },
                   [](int) { background_input = !background_input; host::window_set_background_input(background_input); }, nullptr,
                   [](fe::features::MenuEntry::Write w) { w("background_input", background_input ? "1" : "0"); }});
