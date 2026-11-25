@@ -369,7 +369,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M14 | Mouse cursor hides over the game | active: the pointer hides after two seconds at rest over the focused game window and shows while the settings panel is open (window_sdl.cpp, melee-unlocked's cursor_idle rule) |
 | M15 | Settings-panel controller ownership rules | active: the panel follows the pad that went from rest to active and hands the game its controllers back only once the pads used in the menu are released (upstream's settings_nav.h rule in ui/mu_panel.cpp, g_nav_port) |
 | M16 | Game calendar date from the real clock | active: play mode starts the console clock from the local time (`mu_play_main.cpp` time_base, the host's rule), so saves and TM-CE exports carry today's date; scripted reference runs keep their fixed clock |
-| M17 | DSP coefficient table, player dump first | not wired; easy |
+| M17 | DSP coefficient table, player dump first | active (fe/features/options.cpp, as the Switch): the player's own dump at `melee-unlocked/User/GC/dsp_coef.bin` first, else Dolphin's free table (from the fetched tree, embedded) written once to `Sys/GC/dsp_coef.bin`; used by `dsp_lowpass` |
 | M18 | Crash report privacy scrubbing | active: melee-unlocked's own rules (Crash report row) |
 | M19 | Crash zip contents and fallback | active without the relay (nothing is uploaded): the zip holds the newest macOS crash report (256 KB), the engine log with its host log (2 MB), the previous session's (1 MB), the launcher's log (256 KB) and the last day's marked session trace rows, each scrubbed by upstream's rules; the folder opens with the zip selected. `crash_report_test.sh`: `zip holds: launcher.log melee_port.log melee_port.prev.log melee_port_crash.txt`, every test word removed |
 | M20 | Readable crash text companion | active: `melee_crash_report.md` beside the zip, upstream's make_markdown text of the same scrubbed files, to paste into an issue |
@@ -379,10 +379,10 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M24 | Game thread priority and timer resolution | active in the Mac's form: the game thread (the engine's main thread) runs at QOS_CLASS_USER_INTERACTIVE (`mu_play_main.cpp`), as the GameCube adapter thread does; macOS has no timer resolution or EcoQoS switch |
 | M25 | Diagnostic summary lines | active: the engine logs upstream's summary at start (`diagnostics: renderer Metal, internal resolution auto, vsync on, sub-frame off, frame cap none, offline`; the chip, model, performance cores, memory and whether it runs on mains or battery) and the startup timing (`diagnostics: the first frame ran 194 ms after the start`), `mu_play_main.cpp` |
 | M26 | Launcher logs | active: `melee-unlocked/launcher.log` is kept across starts and begun again once it passes 256 KB (upstream's rule), each start dated; a start whose engine did not run says why (`port/app/main_mac.cpp`). Three dated starts kept in a test home |
-| M27 | Shared disc memory outside the game folder | not wired; easy |
+| M27 | Shared disc memory outside the game folder | active in the Mac's form: the disc path lives in `~/Library/Application Support/Dashdance/launcher.ini`, outside the app, so it survives an update or a second copy of the app |
 | M28 | Version mismatch warning | not wired; n/a |
 | M29 | Engine switch requested by the game | not wired; n/a |
-| M30 | Launcher replay choice honoured by direct starts | not wired; easy if a launcher and game are separate |
+| M30 | Launcher replay choice honoured by direct starts | active: the engine started on its own (no `--replay-dir`) records to the same `~/Library/Application Support/Dashdance/Replays` the launcher lists, and reads settings.ini's `savereplays` either way |
 | M31 | Windows audio session details | not wired; n/a (CoreAudio has no ducking) |
 | M32 | Replay viewer mute | active: settings.ini `replaymute`, a Replays page row ("Mute the game while watching a replay"): the game's sound is silence while a replay plays, the volume setting untouched (`fe/features/extras.cpp`, `mu_play_main.cpp`). A replay played back with SDL's disk output: RMS 3935 with it off, 0.0 with it on |
 | M33 | Alt+Enter fullscreen toggle | active: Control-Command-F (the Mac's shortcut) and Alt+Return toggle full screen, and the green button works as everywhere; the panel's Fullscreen row follows the window and launcher.ini keeps it |
@@ -410,7 +410,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A53 | Radial wheel navigation | active: the Radial style's wheel, with the stick and the D-pad (settings_radial_nav from the fetched tree) |
 | A56 | "PC Settings" row in Melee's Options | not wired; Switch: medium - game image exposes the row; host must answer and open our menu; macOS: medium |
 | A57 | "Restart now" button | not wired; Switch: medium - app relaunch of the game program; macOS: easy |
-| A59 | Settings view memory | not wired; Switch: easy; macOS: easy |
+| A59 | Settings view memory | active: the panel reopens on the page it was left on (this session; ui/mu_panel.cpp g_reopen_page), and each layout remembers its own palette |
 | A60 | UI scale | not wired; Switch: easy (720/1080 fixed); macOS: easy (Retina backing scale) |
 | A62 | 20XX TE pair link | not wired; Switch: easy - two bit syncs in settings code; macOS: easy |
 | A66 | Advanced groups | not wired; Switch: easy; macOS: easy |
@@ -458,7 +458,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | D79 | Old shader caches pruned | not wired; Switch: easy; macOS: easy |
 | D80 | Dedicated GPU on laptops | not wired; Switch: n/a; macOS: easy - pick the discrete MTLDevice on dual-GPU MacBook Pros (or opt in to integrated for battery) |
 | D82 | Vulkan developer switches | not wired; Switch: n/a (Aurora's own); macOS: easy |
-| E95 | Title-demo stage fallback (cmd 0xFC skin growth) | not wired; Switch: easy - answer 0xFC with the skin growth once a skin store exists (0 today, so harmless); macOS: easy - same |
+| E95 | Title-demo stage fallback (cmd 0xFC skin growth) | active: fe/features/cosmetics.cpp answers 0xFC with the four largest growths of the picked costumes (0 with none) |
 | E99 | Keyboard key names in prompts (`mu_host_button_label(port, mask)`) | active: the game's command 0xDF (mu_host_button_label) is answered from the app's keyboard layout for port 1 when the keyboard is the only controller (`fe/features/key_labels.cpp`); otherwise the GameCube names stay. `app_online_menus_test.sh` (Slippi's character select): `keys: the game's prompt names Z as "E"`, `B as "X"`, `Start as "Return"` |
 | E100 | Card boot auto-answers (`card_boot_confirm`, host API >= 22) | not wired; Switch: n/a now; macOS: n/a now |
 | F22 | Keyboard key names in prompts (host answers 0xDF from live key bindings: "Hold E to disconnect") | active: the game's command 0xDF (mu_host_button_label) is answered from the app's keyboard layout for port 1 when the keyboard is the only controller (`fe/features/key_labels.cpp`); otherwise the GameCube names stay. `app_online_menus_test.sh` (Slippi's character select): `keys: the game's prompt names Z as "E"`, `B as "X"`, `Start as "Return"` |
