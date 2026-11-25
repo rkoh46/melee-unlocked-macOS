@@ -31,7 +31,16 @@ uint8_t mu_scene_major() { return g_scene_major; }
 uint8_t mu_scene_minor() { return g_scene_minor; }
 void mu_shim_set_scene(uint8_t major, uint8_t minor) { g_scene_major = major; g_scene_minor = minor; }
 void mu_shim_retrace() { ++g_retraces; }
-void mu_shim_open_log(const std::string& path) { g_log = std::fopen(path.c_str(), "w"); }
+// The session before stays beside it as engine.prev.log (and .host), for the launcher's crash report (crash_report.cpp).
+void mu_shim_open_log(const std::string& path) {
+  const size_t dot = path.rfind(".log");
+  if (dot != std::string::npos && dot + 4 == path.size()) {
+    const std::string prev = path.substr(0, dot) + ".prev.log";
+    std::rename(path.c_str(), prev.c_str());
+    std::rename((path + ".host").c_str(), (prev + ".host").c_str());
+  }
+  g_log = std::fopen(path.c_str(), "w");
+}
 
 Options options;
 uint8_t* ram = reinterpret_cast<uint8_t*>(linux_host::mem1_base);

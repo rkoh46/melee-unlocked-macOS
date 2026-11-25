@@ -111,6 +111,16 @@ NSImage* art(NSString* name) {
 }
 }  // namespace
 
+// ---- melee-unlocked's crash report (mu-engine/app/crash_report.cpp, linked with the engine) -------------------------------
+// Weak "not in this build" answers, replaced by the real ones when the melee-unlocked engine is built (keep in step).
+namespace mu_crash {
+__attribute__((weak)) bool available() { return false; }
+__attribute__((weak)) bool save(const std::string&, const std::string&, std::string*, std::string* error) {
+  if (error) *error = "this build has no crash report";
+  return false;
+}
+}  // namespace mu_crash
+
 // ---- the mod installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp) -------------------------------------
 // Declared as in mu-engine/app/mods_facade.h (keep the two in step). These weak definitions answer "no installer"; the app
 // links the real ones when the melee-unlocked engine is built.
@@ -191,6 +201,7 @@ void mod_profile_set(const std::string& profile) {
 @property(nonatomic) NSImage* bailey;
 @property(nonatomic) host::Dashboard dashboard;
 @property(nonatomic) std::string error;
+@property(nonatomic) std::string crashNote;   // the crash report button's last result
 @property(nonatomic) NSPanel* themePanel;
 @property(nonatomic) NSMutableDictionary<NSString*, NSValue*>* buttons;   // name -> rect, rebuilt every paint
 @property(nonatomic) NSTimer* modsTimer;   // repaints the Mods page while a job runs
@@ -414,7 +425,9 @@ void mod_profile_set(const std::string& profile) {
   }
   const CGFloat by = note_y + 40;
   [self button:@"logs" rect:LR(CX, by, 150, 32) title:@"Show game logs" primary:NO enabled:YES];
-  if (!self.error.empty()) text(ns(self.error), LR(CX + 160, by, 280, 32), f_small(), C_BAD, LEFT, 0, true);
+  [self button:@"crashreport" rect:LR(CX + 158, by, 160, 32) title:@"Save crash report" primary:NO enabled:mu_crash::available()];
+  if (!self.error.empty()) text(ns(self.error), LR(CX + 326, by, 120, 32), f_small(), C_BAD, LEFT, 0, true);
+  else if (!self.crashNote.empty()) text(ns(self.crashNote), LR(CX + 326, by, 120, 32), f_small(), C_DIM, LEFT, 0, true);
   // The launcher colour button: the compact wheel (theme_wheel, compact).
   const NSRect wr = LR(666, by, 32, 32);
   self.buttons[@"theme"] = [NSValue valueWithRect:wr];
@@ -663,6 +676,13 @@ void mod_profile_set(const std::string& profile) {
   }
   else if ([key isEqualToString:@"modsfolder"]) [self reveal:support + "/melee-unlocked/Mods" create:YES];
   else if ([key isEqualToString:@"logs"]) [self reveal:support + "/melee-unlocked" create:YES];
+  else if ([key isEqualToString:@"crashreport"]) {   // scrubbed by melee-unlocked's rules, saved here, never sent
+    std::string where, why;
+    if (mu_crash::save(support, s.replay_dir, &where, &why)) {
+      self.crashNote = "Saved (stays on this Mac)";
+      [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:ns(where)]]];
+    } else self.crashNote = why;
+  }
   else if ([key isEqualToString:@"replaysfolder"]) [self reveal:s.replay_dir create:YES];
   else if ([key isEqualToString:@"openreplay"]) [self openReplay];
   else if ([key isEqualToString:@"howtoupdate"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];

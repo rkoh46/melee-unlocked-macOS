@@ -315,7 +315,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Hosted lobby service | launcher | upstream stub |
 | Slippi account line | launcher | active: the Play page names the account (name and connect code) or says there is none |
 | YouGame connect | launcher + external | out of scope |
-| Crash report upload | launcher + external | not wired |
+| Crash report upload | launcher + external | partial: the launcher's Play page "Save crash report" writes melee-unlocked's report (`melee_crash_report.zip` and `.md` in `melee-unlocked/Logs`) with its privacy scrubbing (its launcher_crash_*.h from the fetched tree; `mu-engine/app/crash_report.cpp`, from the Switch's diagnostics.cpp): the newest macOS crash report of the engine or app from the last week, the engine's log and the session before it (the engine now keeps `engine.prev.log`), the last day's session traces. Nothing is uploaded (upstream's relay is not contacted). `mu-engine/tools/crash_report_test.sh`: a connect code, Slippi name, uid, IP and e-mail address, this Mac's user name and full file locations put in made-up logs are all gone from the zip; ordinary lines stay |
 | Settings window from the launcher | launcher | partial: the launcher's Settings page (window, picture, sound, online); the rest is the in-game panel |
 | Standalone double-click start | host | active: the app opens from Finder or the Dock into the launcher |
 
@@ -370,7 +370,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M15 | Settings-panel controller ownership rules | not wired; easy |
 | M16 | Game calendar date from the real clock | not wired; easy |
 | M17 | DSP coefficient table, player dump first | not wired; easy |
-| M18 | Crash report privacy scrubbing | not wired; easy |
+| M18 | Crash report privacy scrubbing | active: melee-unlocked's own rules (Crash report row) |
 | M19 | Crash zip contents and fallback | not wired; easy |
 | M20 | Readable crash text companion | not wired; easy |
 | M21 | GPU-driver attribution in crash reports | not wired; easy: name Metal/AGX frames |

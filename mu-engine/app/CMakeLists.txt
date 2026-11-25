@@ -225,7 +225,14 @@ add_library(mu_modinstall_objs OBJECT "${MU_APPSRC}/mods_facade.cpp"
   "${MU_TREE}/port/third_party/lzma/LzmaDec.c" "${MU_TREE}/port/third_party/lzma/Lzma2Dec.c")
 target_include_directories(mu_modinstall_objs PRIVATE "${MI}" "${MU_TREE}/port/third_party/lzma" "${MU_REPO}/port/third_party" "${CMAKE_CURRENT_BINARY_DIR}/gen")
 target_compile_features(mu_modinstall_objs PRIVATE cxx_std_17)
+# melee-unlocked's crash report (crash_report.cpp, its port/app/launcher_crash_*.h from the fetched tree) for the launcher's
+# "Save crash report": linked into the app the same way, replacing the launcher's weak "not in this build" answer.
+file(STRINGS "${MU_REPO}/VERSION" _mu_app_version LIMIT_COUNT 1)
+add_library(mu_crash_objs OBJECT "${MU_APPSRC}/crash_report.cpp")
+target_include_directories(mu_crash_objs PRIVATE "${MU_TREE}/port/app")
+target_compile_definitions(mu_crash_objs PRIVATE MELEE_PORT_VERSION="${_mu_app_version}")
+target_compile_features(mu_crash_objs PRIVATE cxx_std_17)
 if(TARGET melee_port_mac)
-  target_sources(melee_port_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs>)
+  target_sources(melee_port_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs> $<TARGET_OBJECTS:mu_crash_objs>)
   target_link_libraries(melee_port_mac PRIVATE curl z)
 endif()
