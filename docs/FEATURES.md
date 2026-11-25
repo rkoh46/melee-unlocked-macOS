@@ -399,7 +399,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 
 | ID | Item | Mac status and port note |
 |---|---|---|
-| A5 | Opponent auto L-cancel notice | not wired; Switch: easy - text line, but needs MU build message (0xE0) which we do not speak; our own build message 0xD0 could carry it. macOS: same |
+| A5 | Opponent auto L-cancel notice | partial: between Melee-NX-NetPlay and Mac builds the build message (0xD0, net-0011) says whether the opponent offers it and the log names it (`opponent ... Auto L-cancel offered`); no line on the select yet (the netplay object would need to hand the offer to the panel through runner/netplay_bridge) |
 | A13 | Input overlay lone-port fallback | not wired; Switch: easy; macOS: easy |
 | A22 | Switch Pro picture binder | not wired; Switch: medium - most relevant on Switch (Pro/Joy-Con); art + hit-testing; macOS: medium |
 | A23 | Deadzone visualiser | not wired; Switch: easy - overlay draw of raw stick; macOS: easy |
@@ -413,7 +413,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | A59 | Settings view memory | active: the panel reopens on the page it was left on (this session; ui/mu_panel.cpp g_reopen_page), and each layout remembers its own palette |
 | A60 | UI scale | not wired; Switch: easy (720/1080 fixed); macOS: easy (Retina backing scale) |
 | A62 | 20XX TE pair link | active for the screen rumble pair (`fe/features/extras.cpp`): with the TE save's features on (offline), TE's Disable screen rumble and No screen shake follow each other, settling once from TE's side; TE's Lock settings keeps TE's side. TE's input display needs no pair here: the overlays draw TE's pads from its own bit (row "20XX TE input display"). `app_te_test.sh ISO pair`: `No screen shake on: TE's Disable screen rumble follows`, then `TE's Disable screen rumble off: No screen shake follows` |
-| A66 | Advanced groups | not wired; Switch: easy; macOS: easy |
+| A66 | Advanced groups | partial: every section of the panel collapses (VIDEO > Advanced holds the lag test row), as upstream's groups do, but the open state is kept for the session only (no `advancedvideo` / `advancedoverlays` keys) |
 | A67 | Engine-only and experimental rules | not wired; Switch: easy (n/a mostly: one engine); macOS: easy |
 | A71 | `widescreen` key | not wired; Switch: easy - doc fix |
 | A72 | Retired keys | not wired; doc only |
@@ -462,7 +462,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | E99 | Keyboard key names in prompts (`mu_host_button_label(port, mask)`) | active: the game's command 0xDF (mu_host_button_label) is answered from the app's keyboard layout for port 1 when the keyboard is the only controller (`fe/features/key_labels.cpp`); otherwise the GameCube names stay. `app_online_menus_test.sh` (Slippi's character select): `keys: the game's prompt names Z as "E"`, `B as "X"`, `Start as "Return"` |
 | E100 | Card boot auto-answers (`card_boot_confirm`, host API >= 22) | not wired; Switch: n/a now; macOS: n/a now |
 | F22 | Keyboard key names in prompts (host answers 0xDF from live key bindings: "Hold E to disconnect") | active: the game's command 0xDF (mu_host_button_label) is answered from the app's keyboard layout for port 1 when the keyboard is the only controller (`fe/features/key_labels.cpp`); otherwise the GameCube names stay. `app_online_menus_test.sh` (Slippi's character select): `keys: the game's prompt names Z as "E"`, `B as "X"`, `Start as "Return"` |
-| F45 | Develop-mode physics display ("Player N X Y", sticks, SelfVel, KBVel, Pos, ECB, State) | not wired; Switch: easy (game text); macOS: easy. |
+| F45 | Develop-mode physics display ("Player N X Y", sticks, SelfVel, KBVel, Pos, ECB, State) | in the engine: TM-CE's develop-mode text (the game image's shim/mu_tmce_codes.c) with the TM-CE profile (row "Training Mode CE events"); not looked at on the Mac |
 | F80 | YouGame page pause (freeze scene from the app, query pause state) | not wired; Switch/macOS: skip. |
 | F82 | "Coming soon" beside YouGame rows (game text) | not wired; skip |
 | F93 | `melee_game supports Windows x64 and native Linux x86-64` fatal error | not wired; Switch: medium, patch the check (aarch64 Horizon toolchain). macOS: medium, patch the check and Mach-O specifics. |
