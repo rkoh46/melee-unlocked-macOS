@@ -622,6 +622,21 @@ int main(int argc, char** argv) {
     const int64_t local_seconds = int64_t(timegm(&t));
     if (local_seconds > 946684800) { config.has_time_base = true; config.time_base = uint64_t(local_seconds - 946684800) * uint64_t(MU_TB_HZ); }
   }
+  // The Lossless adapter's lag test (upstream --lag-test or the saved switch lagtestnext, which arms one start only; as
+  // Melee-NX-NetPlay's play_main): the game's shim/mu_lagtest.c reads MELEE_LAG_TEST (develop mode, boot to the character
+  // select, its rules on Dream Land, a 10-second rumble when the select loads, X held a white and A held a black background for
+  // the adapter's photodiode); the session gets an empty memory card folder of its own. Offline only, not vanilla-only.
+  if (g_play) {
+    const bool asked = fe::settings_lag_test_take() || std::find(fe::options.rest.begin(), fe::options.rest.end(), "--lag-test") != fe::options.rest.end();
+    if (asked && !net_on && !fe::settings_vanilla_only() && replay.empty()) {
+      setenv("MELEE_LAG_TEST", "1", 1);
+      config.card_dir = (mu_dir / "LagTestCard").string(); fs::create_directories(config.card_dir, ec);
+      host::log("play: Lossless adapter lag test: this start only (develop mode, boot to the character select, rumble on its load, X white / A black background); memory card folder %s", config.card_dir.c_str());
+    } else {
+      if (asked) host::log("play: the Lossless adapter lag test is offline only and not in a vanilla-only session or a replay: not started");
+      unsetenv("MELEE_LAG_TEST");
+    }
+  }
   if (g_play && !net_on) config.pace = false;   // paced here (on_retrace), so the replay viewer can fast-forward
   linux_host::set_tables_hook(tables_hook);
   linux_host::set_video_sinks(on_fifo, on_retrace, nullptr);

@@ -153,7 +153,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Training Mode CE on-screen displays | game image | engine option, no setting |
 | TM-CE console global OSD shortcut | n/a | not wired |
 | Practice from replays | game image + host + renderer | active: X / Y jump to a player's last / next coach tip, A takes over there (the replays module; see section 3) |
-| Lossless adapter lag test | game image + host | engine option, no setting |
+| Lossless adapter lag test | game image + host | active: settings.ini `lagtestnext 1` (the Game options row "Lossless adapter lag test (next start only)") or `--lag-test` arms one start, written back to 0 at that start, as upstream; play mode sets MELEE_LAG_TEST for the game's own shim/mu_lagtest.c (develop mode, boot to the character select, its rules on Dream Land, a 10-second rumble on every port when the select loads, X held white and A held black background) with an empty card folder `LagTestCard`; offline only. Seen: the game's `[lagtest]` line, the select at retrace 7 with "An endless KO fest!", rumble on ports 1-4 (build/gfx-shots/lag-test-select.png). Not measured with a Lossless adapter |
 | Display latency test | renderer | active: the overlays (latencytest) |
 
 ## 6. Mods, added content, cosmetics, music
