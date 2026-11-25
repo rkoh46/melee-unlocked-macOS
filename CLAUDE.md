@@ -41,7 +41,7 @@ as `rkoh` (git config); never as the Mac login name.
 | `port/runtime/host/` | The launcher (`mu_launcher.mm`, `mac_launcher.h`, its Replay Viewer model `dashboard.*`) and the host code the engine compiles in: the SDL3 window, keyboard and gamepads (`window_sdl.cpp`), controller mapping, deadzones and the keyboard layout (`input_config.*`), the GameCube adapter over IOKit with a 1 ms pipe policy (`gc_adapter_iokit.cpp`), controller report rates (`controller_rate.mm`), sound output (`audio_sdl.cpp`), input scripts (`input_script.*`), Slippi's GameFiles diffs (`vcdiff.*`). `host.h`, `game_menu.h`, `overlay.h` and `window.h` declare what the engine's `host_shim.cpp`, `fe/` and `ui/` implement. |
 | `port/runtime/gx/` | The GX decoder (`gx_core.cpp`, copied with changes by `mu-engine/app/CMakeLists.txt`), textures, Dolphin-derived shader generation and the Metal renderer (`gx_metal.mm`, `gx_msl.cpp`), sub-frame presentation. |
 | `port/runtime/hle/` | Discord Rich Presence over the local IPC socket (`discord_rpc.*`), the Slippi sign-in file and tables (`slippi_login.*`, over `slippi_http_apple.mm`), replay parsing for the Replay Viewer (`slippi_history.*`). |
-| `port/runtime/ppc/` | Headers the renderer and `host.h` still include (`ppc.h`, `numeric.h`, `render_observer.h`). |
+| `port/runtime/ppc/` | `ppc.h` (the console's RAM range and the CPU state record `host.h` and the renderer's observer name) and `render_observer.h`. |
 | `port/slippi_sys/GameFiles` | Slippi's menu files and diffs (from Slippi Ishiiruka), served to the game by `mu-engine/app/slippi_menus.cpp`. |
 | `port/third_party/` | ENet and nlohmann/json. SDL 3.4.10 is fetched by `port/CMakeLists.txt`. |
 | `native/` | Asset and animation headers the renderer includes. |
