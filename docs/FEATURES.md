@@ -359,7 +359,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M4 | Replays: content fingerprint check | not wired; easy |
 | M5 | Replays: delete to Recycle Bin, right-click "Show in Explorer" | not wired; easy: NSWorkspace recycle / reveal in Finder |
 | M6 | Mods catalog refreshed online | not wired; easy |
-| M7 | Mods: "Choose skins" button and skin count on a mod card | not wired; medium |
+| M7 | Mods: "Choose skins" button and skin count on a mod card | active: MODS > Choose skins (two rows: the costume that has skins, then its skin, as the character select's L / R cycle; fe/features/cosmetics.cpp from the Switch); each mod disc's skin count is written to `melee-unlocked/mods-cache/disc-skins.txt` at each start for the launcher's Mods page |
 | M8 | Mod disc costumes as skins in the normal game | active (fe/features/cosmetics.cpp, melee-unlocked's disc_skin_scan rule): every mod disc in the launcher's Mods folder but the active profile's adds each costume that differs from the retail disc's as a skin "<profile> disc"; the scan is cached in `melee-unlocked/mods-cache` |
 | M9 | Skin thumbnails | not wired; easy-medium |
 | M10 | Pack skin rule online: look-only costumes stay on | active: in a session that can go online a mod profile serves only its costumes that pass melee-unlocked's own pack skin rule and skeleton check (compiled from the fetched tree's pack_skin_rule.* and cosmetic_mods.cpp), in their online form (the standard rest pose bit for bit). `mu-engine/tools/app_skins_test.sh`: a costume nudged by 1e-4 `stays on online (67 joints match)`, one moved by 5 units `the standard costume online (Skeleton joint 1 rest pose differs from the vanilla costume (moved).)` |
