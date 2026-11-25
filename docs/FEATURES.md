@@ -371,9 +371,9 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M16 | Game calendar date from the real clock | active: play mode starts the console clock from the local time (`mu_play_main.cpp` time_base, the host's rule), so saves and TM-CE exports carry today's date; scripted reference runs keep their fixed clock |
 | M17 | DSP coefficient table, player dump first | not wired; easy |
 | M18 | Crash report privacy scrubbing | active: melee-unlocked's own rules (Crash report row) |
-| M19 | Crash zip contents and fallback | not wired; easy |
-| M20 | Readable crash text companion | not wired; easy |
-| M21 | GPU-driver attribution in crash reports | not wired; easy: name Metal/AGX frames |
+| M19 | Crash zip contents and fallback | active without the relay (nothing is uploaded): the zip holds the newest macOS crash report (256 KB), the engine log with its host log (2 MB), the previous session's (1 MB), the launcher's log (256 KB) and the last day's marked session trace rows, each scrubbed by upstream's rules; the folder opens with the zip selected. `crash_report_test.sh`: `zip holds: launcher.log melee_port.log melee_port.prev.log melee_port_crash.txt`, every test word removed |
+| M20 | Readable crash text companion | active: `melee_crash_report.md` beside the zip, upstream's make_markdown text of the same scrubbed files, to paste into an issue |
+| M21 | GPU-driver attribution in crash reports | active in the Mac's form: when the crashed thread's frames are in Apple's GPU driver or Metal (AGX*, IOGPU, MTL*, Metal), the crash text starts by saying so (`crash_report.cpp`). `crash_report_test.sh` with a made-up .ips in a test home: `The crashed thread is inside the graphics driver (AGX frames): Apple's GPU driver or Metal, not the game.` |
 | M22 | Crashed-start recovery | not wired; medium: same idea for the Metal pipeline cache |
 | M23 | Frame generation off after a Streamline crash | not wired; n/a |
 | M24 | Game thread priority and timer resolution | active in the Mac's form: the game thread (the engine's main thread) runs at QOS_CLASS_USER_INTERACTIVE (`mu_play_main.cpp`), as the GameCube adapter thread does; macOS has no timer resolution or EcoQoS switch |

@@ -15,6 +15,12 @@ for f in engine.log engine.prev.log; do
     "[ 4.0] scene: major 02 minor 00 (frame 635)" > "$out/support/melee-unlocked/$f"
 done
 printf '%s\n' "[ 2.5] host: disc /Users/$me/Games/GALE01.iso" > "$out/support/melee-unlocked/engine.log.host"
+printf '%s\n' "melee-unlocked-macOS test: launcher" "launcher: starting the engine" > "$out/support/melee-unlocked/launcher.log"
+# A made-up macOS crash report of the engine whose crashed thread is in Apple's GPU driver (a home of its own: this Mac's
+# real crash reports are never read by the test).
+mkdir -p "$out/home/Library/Logs/DiagnosticReports"
+printf '%s\n' '{"app_name":"MeleeUnlockedEngine"}' '{"faultingThread":0,"threads":[{"triggered":true,"frames":[{"imageOffset":12,"symbol":"AGXMetalG16X::encode","imageIndex":3}],"threadState":{}}]}' \
+  > "$out/home/Library/Logs/DiagnosticReports/MeleeUnlockedEngine-2026-11-24-120000.ips"
 cat > "$out/main.cpp" <<'CPP'
 #include <cstdio>
 #include <string>
@@ -28,7 +34,7 @@ int main(int, char** argv) {
 CPP
 ( unset DEVELOPER_DIR; clang++ -std=c++17 -O1 -w -DMELEE_PORT_VERSION='"test"' -I"$repo/build/mu-engine/mu/port/app" \
     "$repo/mu-engine/app/crash_report.cpp" "$out/main.cpp" -o "$out/crash_report_test" )
-"$out/crash_report_test" "$out/support"
+HOME="$out/home" "$out/crash_report_test" "$out/support"
 zip="$out/support/melee-unlocked/Logs/melee_crash_report.zip"
 mkdir -p "$out/unzipped"; (cd "$out/unzipped" && unzip -oq "$zip")
 echo "zip holds: $(cd "$out/unzipped" && ls | tr '\n' ' ')"
@@ -37,3 +43,5 @@ for w in "TEST#123" "Testy Name" "203.0.113.7" "someone@example.com" "/Users/$me
   if grep -rqF "$w" "$out/unzipped" "$out/support/melee-unlocked/Logs/melee_crash_report.md"; then echo "STILL THERE: a test word"; else echo "removed: test word $((++n))"; fi
 done
 echo "kept: $(grep -h "scene: major" "$out/unzipped"/* | head -2 | tr '\n' '|')"
+echo "crash text: $(head -1 "$out/unzipped/melee_port_crash.txt" 2>/dev/null)"
+echo "launcher.log in the zip: $([ -f "$out/unzipped/launcher.log" ] && echo yes || echo no)"
