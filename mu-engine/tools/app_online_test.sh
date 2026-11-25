@@ -11,6 +11,8 @@ iso="${1:?disc image}"; frames="${2:-3000}"; engine="${3:-$repo/build/mac/mu-eng
 out="$repo/build/mu-engine/runs/app-online"; port=$((43800 + RANDOM % 500))
 rm -rf "$out"; mkdir -p "$out"
 # MU_INI: settings.ini lines for both sides ("session_trace 2" keeps every session trace), separated by ";".
+# MU_COSMETICS: a Cosmetics folder copied to side b (skins and their picks, selection.txt).
+if [ -n "${MU_COSMETICS:-}" ]; then mkdir -p "$out/b/melee-unlocked"; cp -R "$MU_COSMETICS" "$out/b/melee-unlocked/Cosmetics"; fi
 if [ -n "${MU_INI:-}" ]; then for side in a b; do mkdir -p "$out/$side/melee-unlocked"; echo "$MU_INI" | tr ';' '\n' > "$out/$side/melee-unlocked/settings.ini"; done; fi
 profile='(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))'
 sandboxed() { sandbox-exec -p "$profile" "$@"; }

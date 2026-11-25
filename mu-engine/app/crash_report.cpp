@@ -62,7 +62,26 @@ bool save(const std::string& support, const std::string& replay_dir, std::string
     files.emplace_back(zip_name, lc::private_report_text(zip_name, data, data.size() >= cap, names));
   };
   const std::string ips = newest_crash_report();
-  if (!ips.empty()) add("melee_port_crash.txt", lc::read_tail(ips, 256 * 1024), 256 * 1024);
+  if (!ips.empty()) {
+    std::vector<uint8_t> crash = lc::read_tail(ips, 256 * 1024);
+    // Upstream names a crash inside a graphics driver as such (its main.cpp): on the Mac, the crashed thread's frames in Apple's
+    // GPU driver or Metal (AGX*, IOGPU, MTL*, Metal) get a line at the top saying so.
+    const std::string text(crash.begin(), crash.end());
+    const size_t trig = text.find("\"triggered\":true");
+    if (trig != std::string::npos) {
+      const size_t end = std::min(text.size(), text.find("\"threadState\"", trig) == std::string::npos ? trig + 20000 : text.find("\"threadState\"", trig));
+      const std::string thread = text.substr(trig, end - trig);
+      for (const char* driver : {"AGX", "IOGPU", "MTL", "Metal"}) {
+        if (thread.find(std::string("\"symbol\":\"") + driver) == std::string::npos && thread.find(std::string("[") + driver) == std::string::npos) continue;
+        const std::string line = std::string("The crashed thread is inside the graphics driver (") + driver + " frames): Apple's GPU driver or Metal, not the game.\n\n";
+        crash.insert(crash.begin(), line.begin(), line.end());
+        break;
+      }
+    }
+    add("melee_port_crash.txt", crash, 256 * 1024 + 256);
+  }
+  // The launcher's own log (upstream's zip has its launcher logs): why a Play started no game.
+  add("launcher.log", lc::read_tail(mu + "/launcher.log", 256 * 1024), 256 * 1024);
   const auto log_pair = [&](const char* zip_name, const std::string& log_path, size_t cap) {
     std::vector<uint8_t> log = lc::read_tail(log_path, cap);
     const std::vector<uint8_t> host = lc::read_tail(log_path + ".host", 512 * 1024);

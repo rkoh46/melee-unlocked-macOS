@@ -1,0 +1,23 @@
+Smoother time sync (melee-unlocked's experimental MELEE_SYNC_SMOOTH=1, hle/slippi_online.cpp): this side's speed
+correction starts at 2 ms ahead instead of 8, up to 1%. Unset, nothing changes. Applied by ../net_sources.sh after the net patches.
+SPDX-License-Identifier: GPL-2.0-or-later
+
+--- a/port/runtime/hle/slippi_online.cpp
++++ b/port/runtime/hle/slippi_online.cpp
+@@ -479,7 +479,15 @@
+     int32_t offset = g_netplay->CalcTimeOffsetUs();
+     g_trace_offset_us = offset;   // patches/net-0005
+     float deviation = 0;
+-    if (offset > -250 && offset < 8000) deviation = 0;
++    // mac-0003 (melee-unlocked's experimental MELEE_SYNC_SMOOTH=1, hle/slippi_online.cpp): start the speed correction at 2 ms
++    // instead of 8 ms ahead, up to the same 1%, so the two games meet again before a frame has to be halted or skipped. Only
++    // this side's own speed changes; the other game (Slippi Dolphin included) keeps its own sync. Unset: Slippi's rule.
++    static const bool smooth = [] { const char* v = std::getenv("MELEE_SYNC_SMOOTH"); if (v && *v == '1') host::log("slippi: MELEE_SYNC_SMOOTH: speed correction from 2 ms (experimental)"); return v && *v == '1'; }();
++    if (smooth) {
++      if (offset > -2000 && offset < 2000) deviation = 0;
++      else if (offset < 0) deviation = std::min(-offset / (2 * 16683.0f), 1.0f) * 0.01f;
++      else deviation = std::min(offset / (2 * 16683.0f), 1.0f) * -0.01f;
++    } else if (offset > -250 && offset < 8000) deviation = 0;
+     else if (offset < 0) deviation = std::min(-offset / (3 * 16683.0f), 1.0f) * 0.01f;
+     else deviation = std::min(offset / (3 * 16683.0f), 1.0f) * -0.005f;
+     // The native engine's host runs a frame in exactly 1/60 s; Slippi's time sync (and a Dolphin peer) counts

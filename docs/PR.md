@@ -118,3 +118,19 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - Picture effects in the engine (`mu-engine/app/gfx`, `gx::PostHooks` in gx_metal.mm, settings in `fe/features/graphics.cpp`): melee-unlocked's texture packs and dumping, menu video backgrounds (AVFoundation), Lab view, glitch detector compiled from the fetched tree (`gfx/gen_gfx.sh`, patches 0130-0133), screen-space ambient occlusion in the present pass, Ctrl+F2 capture bursts, RetroArch presets through a player-supplied librashader.dylib (Metal runtime). `mu-engine/tools/app_graphics_test.sh`.
 - PhobGCC on a stock controller through the GameCube adapter's raw reports (weak hooks in gc_adapter_iokit.cpp, `fe/phob_adapter.cpp` and `fe/features/phob.cpp` from the Switch) and melee-unlocked's own PhobGCC menu (PhobVision, PhobScope, Phob Check, setups, remap) compiled from the fetched tree (`mu-engine/app/phob`); `mu-engine/tools/app_phob_test.sh`.
 - The Lossless adapter lag test: `lagtestnext` (a Game options row, next start only) or `--lag-test` boots the game's own lag test mode with an empty card folder, as melee-unlocked and the Switch build do.
+- Settings panel: upstream's inline search box, typed on the keyboard (SDL text input fed to ImGui while a box has the cursor); upstream's `MELEE_TEST_*` hooks read the environment.
+- Training Mode CE: `mu-engine/tools/app_tmce_test.sh` (the TM-CE disc profile into the Training Lab); the panel's MODS page names the built-in packs (TM-CE, 20XX TE) and whether they are loaded, as upstream's.
+- Tests: `mu-engine/tests/online/online_marks_a.txt` (trace marks pressed in an online match) and `app_online_menus_test.sh` `MU_COSMETICS_A` (the skins-off-online note); `app_online_test.sh` `MU_COSMETICS`.
+- `app_te_test.sh lock` (`--feature-test te-lock`, `fe/features/te_lock_test.cpp`): 20XX TE's lock settings through command 0xF8.
+- `mu-engine/tools/app_save_import_test.sh`: a profile's .gci goes onto its card once.
+- Launcher Replay Viewer: a picked game's card with melee-unlocked's stats and the session trace graph (`mu-engine/app/replay_stats_facade.cpp`), Move to Trash; `MELEE_LAUNCHER_PICK` for screenshots.
+- Netplay: `MELEE_SYNC_SMOOTH=1` (upstream's experimental smoother time sync, `mu-engine/net/patches/mac-0003`); `mu-engine/tools/slp_ranks.py` reads the ranked info and bot flags from a replay's game start.
+- Keyboard key names in the game's prompts (command 0xDF from the keyboard layout, `fe/features/key_labels.cpp`).
+- `mu-engine/tools/slp_strip_codes.py`: a legacy-style copy of a replay (no Gecko list) for the legacy code list path.
+- Replays: a replay on a mod stage is refused with upstream's message (launcher and engine), and one recorded with other mod content is refused as upstream's check_replay_content does; `mu-engine/tools/slp_set_stage.py`.
+- Reset CPU training options (Computer players), the replay viewer's mute (`replaymute`), the game thread at user-interactive QoS (`fe/features/extras.cpp`, `mu_play_main.cpp`).
+- Diagnostics: the engine's summary lines and startup timing; launcher.log kept across starts up to 256 KB, dated, with the reason when the engine did not start.
+- Crash report: the launcher log in the zip, a GPU-driver line when the crashed thread is in AGX/Metal; the test reads a made-up crash report in a home of its own.
+- Restart the game from the panel (confirmed with a second A, offline) and the Arcade look preset/reset rows (`fe/features/extras.cpp`, `--feature-test extras`).
+- AUDIO page: the output's gaps this session and its buffer (upstream's read-out).
+- 20XX TE pair link: TE's Disable screen rumble and No screen shake follow each other (offline, respects TE's lock); `app_te_test.sh pair`.

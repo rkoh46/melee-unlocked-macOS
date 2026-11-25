@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <string>
+#include <vector>
 #include <chrono>
 #include <cmath>
 #include <mutex>
@@ -50,6 +52,9 @@ void ensure_context(id<MTLDevice> device) {
 // keeps its own event loop) and handed to ImGui once a frame.
 std::atomic<float> g_wheel_x{0.0f}, g_wheel_y{0.0f};
 std::atomic<bool> g_f11{false};
+std::mutex g_keys_mutex;
+std::string g_text;
+std::vector<std::pair<ImGuiKey, bool>> g_keys;
 bool wheel_watch(void*, SDL_Event* event) {
   if (event->type == SDL_EVENT_MOUSE_WHEEL) {
     const float flip = event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1.0f : 1.0f;
@@ -58,7 +63,42 @@ bool wheel_watch(void*, SDL_Event* event) {
   }
   // F11: upstream's switch to the legacy menu (the panel reads ImGuiKey_F11; the rest of the keyboard is a controller here).
   if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat && event->key.scancode == SDL_SCANCODE_F11) g_f11.store(true);
+  // Typing for the panel's text boxes (its inline search, as upstream's PC panel): the characters and the editing keys are
+  // queued here and handed to ImGui on the render thread. Text input is on only while a box has the cursor.
+  if (event->type == SDL_EVENT_TEXT_INPUT && event->text.text) {
+    std::lock_guard<std::mutex> lock(g_keys_mutex); g_text += event->text.text;
+  } else if (event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) {
+    ImGuiKey key = ImGuiKey_None;
+    switch (event->key.scancode) {
+      case SDL_SCANCODE_BACKSPACE: key = ImGuiKey_Backspace; break;
+      case SDL_SCANCODE_DELETE: key = ImGuiKey_Delete; break;
+      case SDL_SCANCODE_LEFT: key = ImGuiKey_LeftArrow; break;
+      case SDL_SCANCODE_RIGHT: key = ImGuiKey_RightArrow; break;
+      case SDL_SCANCODE_HOME: key = ImGuiKey_Home; break;
+      case SDL_SCANCODE_END: key = ImGuiKey_End; break;
+      case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: key = ImGuiKey_Enter; break;
+      case SDL_SCANCODE_A: key = ImGuiKey_A; break;
+      case SDL_SCANCODE_F: key = ImGuiKey_F; break;
+      case SDL_SCANCODE_SLASH: key = ImGuiKey_Slash; break;
+      case SDL_SCANCODE_LGUI: case SDL_SCANCODE_RGUI: key = ImGuiMod_Super; break;
+      case SDL_SCANCODE_LCTRL: case SDL_SCANCODE_RCTRL: key = ImGuiMod_Ctrl; break;
+      case SDL_SCANCODE_LSHIFT: case SDL_SCANCODE_RSHIFT: key = ImGuiMod_Shift; break;
+      default: break;
+    }
+    if (key != ImGuiKey_None) { std::lock_guard<std::mutex> lock(g_keys_mutex); g_keys.push_back({key, event->type == SDL_EVENT_KEY_DOWN}); }
+  }
   return true;
+}
+void feed_keys(ImGuiIO& io) {
+  std::string text; std::vector<std::pair<ImGuiKey, bool>> keys;
+  { std::lock_guard<std::mutex> lock(g_keys_mutex); text.swap(g_text); keys.swap(g_keys); }
+  for (const auto& [key, down] : keys) io.AddKeyEvent(key, down);
+  if (!text.empty() && io.WantTextInput) io.AddInputCharactersUTF8(text.c_str());
+  // SDL delivers text only while text input is on for the window: on while an ImGui box takes typing.
+  static bool on = false;
+  if (io.WantTextInput != on) {
+    if (SDL_Window* w = SDL_GetKeyboardFocus()) { if (io.WantTextInput) SDL_StartTextInput(w); else SDL_StopTextInput(w); on = io.WantTextInput; }
+  }
 }
 
 // The pointer, in the window's points (SDL's mouse state), its buttons and the wheel: the settings panel takes clicks and
@@ -95,6 +135,7 @@ void ui_frame(void* encoder, void* pass, void* command_buffer, int w, int h) {
   io.DeltaTime = g_last > 0.0 ? float(std::clamp(t - g_last, 1.0 / 1000.0, 0.1)) : 1.0f / 60.0f;
   g_last = t;
   feed_mouse(io, scale);
+  feed_keys(io);
   if (pass) ImGui_ImplMetal_NewFrame((__bridge MTLRenderPassDescriptor*)pass);
   ImGui::NewFrame();
   if (mu_gfx_imgui_draw) mu_gfx_imgui_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));

@@ -35,6 +35,12 @@
 #include <SDL3/SDL_keycode.h>
 #include <mach-o/dyld.h>
 #include <algorithm>
+#include <pthread.h>
+#include <sys/sysctl.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
+#include <IOKit/pwr_mgt/IOPMLib.h>
+#include <sys/qos.h>
 #include <atomic>
 #include <cmath>
 #include <ctime>
@@ -64,6 +70,7 @@ void mu_shim_open_log(const std::string& path);
 }
 
 // ui/mu_panel.cpp: the menu sounds mixed into the game output, and what the session is doing (reminder, skins note).
+namespace fe::features { bool replay_muted(); }   // fe/features/extras.cpp
 namespace fe::mu_ui { bool ui_sound_pending(); void ui_sound_mix(int16_t* rl, uint32_t frames, uint32_t rate); void note_session(bool fighting, bool online); }
 
 namespace {
@@ -145,8 +152,30 @@ void on_retrace(void*) {
 }
 
 std::atomic<uint32_t> g_trace_retrace{0};   // the command trace's retrace column (below)
+const Clock::time_point g_started = Clock::now();
+// Upstream's diagnostic summary lines (its main.cpp and host.cpp): the settings that decide how the game feels, the machine and
+// the power source, once at the start, so a report says what it ran on.
+void log_diagnostics(const gx::MetalOptions& gfx, bool net_on) {
+  char cpu[128] = "", model[64] = ""; size_t n = sizeof cpu, m = sizeof model;
+  sysctlbyname("machdep.cpu.brand_string", cpu, &n, nullptr, 0);
+  sysctlbyname("hw.model", model, &m, nullptr, 0);
+  int cores = 0; size_t cn = sizeof cores; sysctlbyname("hw.perflevel0.physicalcpu", &cores, &cn, nullptr, 0);
+  uint64_t mem = 0; size_t mn = sizeof mem; sysctlbyname("hw.memsize", &mem, &mn, nullptr, 0);
+  const char* power = "unknown";
+  if (CFTypeRef info = IOPSCopyPowerSourcesInfo()) {
+    if (CFStringRef type = IOPSGetProvidingPowerSourceType(info)) power = CFStringCompare(type, CFSTR(kIOPMACPowerKey), 0) == kCFCompareEqualTo ? "mains" : "battery";
+    CFRelease(info);
+  }
+  host::log("diagnostics: renderer Metal, internal resolution %s, vsync %s, sub-frame %s, frame cap %s, %s", gfx.efb_scale ? (std::to_string(gfx.efb_scale) + "x").c_str() : "auto",
+            gfx.vsync ? "on" : "off", fe::settings_get("subframe").empty() ? "off" : fe::settings_get("subframe").c_str(),
+            fe::settings_get("fps").empty() ? "none" : fe::settings_get("fps").c_str(), net_on ? "online allowed" : "offline");
+  host::log("diagnostics: %s (%s), %d performance cores, %.0f GB, power from %s, macOS game thread at user-interactive QoS", cpu, model, cores,
+            double(mem) / (1024.0 * 1024 * 1024), power);
+}
 void on_frame(const MuStatePod& state, const linux_host::Counters& counters, void*) {
   g_trace_retrace.store(counters.retraces, std::memory_order_relaxed);
+  if (counters.retraces == 1)   // upstream's startup timing (+ms): from the program's start to the game's first frame
+    host::log("diagnostics: the first frame ran %.0f ms after the start", std::chrono::duration<double, std::milli>(Clock::now() - g_started).count());
   host::mu_shim_set_scene(uint8_t(state.scene_major), uint8_t(state.scene));
   // The parity runner's per-retrace state row: the digest (--digest) and the netplay host's record of shown states.
   char row[1400]; int n = std::snprintf(row, sizeof row, "%u,%u,%u,%u,%u", counters.retraces, state.scene_major, state.scene, state.match_frame, state.rng);
@@ -300,7 +329,12 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
   // The settings panel's menu sounds (ui/mu_panel.cpp, upstream's menusounds), mixed into this block of the game's output; the
   // game's own samples are untouched.
   static std::vector<int16_t> with_tick;
-  if (fe::mu_ui::ui_sound_pending()) { with_tick.assign(rl, rl + size_t(frames) * 2); fe::mu_ui::ui_sound_mix(with_tick.data(), frames, 32000); rl = with_tick.data(); }
+  // The replay viewer's mute (fe/features/extras.cpp, replaymute): the game's sound is silence while a replay plays.
+  const bool muted = fe::features::replay_muted();
+  if (muted || fe::mu_ui::ui_sound_pending()) {
+    if (muted) with_tick.assign(size_t(frames) * 2, 0); else with_tick.assign(rl, rl + size_t(frames) * 2);
+    fe::mu_ui::ui_sound_mix(with_tick.data(), frames, 32000); rl = with_tick.data();
+  }
   // The app's output takes the AI DMA layout: big-endian 16-bit samples, two per frame.
   static std::vector<uint8_t> be;
   be.resize(size_t(frames) * 4);
@@ -363,6 +397,9 @@ int suggest_read(int port, uint8_t out[8]) {
 extern "C" int mu_net_suggest_setting(void);   // fe/features/options.cpp: settings.ini input_suggestions (default on)
 
 int main(int argc, char** argv) {
+  // The game runs on this thread (melee-unlocked's host services on the main thread): keep it on the performance cores, as
+  // upstream raises its game thread's priority (main.cpp) and the GameCube adapter thread already is (gc_adapter_iokit.cpp).
+  pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
   mu_abi_install_crash_report();
   std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir, play_script;
   bool record = true, script_codes = false, audio_device = true, script_clock = false;
@@ -391,6 +428,7 @@ int main(int argc, char** argv) {
     else if (a == "--replay") replay = next();
     else if (a == "--replay-dir") replay_dir = next();
     else if (a == "--no-record") record = false;
+    else if (a == "--restarted") host::log("play: started again from the settings panel's Restart the game");
     else if (a == "--no-audio-device") audio_device = false;
     else if (a == "--script-real-clock") script_clock = true;   // tests: a scripted match on the real clock and seed (as a player's)   // tests: mix and count the sound, open no output device
     else if (a == "--script-codes") script_codes = true;   // tests: a scripted match with melee-unlocked's codes on (not the retail game)
@@ -679,6 +717,7 @@ int main(int argc, char** argv) {
   if (g_play && !net_on) config.pace = false;   // paced here (on_retrace), so the replay viewer can fast-forward
   linux_host::set_tables_hook(tables_hook);
   linux_host::set_video_sinks(on_fifo, on_retrace, nullptr);
+  log_diagnostics(gfx, net_on);   // upstream's summary lines (main.cpp): what decides how it feels, the machine, the power source
   int code = 0;
   std::string error;
   if (!linux_host::initialize(config, &error)) {

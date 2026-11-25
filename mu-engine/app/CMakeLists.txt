@@ -315,5 +315,13 @@ add_library(mu_crash_objs OBJECT "${MU_APPSRC}/crash_report.cpp")
 target_include_directories(mu_crash_objs PRIVATE "${MU_TREE}/port/app")
 target_compile_definitions(mu_crash_objs PRIVATE MELEE_PORT_VERSION="${_mu_app_version}")
 target_compile_features(mu_crash_objs PRIVATE cxx_std_17)
-target_sources(melee_launcher_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs> $<TARGET_OBJECTS:mu_crash_objs>)
-target_link_libraries(melee_launcher_mac PRIVATE curl z)
+# The Replay Viewer's stats card (replay_stats_facade.cpp: melee-unlocked's replay data, stats and session trace overview from the
+# fetched tree), linked into the launcher the same way, with melee-unlocked's zstd for .slpz.
+add_library(mu_replaystats_objs OBJECT "${MU_APPSRC}/replay_stats_facade.cpp")
+target_include_directories(mu_replaystats_objs BEFORE PRIVATE "${FE_GEN}/slpshim" "${FE_GEN}/zstdshim")
+target_include_directories(mu_replaystats_objs PRIVATE "${MU_TREE}/port/app" "${MU_TREE}/port/runtime/host" "${MU_TREE}/port/runtime/abi"
+  "${MU_TREE}/port/runtime/hle" "${MU_REPO}/port/third_party" "${MU_TREE}/port/third_party")
+target_compile_options(mu_replaystats_objs PRIVATE -O2 -Wno-deprecated-declarations)
+set_target_properties(mu_replaystats_objs PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
+target_sources(melee_launcher_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs> $<TARGET_OBJECTS:mu_crash_objs> $<TARGET_OBJECTS:mu_replaystats_objs>)
+target_link_libraries(melee_launcher_mac PRIVATE curl z mu_zstd)

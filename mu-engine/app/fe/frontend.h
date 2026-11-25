@@ -91,6 +91,7 @@ std::string mods_configure(const std::string& profile);   // before the host sta
 void mods_configure_costumes(const std::string& profile);  // a session that can go online: only the profile's look-only costumes
 void mods_session_can_go_online();                        // skins are served in their online form (features/cosmetics.cpp)
 bool mods_te_owned();
+bool mods_tmce();                              // mods.cpp: the profile carries Training Mode CE's files
 bool mods_hackpack();
 uint32_t mods_flags();
 uint32_t mods_stage_bits();

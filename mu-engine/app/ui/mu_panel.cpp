@@ -59,7 +59,7 @@ bool mu_phob_menu_feed(host::PadState pads[4]) __attribute__((weak));
 #endif
 
 // ---- melee-unlocked's panel code (gen/mu_ui), with the few names it uses from the rest of its program ----
-namespace host::test_env { inline const char* getenv(const char*) { return nullptr; } }   // its test hooks: none here
+namespace host::test_env { inline const char* getenv(const char* name) { return std::getenv(name); } }   // its test hooks (MELEE_TEST_*), from the environment
 namespace gx {
 namespace yougame {            // YouGame (melee-unlocked's own service) is not part of this app
 // No F1 key on a controller: the footer's chip reads RETURN, as melee-unlocked labels it where the menu key is not F1.
@@ -302,7 +302,8 @@ bool place_row(const std::string& label, int* cat, std::string* title) {
     // melee-unlocked's VIDEO page has the Arcade look section
     {"Show hitboxes", 0, "Arcade look"}, {"Projectile hitboxes", 0, "Arcade look"}, {"Hitboxes behind fighters", 0, "Arcade look"},
     {"Lossless adapter lag test (next start only)", 0, "Advanced"},
-    {"2D camera", 0, "Arcade look"}, {"Grid behind the stage", 0, "Arcade look"}, {"Combo counter (offline)", 0, "Arcade look"}};
+    {"2D camera", 0, "Arcade look"}, {"Grid behind the stage", 0, "Arcade look"}, {"Combo counter (offline)", 0, "Arcade look"},
+    {"Arcade look: every switch on", 0, "Arcade look"}, {"Arcade look: reset", 0, "Arcade look"}};
   for (const P& p : table) if (label == p.label) { *cat = p.cat; *title = p.title; return true; }
   return false;
 }
@@ -481,6 +482,22 @@ std::array<Category, 8> build_rows(bool in_game) {
     nn.hint = "In an online mode, skins that could change more than looks show as the standard ones, and a note says so for 15 seconds.";
     section(cats[4], "Notices").rows.push_back(nn);
   }
+  // MODS: the two packs built into the game, as upstream's MODS page says them (Training Mode CE, 20XX Tournament Edition).
+  {
+    Section& p = section(cats[7], "Built-in packs");
+    Row tm; tm.kind = Kind::Info; tm.label = std::string("Training Mode CE: ") + (fe::mods_tmce() ? "Loaded" : "Not loaded");
+    tm.text = fe::mods_tmce() ? (fe::mods_te_owned() ? "Open 1P Mode > Event Match to select a Training Mode CE exercise; its exercise controls, pause menu and "
+                                                       "on-screen displays (the Lab menu) stay inside the game. Both packs are loaded: 20XX TE options apply in VS; "
+                                                       "Training Mode CE exercises use their own rules."
+                                                     : "Open 1P Mode > Event Match to select a Training Mode CE exercise; its exercise controls, pause menu and "
+                                                       "on-screen displays (the Lab menu) stay inside the game.")
+                              : "Install Training Mode CE on the launcher's Mods page, press Use and start again.";
+    p.rows.push_back(tm);
+    Row te; te.kind = Kind::Info; te.label = std::string("20XX Tournament Edition: ") + (fe::mods_te_owned() ? "Loaded" : "Not loaded");
+    te.text = fe::mods_te_owned() ? "20XX TE's features, built into the game. Offline only. Its own menu: VS Mode > Tournament Melee."
+                                  : "Put your 20XX TE save (.gci) in a mod profile's folder and use that profile to turn on its native features.";
+    p.rows.push_back(te);
+  }
   // MODS: melee-unlocked's catalog through the app's mod installer (mu_mods.h), then the profile the next start loads.
   {
     std::string error;
@@ -583,6 +600,7 @@ void feed_imgui(const host::PadState pads[4]) {
   }
   g_state.settings_stick_x = int8_t(std::clamp(m.stick_x, -128, 127));   // the radial wheel's stick
   g_state.settings_stick_y = int8_t(std::clamp(m.stick_y, -128, 127));
+  if (ImGui::GetIO().WantTextInput) m = Merged{};   // typing in the search box: the keyboard is not a controller now
   gx::settings_input::gamepad(ImGui::GetIO(), m);
 }
 
@@ -897,48 +915,14 @@ void apply_transparency(int percent, int foreground_from) {
   scale(ImGui::GetForegroundDrawList(), foreground_from);
 }
 
-// The search box (settings_search_box): the Switch's software keyboard instead of a keyboard. A asks for the words on a
-// worker thread (the keyboard is a system applet that takes the screen); they arrive at a later frame and search every page.
-std::atomic<bool> g_search_busy{false};
-std::mutex g_search_mutex;
-std::string g_search_result; bool g_search_ready = false;
+// The search box: upstream's own settings_search_box (an inline text box; Cmd/Ctrl+F or "/" puts the cursor in it), typed on the
+// Mac's keyboard (ui_metal.mm hands the typing to ImGui). While it takes typing, the keyboard's controller presses do not move
+// the panel (app_menu_frame's merged pads are held back below).
 void search_row() {
-  const bool on = gx::g_search_text[0] != 0;
-  std::string label = on ? std::string("Search: ") + gx::g_search_text : std::string("Search all settings");
-  label += "###settings_search";
-  if (gx::settings_widgets::Button(label.c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0)) && !g_search_busy.exchange(true)) {
-    const std::string initial = gx::g_search_text;
-    std::thread([initial] {
-      std::string text = initial;
-      const bool ok = fe::software_keyboard("Search all settings", "Words from a setting's name; a typo is fine.", text);
-      std::lock_guard<std::mutex> lock(g_search_mutex);
-      if (ok) { g_search_result = text; g_search_ready = true; }
-      g_search_busy = false;
-    }).detach();
-  }
+  gx::settings_search_box();
   gx::settings_page::label_item("Search all settings");
-  {
-    std::lock_guard<std::mutex> lock(g_search_mutex);
-    if (g_search_ready) {
-      g_search_ready = false;
-      std::snprintf(gx::g_search_text, sizeof gx::g_search_text, "%s", g_search_result.c_str());
-      host::log("settings: search \"%s\"", gx::g_search_text);
-    }
-  }
-  if (on) {
-    if (gx::settings_widgets::Button("Clear the search###settings_search_clear", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
-      gx::g_search_text[0] = 0;
-      host::log("settings: search cleared");
-    }
-  }
-  // settings_search_box's own bookkeeping, without its text box
-  gx::g_search = gx::g_search_text[0] != 0;
-  gx::g_search_hits = 0;
-  if (!gx::g_goto_label.empty() && ImGui::GetTime() - gx::g_goto_flash > 1.0) gx::g_goto_label.clear();
-  gx::g_hidden = 0;
-  gx::g_search_page = -1;
-  ImGui::Spacing();
-  if (gx::g_search) gx::settings_hide_begin();
+  static std::string logged;
+  if (logged != gx::g_search_text) { logged = gx::g_search_text; if (!logged.empty()) host::log("settings: search \"%s\"", logged.c_str()); }
 }
 
 // The radial style's home (settings_frame's radial_home branch, upstream pc_settings.cpp).
