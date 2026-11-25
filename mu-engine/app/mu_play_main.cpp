@@ -203,6 +203,7 @@ void tables_hook(MuHostApi* host, MuGameApi* game) {
 }
 } // namespace
 
+namespace mu_looks { const gx::LookHooks* hooks(); }   // gx_looks_mac.cpp
 namespace fe {
 std::function<void(host::RuntimeSettings&)> mac_menu_initial;
 std::function<void(const host::RuntimeSettings&, host::MenuChange)> mac_menu_apply;
@@ -348,8 +349,11 @@ int main(int argc, char** argv) {
     // A mod profile is for offline play: a session that can go online plays the retail files (as on the Switch).
     const bool can_go_online = !offline && !vanilla && !sys_dir.empty();
     if (can_go_online && !fe::settings_profile().empty())
-      host::log("play: mod profile \"%s\" is not loaded: this session can go online (start offline to play it)", fe::settings_profile().c_str());
+      host::log("play: mod profile \"%s\" is not loaded: this session can go online (start offline to play it; its look-only costumes stay)", fe::settings_profile().c_str());
     profile_card = fe::mods_configure(can_go_online || vanilla ? std::string() : fe::settings_profile());
+    // A session that can go online: skins in their online form, and of a mod profile only its look-only costumes (MU's pack
+    // skin rule, fe/features/cosmetics.cpp), as on the Switch.
+    if (can_go_online) { fe::mods_session_can_go_online(); if (!fe::settings_profile().empty()) fe::mods_configure_costumes(fe::settings_profile()); }
   }
 
   gx::MetalOptions gfx;
@@ -402,6 +406,9 @@ int main(int argc, char** argv) {
   if (const int f = host::menu_settings().filter) { gfx.filter = f; gx::metal_set_options(backend, gfx); }   // the screen filter launcher.ini keeps
   else { host::RuntimeSettings rs; fe::mac_menu_initial(rs); host::menu_init(rs, fe::mac_menu_apply); }
   gx::metal_set_ui_pass(mu_ui_metal::pass());
+  // melee-unlocked's looks (fe/features/looks.cpp settings, mu-engine/app/gx_looks_mac.cpp rules): play mode only, so the
+  // scripted reference runs draw exactly the game's picture.
+  if (g_play) gx::metal_set_look_hooks(mu_looks::hooks());
   host::window_input_init();
   // --play-script: a controller script in melee-unlocked's format (the parity scripts': @scene major:minor latched once
   // seen, @match on the game's match frame), fed through the app's input path so the menu and the chords see it. A script

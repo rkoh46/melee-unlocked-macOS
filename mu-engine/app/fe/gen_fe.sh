@@ -23,3 +23,12 @@ put "$work/special_names.inc" "$gen/proai/special_names.inc"
 sed -n '/^const char\* const kActionNames\[\] = {/,/^};/p' "$mu/port/runtime/gx/training_overlay.cpp" > "$work/action_names.inc"
 [ -s "$work/action_names.inc" ] || echo 'const char* const kActionNames[] = {""};' > "$work/action_names.inc"
 put "$work/action_names.inc" "$gen/action_names.inc"
+# Skins (fe/features/cosmetics.cpp): melee-unlocked's skeleton and drawing checks and its costume families, taken from its
+# Windows-only cosmetic_mods.cpp (only these portable parts), and its pack_skin_rule, as Melee-NX-NetPlay's build.sh sync does.
+cm="$mu/port/runtime/host/cosmetic_mods.cpp"
+awk '/^\/\/ The player reads this beside "Online: standard costume"/{on=0} /^namespace skeleton \{/{on=1} on' "$cm" > "$work/cosmetics_skeleton.inc"
+awk '/^constexpr FighterFamily families\[\] = \{/,/^\};/' "$cm" > "$work/cosmetics_families.inc"
+grep -q "costume_skeleton_matches" "$work/cosmetics_skeleton.inc" && grep -q '"Fx", "Fox"' "$work/cosmetics_families.inc" || { echo "gen_fe: cosmetic_mods.cpp no longer has the parts cosmetics.cpp takes" >&2; exit 1; }
+put "$work/cosmetics_skeleton.inc" "$gen/cosmetics_skeleton.inc"
+put "$work/cosmetics_families.inc" "$gen/cosmetics_families.inc"
+for f in pack_skin_rule.h pack_skin_rule.cpp; do put "$mu/port/runtime/host/$f" "$gen/$f"; done

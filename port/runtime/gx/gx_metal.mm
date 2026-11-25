@@ -38,6 +38,8 @@ PresentLoop& present_loop() { static PresentLoop l; return l; }
 std::function<bool()>& present_active() { static std::function<bool()> a; return a; }
 void metal_set_present_loop(PresentLoop loop, std::function<bool()> active) { present_loop() = std::move(loop); present_active() = std::move(active); }
 void metal_set_ui_pass(UiPass pass) { std::lock_guard<std::mutex> lock(ui_pass_mutex()); ui_pass() = std::move(pass); }
+std::atomic<const LookHooks*> g_look_hooks{nullptr};
+void metal_set_look_hooks(const LookHooks* hooks) { g_look_hooks.store(hooks, std::memory_order_release); }
 namespace {
 
 constexpr int FRAME_SLOTS = 3;
@@ -673,15 +675,34 @@ class MetalBackend final : public Backend {
     return [lib newFunctionWithName:[NSString stringWithUTF8String:entry]];
   }
   // ---- textures and samplers
-  id<MTLTexture> get_texture(const TextureRef& t) {
+  id<MTLTexture> get_texture(const TextureRef& t, uint8_t mark = 0) {
     auto ec = efb_copies_.find(t.addr);
     if (ec != efb_copies_.end() && ec->second.texture) { ec->second.last_used = frame_counter_; return ec->second.texture; }
     if (!t.data) return nil;
-    const uint32_t meta[] = {t.width, t.height, t.format, t.mip_levels, t.tlut_format};
-    const uint64_t key = t.data->hash ^ hash_bytes(meta, sizeof meta);
+    const uint32_t meta[] = {t.width, t.height, t.format, t.mip_levels, t.tlut_format, uint32_t(mark & 7)};
+    const uint64_t key = t.data->hash ^ hash_bytes(meta, (mark & 7) ? sizeof meta : sizeof meta - sizeof meta[0]);
     auto it = textures_.find(key);
     if (it != textures_.end()) { it->second.last_used = frame_counter_; return it->second.texture; }
     host::SimCostScope texture_cost(host::SIM_TEXTURE);
+    // A look's treated texture (metal_set_look_hooks): level 0 decoded, treated (flat colour, white, posterize, 64 x 64)
+    // and uploaded alone, as melee-unlocked uploads a treated copy.
+    const LookHooks* look = g_look_hooks.load(std::memory_order_acquire);
+    if ((mark & 7) && look && look->treat && texture_level_bytes(t.width, t.height, t.format) <= t.data->image.size()) {
+      decode_texture(t.data->image.data(), t.width, t.height, t.format, t.data->palette.data(), t.tlut_format, decode_scratch_);
+      std::vector<uint8_t> px(decode_scratch_.begin(), decode_scratch_.begin() + std::min<size_t>(decode_scratch_.size(), size_t(t.width) * t.height * 4));
+      uint32_t w = t.width, h = t.height;
+      if (look->treat(mark, px, w, h) && px.size() >= size_t(w) * h * 4) {
+        TextureEntry e;
+        e.width = w; e.height = h; e.levels = 1; e.last_used = frame_counter_;
+        MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:w height:h mipmapped:NO];
+        td.usage = MTLTextureUsageShaderRead; td.storageMode = MTLStorageModeShared;
+        e.texture = [device_ newTextureWithDescriptor:td];
+        [e.texture replaceRegion:MTLRegionMake2D(0, 0, w, h) mipmapLevel:0 withBytes:px.data() bytesPerRow:w * 4];
+        id<MTLTexture> tex = e.texture;
+        textures_[key] = std::move(e);
+        return tex;
+      }
+    }
     TextureEntry e;
     e.width = t.width; e.height = t.height; e.levels = std::max(1u, t.mip_levels); e.last_used = frame_counter_;
     MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:t.width height:t.height mipmapped:e.levels > 1];
@@ -739,8 +760,37 @@ class MetalBackend final : public Backend {
     return state;
   }
 
+  // The look's tint as GX state (melee-unlocked gx_shader.cpp: tint * (0.45 + 0.55 * light)): one TEV stage, colour =
+  // C0 * (1 - ras) + K0 * ras with C0 = 0.45 * tint, K0 = tint and channel 0 lit from a white material register.
+  static void apply_look_tint(DrawCall& st, const float rgb[3]) {
+    const bool lit = st.bp.numcolchans() >= 1;
+    st.bp.reg[0x00] = (st.bp.reg[0x00] & ~((15u << 10) | (7u << 16))) & 0xffffff;   // one TEV stage, no indirect stage
+    st.bp.reg[0x10] = 0;                                                               // stage 0: no indirect texturing
+    st.bp.reg[0x28] = (st.bp.reg[0x28] & ~0xfffu) | 0u;                               // stage 0: no texture, colour channel 0
+    st.bp.reg[0xC0] = lit ? (15u | (10u << 4) | (14u << 8) | (2u << 12) | (1u << 19)) : (14u | (15u << 4) | (15u << 8) | (15u << 12) | (1u << 19));
+    st.bp.reg[0xC1] = (6u << 4) | (7u << 7) | (7u << 10) | (7u << 13) | (1u << 19);   // alpha: d KONST
+    st.bp.reg[0xF6] = (st.bp.reg[0xF6] & 0xfu) | (12u << 4) | (0u << 9);             // stage 0: kcsel K0, kasel 1
+    st.xf_regs[0x0C] = 0xffffffffu;                                                    // material colour white
+    st.xf_regs[0x0E] &= ~1u;                                                           // material from the register
+    for (int c = 0; c < 3; ++c) { st.tev_kcolors[0][c] = int32_t(rgb[c] * 255.0f + 0.5f); st.tev_colors[1][c] = int32_t(rgb[c] * 0.45f * 255.0f + 0.5f); }
+    st.tev_kcolors[0][3] = 255; st.tev_colors[1][3] = 255;
+  }
+  DrawCall look_scratch_;
+
   // ---- commands
-  void execute_draw(const Frame& frame, const DrawCall& dc, const DrawMatrices* override_matrices) {
+  void execute_draw(const Frame& frame, const DrawCall& dc_in, const DrawMatrices* override_matrices, const LookDecision* look = nullptr) {
+    if (look && look->skip) return;
+    // A look that changes the draw's registers (its tint, True widescreen's projection) draws a copy; the copy's shaders
+    // are looked up again (its pipeline cache belongs to the game's draw).
+    const DrawCall* dcp = &dc_in;
+    if (look && (look->tint || look->widen || look->wire)) {
+      look_scratch_ = dc_in;
+      look_scratch_.cached_pipeline = nullptr; look_scratch_.cached_pipeline_owner = 0;
+      if (look->tint) apply_look_tint(look_scratch_, look->rgb);
+      if (look->widen) { float* p = reinterpret_cast<float*>(&look_scratch_.xf_regs[0x20]); p[0] *= look->widen_by; p[1] *= look->widen_by; }
+      dcp = &look_scratch_;
+    }
+    const DrawCall& dc = *dcp;
     auto& idx = index_scratch_; idx.clear();
     const uint32_t n = dc.vertex_count;
     MTLPrimitiveType prim = MTLPrimitiveTypeTriangle;
@@ -767,6 +817,11 @@ class MetalBackend final : public Backend {
         break;
       default:
         return;   // points are not drawn
+    }
+    if (look && look->wire && prim == MTLPrimitiveTypeTriangle) {   // the look's wireframe: each triangle's edges as lines
+      std::vector<uint32_t> lines; lines.reserve(idx.size() * 2);
+      for (size_t k = 0; k + 2 < idx.size(); k += 3) lines.insert(lines.end(), {idx[k], idx[k + 1], idx[k + 1], idx[k + 2], idx[k + 2], idx[k]});
+      idx.swap(lines); prim = MTLPrimitiveTypeLine;
     }
     if (idx.empty()) return;
     // Viewport and scissor first: an empty scissor skips the whole draw.
@@ -853,8 +908,11 @@ class MetalBackend final : public Backend {
     }
     id<MTLTexture> textures[8]; id<MTLSamplerState> samplers[8];
     for (int i = 0; i < 8; ++i) {
-      textures[i] = dc.textures[i].used ? get_texture(dc.textures[i]) : nil;
-      samplers[i] = dc.textures[i].used ? get_sampler(dc.textures[i].mode0, dc.textures[i].mode1) : blit_sampler_;
+      const uint8_t mark = look ? look->mark : 0;
+      textures[i] = dc.textures[i].used ? get_texture(dc.textures[i], mark) : nil;
+      // The look's sharp texels: nearest sampling (gx_retro.h unfiltered_mode0).
+      const uint32_t m0 = (mark & 8) ? dc.textures[i].mode0 & ~((1u << 4) | (1u << 7)) : dc.textures[i].mode0;
+      samplers[i] = dc.textures[i].used ? get_sampler(m0, dc.textures[i].mode1) : blit_sampler_;
       if (!textures[i]) textures[i] = white_texture();
     }
     [encoder_ setFragmentTextures:textures withRange:NSMakeRange(0, 8)];
@@ -883,11 +941,11 @@ class MetalBackend final : public Backend {
     return white_;
   }
 
-  void clear_efb(const EfbCopy& c) {
+  void clear_efb(const EfbCopy& c, uint32_t clear_color) {
     ensure_efb_pass();
     ClearConstants cc{};
-    cc.color[0] = ((c.clear_color >> 16) & 0xFF) / 255.0f; cc.color[1] = ((c.clear_color >> 8) & 0xFF) / 255.0f;
-    cc.color[2] = (c.clear_color & 0xFF) / 255.0f; cc.color[3] = ((c.clear_color >> 24) & 0xFF) / 255.0f;
+    cc.color[0] = ((clear_color >> 16) & 0xFF) / 255.0f; cc.color[1] = ((clear_color >> 8) & 0xFF) / 255.0f;
+    cc.color[2] = (clear_color & 0xFF) / 255.0f; cc.color[3] = ((clear_color >> 24) & 0xFF) / 255.0f;
     cc.depth = 1.0f - (float)c.clear_z / 16777215.0f;
     const uint32_t x0 = std::min<uint32_t>(c.src_x * scale_, efb_w_), y0 = std::min<uint32_t>(c.src_y * scale_, efb_h_);
     const uint32_t x1 = std::min<uint32_t>((c.src_x + c.src_w) * scale_, efb_w_), y1 = std::min<uint32_t>((c.src_y + c.src_h) * scale_, efb_h_);
@@ -1197,8 +1255,16 @@ class MetalBackend final : public Backend {
       command_ = [queue_ commandBuffer];
       drawable_ = nil;
       bool presented = false;
+      // The look rules (metal_set_look_hooks), decided per draw on this thread.
+      const LookHooks* look = g_look_hooks.load(std::memory_order_acquire);
+      const bool look_on = look && look->begin_frame && look->decide && look->begin_frame(frame);
       for (const FrameCommand& cmd : frame.commands) {
         if (cmd.kind == FrameCommand::Draw) {
+          if (look_on) {
+            LookDecision decision;
+            look->decide(frame, cmd.index, frame.draws[cmd.index], &decision);
+            execute_draw(frame, frame.draws[cmd.index], overrides ? overrides + cmd.index : nullptr, &decision);
+          } else
           execute_draw(frame, frame.draws[cmd.index], overrides ? overrides + cmd.index : nullptr);
         } else {
           const EfbCopy& c = frame.copies[cmd.index];
@@ -1277,9 +1343,10 @@ class MetalBackend final : public Backend {
             }
           }
           else execute_copy(c);
-          if (c.clear) clear_efb(c);
+          if (c.clear) clear_efb(c, look && look->clear_colour ? look->clear_colour(frame, c.clear_color) : c.clear_color);
         }
       }
+      if (look_on && look->end_frame) look->end_frame(frame);
       end_pass();
       if (drawable_) {
         [command_ presentDrawable:drawable_];

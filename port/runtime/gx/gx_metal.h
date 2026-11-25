@@ -58,4 +58,25 @@ class FrameQueue;
 using PresentRender = void (*)(Backend& backend, const Frame& frame, const DrawMatrices* overrides);
 using PresentLoop = std::function<void(Backend& backend, FrameQueue& queue, const std::atomic<bool>& stop, PresentRender render)>;
 void metal_set_present_loop(PresentLoop loop, std::function<bool()> active);
+// Per-draw look rules (melee-unlocked's looks, Lightweight, Visual effects, True widescreen; supplied by the
+// melee-unlocked engine's mu-engine/app/gx_looks_mac.cpp). Display only: they change what the renderer draws, never
+// game memory. Called on the render thread; none set (the default) leaves every draw as the game made it.
+struct LookDecision {
+  bool skip = false;      // not drawn
+  bool wire = false;      // triangles drawn as lines
+  bool tint = false;      // one plain colour, light and shade kept (rgb)
+  bool widen = false;     // the projection's x row scaled by `widen_by` (True widescreen)
+  float rgb[3] = {};
+  float widen_by = 1.0f;
+  uint8_t mark = 0;       // bits 0-2: the textures' surface treatment (looks_live.h Surface), bit 3: nearest-texel sampling
+};
+struct LookHooks {
+  bool (*begin_frame)(const Frame& frame) = nullptr;   // false: no rule this frame (decide is not called)
+  void (*decide)(const Frame& frame, size_t draw, const DrawCall& dc, LookDecision* out) = nullptr;
+  uint32_t (*clear_colour)(const Frame& frame, uint32_t argb) = nullptr;   // the EFB clear (the look's background)
+  // Treats level 0 of a decoded RGBA8 texture for a mark in place; false: the game's own texture is used.
+  bool (*treat)(uint8_t mark, std::vector<uint8_t>& rgba, uint32_t& width, uint32_t& height) = nullptr;
+  void (*end_frame)(const Frame& frame) = nullptr;
+};
+void metal_set_look_hooks(const LookHooks* hooks);   // the pointer is kept: a static object
 }  // namespace gx

@@ -96,7 +96,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Fountain of Dreams reflections | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Full FoD reflections | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Widescreen 16:9 (Slippi code) | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
-| True widescreen | game image + renderer | engine option, no setting |
+| True widescreen | game image + renderer | active: settings.ini `truewidescreen 1` (melee-unlocked's key): the Metal renderer widens the world cameras' projections by 219/320 and the P1/P2 tag layer with them, not the render-to-texture views, flashes, pinned layers, frustum backdrops or the 2D layers (melee-unlocked's build_projection rules, mu-engine/app/gx_looks_mac.cpp); the picture fills the window as with the 16:9 code. Replay screenshots in build/looks (crystal-ports, wireframe, potato, 64-style, widescreen) from a recorded game played back with each setting |
 | Disable screen shake | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Screen shake strength | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | PAL stock icons | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
@@ -149,7 +149,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Fight a pro (Phillip) | host + game image + external | active: Phillip's policies on the Switch build's own ONNX engine (`fe/proai`, onnxruntime-shaped calls, no onnxruntime library); downloaded when the player asks (Hugging Face, SHA-256 checked); tested: Zain's Marth policy fought in Training (0.6 ms per step) |
 | Practice ghost AI | host | active: `fe/features/proai.cpp` |
 | Pro habit tables | host | active: `fe/features/proai.cpp` (melee-unlocked's tables) |
-| Training Mode CE events | game image + host | engine option, no setting |
+| Training Mode CE events | game image + host | engine option, no setting; the Lab's Export and the Lab character select's Import now finish (mu-engine/patches/0013, Melee-NX-NetPlay's game-image fix: TM-CE's card wait had no native completion); not run on the Mac |
 | Training Mode CE on-screen displays | game image | engine option, no setting |
 | TM-CE console global OSD shortcut | n/a | not wired |
 | Practice from replays | game image + host + renderer | engine option, no setting |
@@ -173,15 +173,15 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | 20XX Hack Pack: music playlists | game image + host | engine option, no setting |
 | 20XX Hack Pack: debug menu, training displays, hidden characters | game image | engine option, no setting |
 | Per-profile and vanilla-only memory cards | host | active: `fe/mods.cpp` (card-<profile>), settings.ini vanilla_only |
-| Costume, stage and effect imports | host + renderer | not wired |
-| Skin cycling on the select screens | game image + host | engine option, no setting |
+| Costume, stage and effect imports | host + renderer | partial (fe/features/cosmetics.cpp from the Switch): costume and stage files copied to `~/Library/Application Support/Dashdance/melee-unlocked/Cosmetics/Costumes` and `Stages` are skins; the mod discs in the launcher's Mods folder add theirs. No import window, effect variants, pause screens or portraits |
+| Skin cycling on the select screens | game image + host | active offline: L / R on a picked costume (command 0xF9), X / Y on a highlighted stage (0xFB), the title demo's memory check (0xFC); picks kept in Cosmetics/selection.txt; settings.ini `cosmetics 0` turns it off. Not tried by hand on the Mac yet |
 | Voice mods | host + game image | engine option, no setting |
 | Texture packs | renderer | not wired |
 | Game music | game image | engine option, no setting |
 | Music volume | host / game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Custom music packs / jukebox | host | not wired |
-| Look presets | renderer | not wired |
-| Lightweight levels and visual effects tiers | renderer (+ game image for low poly) | engine option, no setting |
+| Look presets | renderer | active: the Looks page of the settings panel and settings.ini (`look`, `look_fighter`, `look_stage`, `look_menus`, `look_unfiltered`, `look_colours`, `look_background`), fe/features/looks.cpp from the Switch; the rules (surfaces flat colour, white, posterize, 64 x 64, wire; port colours; the look's background) run per draw on the Metal renderer (gx::LookHooks, mu-engine/app/gx_looks_mac.cpp) on the game's draw owner tokens (0xF1, 0xF2, 0xF7, asked for only while a look needs them). Off by default; display only. The three presets that need the Lab's stick figures are left out, as on the Switch. Replay screenshots in build/looks (crystal-ports, wireframe, potato, 64-style, widescreen) from a recorded game played back with each setting |
+| Lightweight levels and visual effects tiers | renderer (+ game image for low poly) | active: settings.ini `lightweight 0..5` (1 sets the game's low poly fighters) and `effects 0..3`, Looks page rows; skipped scenery and decorative particles per melee-unlocked's rules (gx_looks_mac.cpp). The end of a session logs `looks: N match frames: the look rules took 0.03-0.12 ms a frame ...; X draws skipped` |
 | "Get mod looks" | launcher / external | not wired |
 | Arcade look: attack and projectile hitboxes | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Arcade look: grid or plain background | game image + renderer | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
@@ -360,9 +360,9 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M5 | Replays: delete to Recycle Bin, right-click "Show in Explorer" | not wired; easy: NSWorkspace recycle / reveal in Finder |
 | M6 | Mods catalog refreshed online | not wired; easy |
 | M7 | Mods: "Choose skins" button and skin count on a mod card | not wired; medium |
-| M8 | Mod disc costumes as skins in the normal game | not wired; medium |
+| M8 | Mod disc costumes as skins in the normal game | active (fe/features/cosmetics.cpp, melee-unlocked's disc_skin_scan rule): every mod disc in the launcher's Mods folder but the active profile's adds each costume that differs from the retail disc's as a skin "<profile> disc"; the scan is cached in `melee-unlocked/mods-cache` |
 | M9 | Skin thumbnails | not wired; easy-medium |
-| M10 | Pack skin rule online: look-only costumes stay on | not wired; medium |
+| M10 | Pack skin rule online: look-only costumes stay on | active: in a session that can go online a mod profile serves only its costumes that pass melee-unlocked's own pack skin rule and skeleton check (compiled from the fetched tree's pack_skin_rule.* and cosmetic_mods.cpp), in their online form (the standard rest pose bit for bit). `mu-engine/tools/app_skins_test.sh`: a costume nudged by 1e-4 `stays on online (67 joints match)`, one moved by 5 units `the standard costume online (Skeleton joint 1 rest pose differs from the vanilla costume (moved).)` |
 | M11 | Stage graft: mod stage meshes on the original stage online | not wired; hard |
 | M12 | Alternate stage pick by held buttons | not wired; medium |
 | M13 | Keep the display awake during controller-only play | not wired; easy: IOPMAssertion (Dashdance may already do this) |
@@ -442,7 +442,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | C47 | Roster details | not wired; as C39 |
 | C66 | Skip the 3D scene when covered | not wired; Switch: easy; macOS: easy |
 | C71 | COMING SOON! stickers | not wired; skip |
-| D17 | Lightweight drawn/skipped counter | not wired; Switch: easy - two counters; macOS: easy |
+| D17 | Lightweight drawn/skipped counter | active: the end of a session logs the looks' match frames, rule time, draws skipped and drawn, tinted, drawn as lines and textures treated (fe/features/looks.cpp run_end) |
 | D38 | Bundled CRT preset pack | not wired; Switch: hard - as D37; macOS: medium - ship slang-shaders (licence: MPL-2.0 librashader, presets' own licences) |
 | D39 | Missing-file diagnosis | not wired; Switch: easy once D36 exists; macOS: easy |
 | D40 | YouGame data folder for presets | not wired; skip (YouGame) |

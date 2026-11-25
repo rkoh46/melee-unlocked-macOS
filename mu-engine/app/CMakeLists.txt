@@ -2,7 +2,7 @@
 # MELEE_BUILD_MU_ENGINE is on (setup.sh and tools/mac/rebuild.sh turn it on after mu-engine/build.sh game).
 #
 # One process: melee-unlocked's host services drive the game image (mu-engine/runner: loader and macOS back ends);
-# the app's own GX decoder (port/runtime/gx/gx_core.cpp, a build-time copy with three changes below), Metal renderer,
+# the app's own GX decoder (port/runtime/gx/gx_core.cpp, a build-time copy with the changes below), Metal renderer,
 # SDL3 window, controllers (keyboard, SDL gamepads, the GameCube adapter over IOKit), in-game menu and sound output
 # take the picture, the pads and the audio through the host's frontend hooks (patches/0011). Nothing in port/ changes.
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -29,7 +29,21 @@ string(REPLACE "+ size > 0x01800000u" "+ size > host::mu_gx_ram_size" _gx "${_gx
 string(REPLACE "ppc::RAM_SIZE" "host::mu_gx_ram_size" _gx "${_gx}")
 string(REPLACE "host::rd8(0x80479D30)" "host::mu_scene_major()" _gx "${_gx}")
 string(REPLACE "host::rd8(0x80479D33)" "host::mu_scene_minor()" _gx "${_gx}")
-string(REPLACE "#include \"host.h\"" "#include \"host.h\"\nnamespace host { extern const uint32_t mu_gx_ram_size; uint8_t mu_scene_major(); uint8_t mu_scene_minor(); }" _gx "${_gx}")
+string(REPLACE "#include \"host.h\"" "#include \"host.h\"\nnamespace host { extern const uint32_t mu_gx_ram_size; uint8_t mu_scene_major(); uint8_t mu_scene_minor(); }\nnamespace gx { namespace { uint8_t g_native_owner = 0xFF, g_native_stage_map = 0xFF; bool g_native_skinned = false; } }" _gx "${_gx}")
+# melee-unlocked's draw owner tokens (sent only while the host's native_owner_tracking answers 1, which the looks module
+# does when a look needs them; Melee-NX-NetPlay frontend/patches/0116): 0xF1 the fighter slot of the draws that follow
+# (0xFE particles, 0xFD items and projectiles, 0xFC an effect object's model, 0xFF none), 0xF2 whether the PObj is
+# skinned, 0xF7 the stage map tag (0x80 scenery, 0x40 props close behind the floor; kept in DrawCall::viewport_x, unused
+# otherwise). 0xF0 is its draw-scope audit (21 bytes), 0xF8 the online character select's hands (1 byte). Display only.
+string(REPLACE "dc.owner_player = observed_owner();" "dc.owner_player = g_native_owner; (void)observed_owner;" _gx "${_gx}")
+string(REPLACE "dc.skinned = observed_skinned();" "dc.skinned = g_native_skinned; dc.viewport_x = g_native_stage_map;" _gx "${_gx}")
+string(REPLACE "g_dl_calls.clear(); g_immediate_draws.clear(); finish_observed_frame();" "g_dl_calls.clear(); g_immediate_draws.clear(); finish_observed_frame(); g_native_owner = 0xFF; g_native_stage_map = 0xFF; g_native_skinned = false;" _gx "${_gx}")
+string(REPLACE "  if (op == 0x61) { if (len < 5) return incomplete(5); bp_write(be32(d + 1)); return 5; }" "  if (op == 0xF0) { if (len < 21) return incomplete(21); return 21; }
+  if (op == 0xF1) { if (len < 2) return incomplete(2); g_native_owner = d[1]; return 2; }
+  if (op == 0xF2) { if (len < 2) return incomplete(2); g_native_skinned = d[1] != 0; return 2; }
+  if (op == 0xF7) { if (len < 2) return incomplete(2); g_native_stage_map = d[1]; return 2; }
+  if (op == 0xF8) return 1;
+  if (op == 0x61) { if (len < 5) return incomplete(5); bp_write(be32(d + 1)); return 5; }" _gx "${_gx}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp.new" "${_gx}")
 configure_file("${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp.new" "${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp" COPYONLY)
 
@@ -150,7 +164,7 @@ set(_mu_ui_sources ${_mu_fe_ui_sources} "${FE}/controls.cpp" "${FE}/controls_fil
 set_source_files_properties("${MU_UI}/ui_metal.mm" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 set_source_files_properties("${MU_UI}/mu_panel.cpp" PROPERTIES COMPILE_DEFINITIONS "app_menu_frame=menu_frame")
 add_executable(melee_unlocked_mac
-  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${DD}/host/vcdiff.cpp"
+  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/gx_looks_mac.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${DD}/host/vcdiff.cpp"
   "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
   "${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp" "${DD}/gx/gx_texture.cpp" "${DD}/gx/gx_shader.cpp" "${DD}/gx/gx_msl.cpp" "${DD}/gx/render_observer.cpp" "${DD}/gx/authored_pose.cpp" "${DD}/gx/subframe.cpp"
   "${DD}/host/window_sdl.cpp" "${DD}/host/input_config.cpp" "${DD}/host/input_script.cpp" ${_mu_ui_sources}
