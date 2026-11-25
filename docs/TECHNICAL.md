@@ -109,6 +109,12 @@ All tests keep their windows hidden and never contact Slippi's servers.
 - **Launcher.** `MELEE_LAUNCHER_SHOT=<file.png>` draws the launcher off every screen into a file; with `MELEE_LAUNCHER_PLAY=1`
   or `MELEE_PLAY_REPLAY=<n>` it presses PLAY or Watch, and `MELEE_MU_ENGINE` points it at a wrapper that records the
   arguments and adds `--hidden`. Run it with `HOME` set to a scratch folder and `MELEE_UPDATE_CHECK=0`.
+  `MELEE_SETTINGS_SHOT=<file.png>` with `MELEE_LAUNCHER_SETTINGS=<0..7>` draws the Settings window's category off every
+  screen instead (it prints its window number for `screencapture -l`); `MELEE_NO_ALERTS=1` sends alerts to the log.
+- **Settings.** `mu-engine/tools/settings_keys_test.sh`: every key the Settings window writes is read by the engine or the
+  launcher (no dead rows). `docs/SETTINGS_PARITY.md` lists every melee-unlocked setting and its Mac status.
+- **Mods.** `mu-engine/tools/mod_watch_test.sh` (offline): a download-page-only mod found in ~/Downloads or chosen with
+  Choose File is installed only after its SHA-256 check.
 - Feature tests: `mu-engine/tools/app_*_test.sh`, `mod_install_test.sh`, `music_decode_test.sh`, `crash_report_test.sh`,
   `rvz_check.sh`.
 

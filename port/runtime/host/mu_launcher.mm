@@ -103,6 +103,18 @@ void ini_set(const std::string& key, const std::string& value) {
   for (const auto& l : lines) out << l << "\n";
 }
 
+// The in-game panel's CUSTOMIZE > Launcher colour (launcher.ini mu_accent, upstream's six colours) is the launcher's colour
+// too: taken when it changed since it was last taken (mu_accent_applied), so the colour wheel's own pick is kept otherwise.
+void apply_mu_accent(host::LauncherSettings& s) {
+  const std::string pick = ini_get("mu_accent");
+  if (pick.empty() || pick == ini_get("mu_accent_applied")) return;
+  static const uint32_t kColours[] = {0x8E54EF, 0x3D7EEA, 0x3FAE6A, 0xE5A84A, 0xE06B5B, 0xE0569B};   // Purple .. Pink
+  const uint32_t c = kColours[std::clamp(std::atoi(pick.c_str()), 0, 5)];
+  s.accent = c; g_accent = {int((c >> 16) & 255), int((c >> 8) & 255), int(c & 255)};
+  ini_set("accent", std::to_string(c)); ini_set("mu_accent_applied", pick);
+  host::log("launcher: launcher colour %06X from the settings' Launcher colour (%s)", c, pick.c_str());
+}
+
 // ---- melee-unlocked's launcher languages (port/app/launcher_lang.h: its list, its file format, its lookup by English wording) ----
 // The tables are its lang/*.txt, copied from the fetched tree into the bundle at packaging (Resources/mu-lang). Every fixed
 // English string drawn by text() is looked up ("@English = ..." lines); names, paths and lines without a translation stay as
@@ -580,7 +592,8 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   y += 6; heading(@"ONLINE");
   line(@"Slippi Online", @"online", @[@"Off", @"On"], s.online ? 1 : 0);
   line(@"Input delay (frames)", @"delay", @[@"Auto", @"1", @"2", @"3", @"4"], s.online_delay <= 0 ? 0 : std::clamp(s.online_delay, 1, 4));
-  text(@"In game, F1 or Esc opens the menu with the rest of the settings and the controller setup.", LR(CX, y + 4, CW, 32), f_small(), C_FAINT, LEFT, 0, true);
+  [self button:@"allsettings" rect:LR(CX, y + 4, 150, 32) title:@"All settings…" primary:NO enabled:YES];
+  text(@"Every setting, grouped as in game. F1 or Esc opens them in game too, with the controller setup.", LR(CX + 162, y + 4, CW - 162, 32), f_small(), C_FAINT, LEFT, 0, true);
 }
 // ---- Replay Viewer: the newest games as cards ----------------------------------------------------------------------
 // The picked replay's stats (upstream launcher_replay_stats.inl's rows, two columns) and its session trace graph
@@ -920,6 +933,10 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
       self.picked = -1; self.card = nullptr;
     }
   }
+  else if ([key isEqualToString:@"allsettings"]) {   // upstream's rail Settings opens its settings panel as a window
+    host::mu_settings_window_run(s, 0, nullptr);
+    apply_mu_accent(s);
+  }
   else if ([key isEqualToString:@"language"]) [self chooseLanguage];
   else if ([key isEqualToString:@"dog"]) [self chooseRailPicture];
   else if ([key isEqualToString:@"show"] || [key isEqualToString:@"watch"]) {
@@ -984,7 +1001,7 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   if (self.settings->iso.empty()) { host::mac_show_error("Choose your disc first", "Watching a replay needs the same disc image as playing."); return; }
   NSTask* task = [[NSTask alloc] init];
   task.executableURL = [NSURL fileURLWithPath:ns(host::engine_path())];
-  NSString* support = [ns(self.settings->replay_dir) stringByDeletingLastPathComponent];
+  NSString* support = ns(support_dir());   // not the replay folder's parent: the player can choose that folder (replaydir)
   task.arguments = @[@"--iso", ns(self.settings->iso), @"--replay", replay, @"--profile-dir", support,
                      @"--volume", [NSString stringWithFormat:@"%d", self.settings->volume]];
   NSError* error = nil;
@@ -1068,6 +1085,8 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 
 namespace host {
 void mac_show_error(const std::string& title, const std::string& detail) {
+  // Screenshot and test runs never put an alert on the player's screen: the message goes to the log instead.
+  if (std::getenv("MELEE_LAUNCHER_SHOT") || std::getenv("MELEE_NO_ALERTS")) { host::log("launcher: (alert not shown) %s: %s", title.c_str(), detail.c_str()); return; }
   @autoreleasepool {
     [NSApplication sharedApplication];
     NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
@@ -1083,6 +1102,13 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
     NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
     NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     if (settings.accent) g_accent = {int((settings.accent >> 16) & 255), int((settings.accent >> 8) & 255), int(settings.accent & 255)};
+    apply_mu_accent(settings);
+    // Screenshots of the Settings window (MELEE_SETTINGS_SHOT=<file.png>, MELEE_LAUNCHER_SETTINGS=<category 0..7>): off-screen, no launcher.
+    if (const char* shot = std::getenv("MELEE_SETTINGS_SHOT")) {
+      const char* cat = std::getenv("MELEE_LAUNCHER_SETTINGS");
+      host::mu_settings_window_run(settings, cat ? std::atoi(cat) : 0, shot);
+      return false;
+    }
     NSWindow* window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, WIN_W, WIN_H)
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
                                                      backing:NSBackingStoreBuffered defer:NO];

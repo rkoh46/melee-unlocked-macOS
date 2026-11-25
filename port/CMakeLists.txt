@@ -17,9 +17,9 @@ FetchContent_Declare(SDL
 FetchContent_MakeAvailable(SDL)
 set(MELEE_SDL3_TARGET SDL3::SDL3-static CACHE INTERNAL "SDL3 for the engine")
 
-add_executable(melee_launcher_mac app/main_mac.cpp runtime/host/mu_launcher.mm runtime/host/dashboard.cpp
+add_executable(melee_launcher_mac app/main_mac.cpp runtime/host/mu_launcher.mm runtime/host/mu_settings_window.mm runtime/host/dashboard.cpp
   runtime/host/input_config.cpp runtime/hle/slippi_history.cpp runtime/hle/slippi_login.cpp runtime/hle/slippi_http_apple.mm)
-set_source_files_properties(runtime/host/mu_launcher.mm runtime/hle/slippi_http_apple.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+set_source_files_properties(runtime/host/mu_launcher.mm runtime/host/mu_settings_window.mm runtime/hle/slippi_http_apple.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 target_include_directories(melee_launcher_mac PRIVATE runtime/host runtime/hle runtime/ppc runtime/gx third_party "${PROJECT_SOURCE_DIR}/mu-engine/app")
 target_compile_features(melee_launcher_mac PRIVATE cxx_std_17)
 target_compile_definitions(melee_launcher_mac PRIVATE MELEE_PORT_VERSION="${MELEE_PORT_VERSION}")

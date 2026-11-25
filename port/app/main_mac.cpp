@@ -237,6 +237,10 @@ int main(int argc, char** argv) {
     }
   }
   settings.replay_dir = (support / "Replays").string();
+  {   // melee-unlocked's replay folder choice (launcher.ini replaydir; the Settings window's Replay folder): empty is Replays
+    Ini ini; ini.read(remembered);
+    if (const char* v = ini.get("replaydir"); v && *v && fs::is_directory(v, ec)) settings.replay_dir = v;
+  }
 
   const std::string engine = host::engine_path();
   if (engine.empty()) {
@@ -266,6 +270,7 @@ int main(int argc, char** argv) {
   // Online: the input delay; offline when Slippi Online is off; the Slippi Launcher's sign-in when this app has none of its own.
   args.push_back("--net-delay"); args.push_back(settings.online_delay <= 0 ? "auto" : std::to_string(std::clamp(settings.online_delay, 1, 9)));
   if (!settings.online) args.push_back("--offline");
+  if (settings.replay_dir != (support / "Replays").string()) { args.push_back("--replay-dir"); args.push_back(settings.replay_dir); }
   if (settings.account_from_launcher) { const std::string dir = find_slippi_user_dir(); if (!dir.empty()) { args.push_back("--user-dir"); args.push_back(dir); } }
   std::vector<char*> argv_engine;
   for (std::string& a : args) argv_engine.push_back(a.data());

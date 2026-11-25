@@ -26,6 +26,9 @@ struct LauncherSettings {
 // used, if that happened.
 bool mu_launcher_run(LauncherSettings& settings, const std::string& error);
 void mac_show_error(const std::string& title, const std::string& detail);
+// The Settings window (mu_settings_window.mm): every melee-unlocked setting the app honours, grouped as melee-unlocked's panel
+// groups them. Blocks until closed. `shot` (tests): off-screen, drawn into that PNG, then closed.
+void mu_settings_window_run(LauncherSettings& settings, int category, const char* shot);
 // The melee-unlocked engine's executable: MELEE_MU_ENGINE (tests), else MeleeUnlockedEngine next to the launcher in the
 // bundle's Contents/MacOS; empty when it is missing.
 std::string engine_path();
