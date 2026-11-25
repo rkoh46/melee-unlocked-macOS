@@ -134,3 +134,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - Restart the game from the panel (confirmed with a second A, offline) and the Arcade look preset/reset rows (`fe/features/extras.cpp`, `--feature-test extras`).
 - AUDIO page: the output's gaps this session and its buffer (upstream's read-out).
 - 20XX TE pair link: TE's Disable screen rumble and No screen shake follow each other (offline, respects TE's lock); `app_te_test.sh pair`.
+- MSAA in the Metal renderer (launcher.ini `msaa` 2/4/8, a Picture row): multisampled EFB pass resolved at each pass end; `app_graphics_test.sh msaa`.

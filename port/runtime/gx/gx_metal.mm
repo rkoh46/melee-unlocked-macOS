@@ -67,13 +67,13 @@ struct Ring {
 
 struct PsoKey {
   uint64_t vs, ps;
-  uint32_t blend, zmode, pixel_format, topology;
+  uint32_t blend, zmode, pixel_format, topology, samples = 1;
   bool operator==(const PsoKey& o) const {
-    return vs == o.vs && ps == o.ps && blend == o.blend && zmode == o.zmode && pixel_format == o.pixel_format && topology == o.topology;
+    return vs == o.vs && ps == o.ps && blend == o.blend && zmode == o.zmode && pixel_format == o.pixel_format && topology == o.topology && samples == o.samples;
   }
 };
 struct PsoKeyHash { size_t operator()(const PsoKey& k) const {
-  const uint64_t f[] = {k.vs, k.ps, k.blend, k.zmode, k.pixel_format, k.topology};
+  const uint64_t f[] = {k.vs, k.ps, k.blend, k.zmode, k.pixel_format, k.topology, k.samples};
   return (size_t)hash_bytes(f, sizeof f);
 } };
 
@@ -244,13 +244,13 @@ class MetalBackend final : public Backend {
     if (opts_.efb_scale == 0 && pick_scale() != scale_) { efb_copies_.clear(); create_efb(); }
   }
   void set_options(const MetalOptions& o) {
-    const bool rescale = o.efb_scale != opts_.efb_scale || o.ssaa != opts_.ssaa || o.widescreen != opts_.widescreen || o.upscaler != opts_.upscaler;
+    const bool rescale = o.efb_scale != opts_.efb_scale || o.ssaa != opts_.ssaa || o.widescreen != opts_.widescreen || o.upscaler != opts_.upscaler || o.msaa != opts_.msaa;
     const bool resample = o.anisotropy != opts_.anisotropy;
     opts_ = o;
 #if TARGET_OS_OSX
     layer_.displaySyncEnabled = opts_.vsync;
 #endif
-    if (rescale && pick_scale() != scale_) { wait_idle(); efb_copies_.clear(); create_efb(); }
+    if (rescale && (pick_scale() != scale_ || o.msaa != samples_requested_)) { wait_idle(); efb_copies_.clear(); create_efb(); }
     if (resample) { wait_idle(); samplers_.clear(); }
   }
   uint64_t frames_presented() const { return frames_presented_; }
@@ -326,6 +326,7 @@ class MetalBackend final : public Backend {
     blit_present_ = make("blit_vs", "blit_ps", MTLPixelFormatBGRA8Unorm, false, false);
     blit_copy_ = make("blit_vs", "blit_ps", MTLPixelFormatRGBA8Unorm, false, false);
     clear_pipeline_ = make("clear_vs", "clear_ps", MTLPixelFormatRGBA8Unorm, true, false);
+    blit_library_ = lib;
     overlay_pipeline_ = make("overlay_vs", "overlay_ps", MTLPixelFormatBGRA8Unorm, false, true);
     text_pipeline_ = make("text_vs", "text_ps", MTLPixelFormatBGRA8Unorm, false, true);
     create_overlay_atlas();
@@ -341,6 +342,19 @@ class MetalBackend final : public Backend {
     blit_sampler_ = [device_ newSamplerStateWithDescriptor:sd];
   }
 
+  // The EFB clear for a multisampled pass (MSAA).
+  id<MTLRenderPipelineState> make_clear_pipeline(int samples) {
+    MTLRenderPipelineDescriptor* d = [MTLRenderPipelineDescriptor new];
+    d.vertexFunction = [blit_library_ newFunctionWithName:@"clear_vs"];
+    d.fragmentFunction = [blit_library_ newFunctionWithName:@"clear_ps"];
+    d.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+    d.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    d.rasterSampleCount = samples;
+    NSError* error = nil;
+    id<MTLRenderPipelineState> state = [device_ newRenderPipelineStateWithDescriptor:d error:&error];
+    if (!state) host::die("metal: MSAA clear pipeline: %s", error.localizedDescription.UTF8String);
+    return state;
+  }
   float output_aspect() const {
     if (opts_.picture_aspect > 50.0f) return (float)std::max(client_w_, 1) / (float)std::max(client_h_, 1);   // the whole window
     return opts_.picture_aspect > 0.1f ? opts_.picture_aspect : opts_.widescreen ? 16.0f / 9.0f : 4.0f / 3.0f;
@@ -373,8 +387,24 @@ class MetalBackend final : public Backend {
     dd.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;   // read by SSAO and the picture effects (PostHooks)
     dd.storageMode = MTLStorageModePrivate;
     efb_depth_ = [device_ newTextureWithDescriptor:dd];
+    // MSAA (opts_.msaa): the pass draws into multisampled colour and depth and resolves into the two textures above at its end,
+    // so everything that reads the EFB (copies, the present pass, SSAO, the effects) reads resolved pictures.
+    samples_ = 1; efb_color_ms_ = nil; efb_depth_ms_ = nil; samples_requested_ = opts_.msaa;
+    for (int want = std::clamp(opts_.msaa, 1, 8); want > 1; want /= 2)
+      if ([device_ supportsTextureSampleCount:want]) { samples_ = want; break; }
+    if (samples_ > 1) {
+      MTLTextureDescriptor* mc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:efb_w_ height:efb_h_ mipmapped:NO];
+      mc.textureType = MTLTextureType2DMultisample; mc.sampleCount = samples_; mc.usage = MTLTextureUsageRenderTarget; mc.storageMode = MTLStorageModePrivate;
+      efb_color_ms_ = [device_ newTextureWithDescriptor:mc];
+      MTLTextureDescriptor* md = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float width:efb_w_ height:efb_h_ mipmapped:NO];
+      md.textureType = MTLTextureType2DMultisample; md.sampleCount = samples_; md.usage = MTLTextureUsageRenderTarget; md.storageMode = MTLStorageModePrivate;
+      efb_depth_ms_ = [device_ newTextureWithDescriptor:md];
+      if (!efb_color_ms_ || !efb_depth_ms_) { samples_ = 1; efb_color_ms_ = nil; efb_depth_ms_ = nil; }
+      if (clear_pipelines_.find(samples_) == clear_pipelines_.end()) clear_pipelines_[samples_] = make_clear_pipeline(samples_);
+    }
     efb_needs_clear_ = true;
-    host::log("metal: internal resolution %dx%d (EFB x%d, drawable %dx%d)", efb_w_, efb_h_, scale_, client_w_, client_h_);
+    host::log("metal: internal resolution %dx%d (EFB x%d, drawable %dx%d)%s", efb_w_, efb_h_, scale_, client_w_, client_h_,
+              samples_ > 1 ? (" with " + std::to_string(samples_) + "x MSAA").c_str() : "");
   }
 
   // MetalFX spatial upscaling (option 1/2): the EFB copy is blitted at its internal
@@ -493,6 +523,13 @@ class MetalBackend final : public Backend {
     rp.depthAttachment.loadAction = efb_needs_clear_ ? MTLLoadActionClear : MTLLoadActionLoad;
     rp.depthAttachment.clearDepth = 0.0;
     rp.depthAttachment.storeAction = MTLStoreActionStore;
+    if (samples_ > 1) {   // MSAA: draw multisampled, keep the samples for the next pass, resolve for the readers
+      rp.colorAttachments[0].texture = efb_color_ms_; rp.colorAttachments[0].resolveTexture = efb_color_;
+      rp.colorAttachments[0].storeAction = MTLStoreActionStoreAndMultisampleResolve;
+      rp.depthAttachment.texture = efb_depth_ms_; rp.depthAttachment.resolveTexture = efb_depth_;
+      rp.depthAttachment.depthResolveFilter = MTLMultisampleDepthResolveFilterSample0;
+      rp.depthAttachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+    }
     efb_needs_clear_ = false;
     encoder_ = [command_ renderCommandEncoderWithDescriptor:rp];
     [encoder_ setFrontFacingWinding:winding_ccw_ ? MTLWindingCounterClockwise : MTLWindingClockwise];
@@ -531,7 +568,7 @@ class MetalBackend final : public Backend {
     PSUid psu = make_ps_uid(dc);
     const uint64_t vh = vsu.hash(), ph = psu.hash();
     const uint32_t topology = prim == MTLPrimitiveTypeLine ? 1 : 0;
-    PsoKey key{vh, ph, dc.bp.blendmode() & 0xFFFF, dc.bp.zmode() & 0x1F, dc.bp.zcontrol() & 7, topology};
+    PsoKey key{vh, ph, dc.bp.blendmode() & 0xFFFF, dc.bp.zmode() & 0x1F, dc.bp.zcontrol() & 7, topology, uint32_t(samples_)};
     auto it = pipelines_.find(key);
     if (it != pipelines_.end()) {
       dc.cached_pipeline_owner = backend_id_; dc.cached_pipeline = (__bridge void*)it->second;
@@ -562,6 +599,7 @@ class MetalBackend final : public Backend {
     d.vertexFunction = vs; d.fragmentFunction = ps;
     d.vertexDescriptor = vertex_descriptor_;
     d.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    d.rasterSampleCount = std::max<uint32_t>(1, key.samples);
     d.inputPrimitiveTopology = key.topology ? MTLPrimitiveTopologyClassLine : MTLPrimitiveTopologyClassTriangle;
     auto* ca = d.colorAttachments[0];
     ca.pixelFormat = MTLPixelFormatRGBA8Unorm;
@@ -671,7 +709,7 @@ class MetalBackend final : public Backend {
       uint32_t fields[4]; VSUid vsu; PSUid psu;
       f.read((char*)fields, sizeof fields); f.read((char*)&vsu, sizeof vsu); f.read((char*)&psu, sizeof psu);
       if (!f) break;
-      PsoKey key{vsu.hash(), psu.hash(), fields[0], fields[1], fields[2], fields[3]};
+      PsoKey key{vsu.hash(), psu.hash(), fields[0], fields[1], fields[2], fields[3], uint32_t(samples_)};
       { std::lock_guard<std::mutex> lock(record_mutex_); if (!known_.insert(key).second) continue; }
       pending_.insert(key);
       start_compile_job(key, vsu, psu, precompile_queue());
@@ -1001,7 +1039,7 @@ class MetalBackend final : public Backend {
     const uint32_t x0 = std::min<uint32_t>(c.src_x * scale_, efb_w_), y0 = std::min<uint32_t>(c.src_y * scale_, efb_h_);
     const uint32_t x1 = std::min<uint32_t>((c.src_x + c.src_w) * scale_, efb_w_), y1 = std::min<uint32_t>((c.src_y + c.src_h) * scale_, efb_h_);
     if (x1 <= x0 || y1 <= y0) return;
-    [encoder_ setRenderPipelineState:clear_pipeline_];
+    [encoder_ setRenderPipelineState:samples_ > 1 ? clear_pipelines_[samples_] : clear_pipeline_];
     [encoder_ setDepthStencilState:clear_depth_state_];
     [encoder_ setCullMode:MTLCullModeNone];
     [encoder_ setViewport:MTLViewport{0, 0, (double)efb_w_, (double)efb_h_, 0, 1}];
@@ -1373,7 +1411,7 @@ class MetalBackend final : public Backend {
         if (cmd.kind == FrameCommand::Draw) {
           if (post && post->before_draw) {   // a picture effect's layer under this draw (a menu video)
             ensure_efb_pass();
-            if (post->before_draw(frame, size_t(&cmd - frame.commands.data()), frame.draws[cmd.index], (__bridge void*)device_, (__bridge void*)encoder_, efb_w_, efb_h_, scale_)) {
+            if (post->before_draw(frame, size_t(&cmd - frame.commands.data()), frame.draws[cmd.index], (__bridge void*)device_, (__bridge void*)encoder_, efb_w_, efb_h_, scale_, samples_)) {
               bound_pipeline_ = nil; bound_depth_ = nil; bound_cull_ = -1;
               [encoder_ setVertexBuffer:vertex_ring_[slot_].buffer offset:0 atIndex:0];
             }
@@ -1606,6 +1644,10 @@ class MetalBackend final : public Backend {
   id<MTLDepthStencilState> clear_depth_state_ = nil;
   id<MTLSamplerState> blit_sampler_ = nil;
   id<MTLTexture> efb_color_ = nil, efb_depth_ = nil, white_ = nil;
+  id<MTLTexture> efb_color_ms_ = nil, efb_depth_ms_ = nil;   // MSAA: the multisampled attachments (opts_.msaa > 1)
+  int samples_ = 1, samples_requested_ = 1;
+  id<MTLLibrary> blit_library_ = nil;
+  std::unordered_map<int, id<MTLRenderPipelineState>> clear_pipelines_;
 #if defined(MELEE_HAS_METALFX)
   id<MTLFXSpatialScaler> fx_scaler_ = nil;   // macOS 13 / iOS 16 spatial upscaler (FSR-class)
 #else

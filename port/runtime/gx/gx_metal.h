@@ -32,6 +32,8 @@ struct MetalOptions {
   float crt_curve = 1.0f;    // its curvature strength
   float picture_aspect = 0;  // the picture's shape (width / height); 0 = the game's own (4:3, or 16:9 with widescreen)
   std::string cache_dir;     // pipelines.bin lives here: every pipeline seen, precompiled in the background next launch
+  int msaa = 1;              // multisample anti-aliasing on the EFB pass: 1 (off), 2, 4 or 8 samples (melee-unlocked's msaa),
+                             // resolved at the end of each pass; 1 leaves the renderer exactly as it was
   float ssao = 0.0f;         // screen-space ambient occlusion strength 0..1 (melee-unlocked's ssao): contact shading from the
                              // EFB depth in the present pass; 0 = off (the present pass is then unchanged)
 };
@@ -107,9 +109,9 @@ struct PostHooks {
   bool (*dynamic_wanted)() = nullptr;
   void* (*dynamic)(void* device, void* command_buffer, const TextureRef& t) = nullptr;
   // Before a draw of the EFB pass (a video layer under the menu's foreground): may draw into `encoder`
-  // (id<MTLRenderCommandEncoder>, colour RGBA8 + Depth32Float attachments at efb_w x efb_h); returns true when it drew.
+  // (id<MTLRenderCommandEncoder>, colour RGBA8 + Depth32Float attachments at efb_w x efb_h, `samples` per pixel); true: it drew.
   bool (*before_draw)(const Frame& frame, size_t command, const DrawCall& dc, void* device, void* encoder, int efb_w, int efb_h,
-                      int scale) = nullptr;
+                      int scale, int samples) = nullptr;   // samples: the pass's sample count (MSAA)
   // The picture to present instead of the EFB region (a shader preset's output, any size; drawn to the picture's rectangle
   // with the present pass's sampling); nullptr: the EFB as usual.
   void* (*picture)(const PostFrame& f) = nullptr;

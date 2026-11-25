@@ -4,11 +4,11 @@
 # presented) or --capture with MELEE_CAPTURE_UI (the ImGui pass drawn over it, for the Lab view). Fixtures are made here:
 # the texture pack from the game's own dumped textures (colours inverted), the menu video by ffmpeg's test pattern (when ffmpeg
 # is installed). Nothing is written outside build/mu-engine/runs/app-graphics; no Finder window opens.
-#   app_graphics_test.sh ISO [CASE...]   cases: ssao capture glitch texpack video lab shader (default: all)
+#   app_graphics_test.sh ISO [CASE...]   cases: ssao msaa capture glitch texpack video lab shader (default: all)
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"; repo="$(cd "$here/../.." && pwd -P)"
-iso="${1:?disc image}"; shift; cases="${*:-ssao capture glitch texpack video lab shader}"
+iso="${1:?disc image}"; shift; cases="${*:-ssao msaa capture glitch texpack video lab shader}"
 engine="${MU_ENGINE:-$repo/build/mac/mu-engine/app/MeleeUnlockedEngine}"
 root="$repo/build/mu-engine/runs/app-graphics"; mkdir -p "$root"
 python3 -I "$here/play_vs_script.py" "$repo/build/mu-engine/mu/port/scripts/parity_vs_onett.txt" "$root/vs.txt"
@@ -34,6 +34,11 @@ ssao)
   fresh ssao-off 'ssao 0\n'; MELEE_CAPTURE_BURST=1700,1 run ssao-off 1720
   fresh ssao-on 'ssao 1\n'; MELEE_CAPTURE_BURST=1700,1 run ssao-on 1720
   echo "ssao: $(mean_diff "$root/ssao-off/melee-unlocked/capture/blink_01700.ppm" "$root/ssao-on/melee-unlocked/capture/blink_01700.ppm")";;
+msaa)   # launcher.ini msaa (melee-unlocked's key) at a fixed internal resolution, against the same frame without it
+  fresh msaa-off ''; printf 'msaa=1\nscale=2\n' > "$root/msaa-off/launcher.ini"; MELEE_CAPTURE_BURST=1700,1 run msaa-off 1720 --scale 2
+  fresh msaa-4 ''; printf 'msaa=4\nscale=2\n' > "$root/msaa-4/launcher.ini"; MELEE_CAPTURE_BURST=1700,1 run msaa-4 1720 --scale 2
+  grep -h "MSAA" "$root/msaa-4/log" | sed 's/^\[ *[0-9.]*\] //' | head -2
+  echo "msaa: $(mean_diff "$root/msaa-off/melee-unlocked/capture/blink_01700.ppm" "$root/msaa-4/melee-unlocked/capture/blink_01700.ppm")";;
 capture)
   fresh capture ''; MELEE_CAPTURE_BURST=1600,90 run capture 1720
   echo "capture: $(ls "$root/capture/melee-unlocked/capture" | wc -l | tr -d ' ') pictures; $(grep -c 'captured ' "$root/capture/log") logged";;

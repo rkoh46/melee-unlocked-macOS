@@ -24,6 +24,7 @@ struct Live {
   std::atomic<int> lab_fighters{0}, lab_stage{0};   // look_lab_fighters 0..3, look_lab_stage 0..3
   std::atomic<uint32_t> lab_colour[4] = {};      // lab_colour_p1..p4: 0 the look's own, else 0x1000000 | RGB
   std::atomic<uint32_t> lab_background{0}, lab_stage_colour{0};
+  std::atomic<int> msaa{1};                      // launcher.ini msaa (upstream's): 1 off, 2, 4, 8 samples on the EFB pass
   std::atomic<int> hdr{0};                       // hdroutput: 0 off, 1 the display's extended range (EDR)
   std::atomic<float> hdr_paper_white{203.0f}, hdr_peak{1000.0f};   // hdrpaperwhite, hdrpeak (nits)
   std::atomic<int> capture_request{0};           // frames still to write (Ctrl+F2: 90)
@@ -45,5 +46,5 @@ bool lab_packs_present();                                       // the Lab view'
 // 5 flicker, 6 Lab.
 void open_folder(int which);
 // The renderer options the effects need (play mode sets it: mu_play_main.cpp): SSAO strength and HDR output.
-extern std::function<void(float ssao, int hdr, float paper_white, float peak)> apply_renderer;
+extern std::function<void(float ssao, int msaa, int hdr, float paper_white, float peak)> apply_renderer;
 }  // namespace fe::gfx

@@ -587,10 +587,11 @@ int main(int argc, char** argv) {
   // the glitch detector, SSAO and the Lab view. Play mode only, as the looks; Ctrl+F2 captures 90 frames, Ctrl+F3 the Lab view.
   if (g_play) {
     gx::metal_set_post_hooks(mu_gfx::hooks());
-    fe::gfx::apply_renderer = [backend, &gfx](float ssao, int, float, float) {
+    fe::gfx::apply_renderer = [backend, &gfx](float ssao, int msaa, int hdr, float paper_white, float peak) {
       std::lock_guard<std::mutex> lock(gfx_mutex);
-      if (gfx.ssao == ssao) return;
-      gfx.ssao = ssao; gx::metal_set_options(backend, gfx);
+      if (gfx.ssao == ssao && gfx.msaa == msaa) return;
+      gfx.ssao = ssao; gfx.msaa = msaa; gx::metal_set_options(backend, gfx);
+      (void)hdr; (void)paper_white; (void)peak;
     };
     host::window_set_key_hook([](int key, int mods) {
       if (!(mods & (SDL_KMOD_CTRL))) return false;

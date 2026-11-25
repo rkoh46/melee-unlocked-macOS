@@ -43,6 +43,7 @@ void* mu_libra_dlopen(const char* name, int flags);
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -119,6 +120,23 @@ bool ensure_device(id<MTLDevice> device) {
   sd.sAddressMode = MTLSamplerAddressModeClampToEdge; sd.tAddressMode = MTLSamplerAddressModeClampToEdge;
   g_linear = [device newSamplerStateWithDescriptor:sd];
   return g_quad_efb && g_reduce;
+}
+// The picture-into-the-EFB pipeline for the pass's sample count (MSAA).
+id<MTLRenderPipelineState> quad_efb(id<MTLDevice> device, int samples) {
+  static std::unordered_map<int, id<MTLRenderPipelineState>> by_samples;
+  if (samples <= 1) return g_quad_efb;
+  auto it = by_samples.find(samples);
+  if (it != by_samples.end()) return it->second;
+  MTLRenderPipelineDescriptor* d = [MTLRenderPipelineDescriptor new];
+  d.vertexFunction = [g_lib newFunctionWithName:@"quad_vs"];
+  d.fragmentFunction = [g_lib newFunctionWithName:@"quad_ps"];
+  d.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA8Unorm;
+  d.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+  d.rasterSampleCount = samples;
+  NSError* e = nil;
+  id<MTLRenderPipelineState> state = [device newRenderPipelineStateWithDescriptor:d error:&e];
+  by_samples[samples] = state ?: g_quad_efb;
+  return by_samples[samples];
 }
 dispatch_queue_t writer_queue() {   // PPM files and the glitch detector's analysis, in presentation order, off the render thread
   static dispatch_queue_t q = dispatch_queue_create("melee-unlocked.graphics.writer", DISPATCH_QUEUE_SERIAL);
@@ -231,7 +249,7 @@ void* dynamic(void* device, void*, const gx::TextureRef& t) {
 }
 // The full-screen video layer: on the character select between Melee's hard-coded backdrop draws and its first textured draw
 // (upstream's should_insert_fullscreen_layer), on the stage select right after the learned backdrop draw.
-bool before_draw(const gx::Frame&, size_t, const gx::DrawCall& dc, void* device, void* encoder, int efb_w, int efb_h, int scale) {
+bool before_draw(const gx::Frame&, size_t, const gx::DrawCall& dc, void* device, void* encoder, int efb_w, int efb_h, int scale, int samples) {
   if (!g_fullscreen || g_background_drawn || !g_have_screen || g_fullscreen->bgra.empty()) return false;
   bool insert = false;
   if (g_fullscreen_slot == 0) {
@@ -249,7 +267,7 @@ bool before_draw(const gx::Frame&, size_t, const gx::DrawCall& dc, void* device,
   id<MTLRenderCommandEncoder> enc = (__bridge id<MTLRenderCommandEncoder>)encoder;
   const double s = scale;
   const double x = g_screen.src_x * s, y = g_screen.src_y * s, w = g_screen.src_w * s, h = g_screen.src_h * s;
-  [enc setRenderPipelineState:g_quad_efb];
+  [enc setRenderPipelineState:quad_efb(dev, samples)];
   [enc setDepthStencilState:g_no_depth];
   [enc setCullMode:MTLCullModeNone];
   [enc setViewport:MTLViewport{x, y, w, h, 0, 1}];

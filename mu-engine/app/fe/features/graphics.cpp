@@ -16,7 +16,7 @@
 #include <sstream>
 
 namespace fe::gfx {
-std::function<void(float, int, float, float)> apply_renderer;
+std::function<void(float, int, int, float, float)> apply_renderer;
 void lab_retrace();   // gfx/lab_mac.cpp: the Lab view's frame from the game, on the simulation thread
 void lab_settings_changed();
 }
@@ -38,7 +38,7 @@ std::string colour_text(uint32_t c) { if (!(c & 0x1000000u)) return "0"; char b[
 
 void push_renderer() {
   auto& l = live();
-  if (fe::gfx::apply_renderer) fe::gfx::apply_renderer(l.ssao.load(), l.hdr.load(), l.hdr_paper_white.load(), l.hdr_peak.load());
+  if (fe::gfx::apply_renderer) fe::gfx::apply_renderer(l.ssao.load(), l.msaa.load(), l.hdr.load(), l.hdr_paper_white.load(), l.hdr_peak.load());
 }
 
 bool setting(const std::string& key, const std::string& value) {
@@ -130,7 +130,7 @@ const char* const kLabStage[] = {"As drawn", "Outline", "Blocks", "Hidden"};
 
 void retrace(const Retrace&) {
   static bool pushed = false;
-  if (!pushed) { pushed = true; push_renderer(); fe::gfx::lab_settings_changed(); }   // the settings file's values, once the renderer is up
+  if (!pushed) { pushed = true; live().msaa.store(std::clamp(std::atoi(app_ini("msaa", "1").c_str()), 1, 8)); push_renderer(); fe::gfx::lab_settings_changed(); }   // the settings file's values, once the renderer is up
   fe::gfx::lab_retrace();
 }
 void run_end() {
@@ -146,6 +146,13 @@ void register_graphics() {
   add_retrace(retrace);
   add_run_end(run_end);
   // melee-unlocked's VIDEO page rows, on the panel's Picture section.
+  add_menu_entry({"Picture", "Anti-aliasing (MSAA)", [] { const int m = live().msaa.load(); return m <= 1 ? std::string("Off") : std::to_string(m) + "x"; },
+                  [](int d) {
+                    static const int steps[] = {1, 2, 4, 8};
+                    int i = 0; while (i < 3 && steps[i] < live().msaa.load()) ++i;
+                    i = std::clamp(i + (d < 0 ? -1 : 1), 0, 3);
+                    live().msaa.store(steps[i]); app_ini_set("msaa", std::to_string(steps[i])); edited();
+                  }, nullptr, nullptr});
   add_menu_entry({"Picture", "Ambient occlusion (SSAO)", [] { const float a = live().ssao.load(); return a <= 0.0f ? std::string("Off") : pct(a); },
                   [](int d) { auto& a = live().ssao; a.store(std::clamp(std::round((a.load() + 0.1f * d) * 10.0f) / 10.0f, 0.0f, 1.0f)); edited(); }, nullptr, write_all});
   add_menu_entry({"Picture", "Shader preset (RetroArch)", preset_row, [](int d) { step_preset(d); edited(); }, nullptr, write_all});

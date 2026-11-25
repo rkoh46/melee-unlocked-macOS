@@ -226,7 +226,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Quality presets | renderer | active: the Picture page's Quality preset row sets internal resolution, sharpening and anisotropy (fe/features/overlays.cpp, from the Switch); its MSAA value is not used (the Mac's Metal renderer has no MSAA) |
 | "Low spec" switch | renderer | upstream stub (replaced by Lightweight, which is active) |
 | Internal resolution | renderer | active: the app's Metal renderer and launcher settings |
-| Anti-aliasing | renderer | partial: supersampling through Internal resolution above the display's size; no MSAA in the Metal renderer. The Switch's `ssaa 2..4` setting (6e87ad8) is not copied: the Mac's Internal resolution already renders above the display |
+| Anti-aliasing | renderer | active: MSAA 2x/4x/8x on the Metal EFB pass (launcher.ini `msaa`, melee-unlocked's key, also set by the Quality preset; a Picture row), multisampled colour and depth resolved at the end of every pass so EFB copies, the present pass and SSAO read resolved pictures; off by default, and at 1 the renderer is unchanged. Supersampling through Internal resolution as before. `app_graphics_test.sh msaa`: 4x at 1280x1056, edges smoothed (build/gfx-shots/msaa-off-4x.png); about 130 one-pixel specks per frame appear where the game's polygons leave sub-pixel cracks (the black clear shows through) |
 | Anisotropic filtering | renderer | active: the panel's texture filtering row |
 | Sharpening | renderer | active: settings.ini sharpness (the present pass's sharpening) |
 | Brightness, contrast, vibrance | renderer | active: settings.ini brightness / contrast / vibrance, in the Metal present pass; off by default |
