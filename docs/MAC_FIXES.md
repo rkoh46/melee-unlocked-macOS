@@ -11,7 +11,7 @@ A fix counts as confirmed once it has been played through again.
 
 | # | Found | What happens | Evidence | Notes |
 |---|---|---|---|---|
-| | | None right now. | | |
+| 10 | 2026-11-24 | melee-unlocked engine: a vanilla recording made from the menus and its playback differ in a few post-frame records (vs4_busy recorded by `--play-script`: 16 of 29296). | `replay: post-frame record of frame -118 port 0 differs from the file at byte 16 (27, file 28)`; frames 1706.. port 2 byte 43 (C3, file 8C) | Frame -118 (cause found, not fixed): the y of the first EntryStart frame. EntryStart_Phys computes the same y (41C9E127) in both runs; the air collision after it (`ft_80083E64` -> `mpColl_8004730C`) nudges it by one ulp only in the recording, because the fighter's CollData differs before that call: cur_pos.y 15.2 / last_pos.y 35.2 in the recording against 25.2 / 25.2 in playback, floor_skip 6 against 0xB. Those come from `Fighter_Spawn`'s spawn ground check (`ft_80082A68`: cur -10, last +10, `mpColl_800471F8` searches the stage's floor lines): in the menus-started match it finds no floor and leaves the offsets, in the playback's direct boot (debug VS, scene 0x0E) it finds one. So the stage's collision lines are not in the same state when the fighters spawn (Onett's awnings move): the two boots set up the stage differently before the first spawn. Clearing the fighter block in playback too (as recording does) changes nothing. Byte 43 is misc AS (hitstun float) of a fighter whose position and state agree; not traced yet. Diagnosed with temporary prints in the fetched tree (removed). |
 
 ## Fixed
 

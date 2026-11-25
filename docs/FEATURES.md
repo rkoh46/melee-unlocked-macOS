@@ -42,7 +42,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Version gate | host | not wired: online play is the next milestone (netplay host as on the Switch) |
 | Replay recording (.slp) | game image + host | active: every match, offline and online (`mu-engine/app/replays.cpp`) |
 | Compressed replays (.slpz) | host | active: settings.ini compressreplays 1 (melee-unlocked's zstd) |
-| Replay playback | game image + host | active: `--replay` and the launcher's Watch, through the replays module (`fe/features/replays.cpp`); a replay without a code list plays as Vanilla |
+| Replay playback | game image + host | active: `--replay` and the launcher's Watch, through the replays module (`fe/features/replays.cpp`); a replay without a code list plays as Vanilla. Recordings with codes (online, offline play mode) play back with 0 differing post-frame records (an online loopback game: 2194 of 2194 equal). A vanilla recording started from the menus still differs in a few records (vs4_busy: 16 of 29296): frame -118 is the stage's collision state at the first spawn, which the playback's direct boot sets up differently (docs/MAC_FIXES.md #10) |
 | Replay viewer controls | host + renderer | active: Start/Z pause, D-pad seek and step, L speed, R fast forward, X/Y tips (the replays module, drawn by `fe/overlay_draw.cpp`) |
 | Replay takeover | game image + host | active: A takes over (the replays module) |
 | Replay coach tips | game image + host + renderer | active: melee-unlocked's coach (replay_coach.cpp from the fetched tree) through the replays module |
