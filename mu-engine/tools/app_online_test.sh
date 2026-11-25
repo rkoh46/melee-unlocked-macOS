@@ -10,6 +10,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"; repo="$(cd "$here/../..
 iso="${1:?disc image}"; frames="${2:-3000}"; engine="${3:-$repo/build/mac/mu-engine/app/MeleeUnlockedEngine}"
 out="$repo/build/mu-engine/runs/app-online"; port=$((43800 + RANDOM % 500))
 rm -rf "$out"; mkdir -p "$out"
+# MU_INI: settings.ini lines for both sides ("session_trace 2" keeps every session trace), separated by ";".
+if [ -n "${MU_INI:-}" ]; then for side in a b; do mkdir -p "$out/$side/melee-unlocked"; echo "$MU_INI" | tr ';' '\n' > "$out/$side/melee-unlocked/settings.ini"; done; fi
 profile='(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))'
 sandboxed() { sandbox-exec -p "$profile" "$@"; }
 mock_loop() { while :; do sandboxed python3 -I "$repo/tools/mac/mock_matchmaking_ws.py" "$port" ${MU_MOCK_ARGS:-}; sleep 0.2; done; }
