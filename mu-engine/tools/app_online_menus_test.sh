@@ -32,6 +32,8 @@ for side, given, period, stick in (("a", sys.argv[1], 47, 80), ("b", sys.argv[2]
     open(f"{sys.argv[3]}/{side}/pads.txt", "w").write(head + "\n".join(lines) + "\n@scene" + gates)
 PY
 for side in a b; do v="MU_USER_$(echo $side | tr a-z A-Z)"; if [ -n "${!v:-}" ]; then mkdir -p "$out/$side/user"; cp -R "${!v}"/. "$out/$side/user/"; fi; done
+# MU_COSMETICS_A: a Cosmetics folder (skins and selection.txt) copied to side a.
+[ -n "${MU_COSMETICS_A:-}" ] && cp -R "$MU_COSMETICS_A" "$out/a/melee-unlocked/Cosmetics"
 printf 'slippi_menus 1\n%b\n' "${MU_INI_A:-}" > "$out/a/melee-unlocked/settings.ini"
 printf 'slippi_menus 1\n%b\n' "${MU_INI_B:-}" > "$out/b/melee-unlocked/settings.ini"
 profile='(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))'

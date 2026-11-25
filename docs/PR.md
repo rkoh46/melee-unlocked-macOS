@@ -116,3 +116,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - `mu-engine/tools/app_te_test.sh` (20XX TE input display and menu music from Sound Test with the TE save as a profile); `app_online_test.sh` takes `MU_INI` (settings.ini lines for both sides).
 - Settings panel: upstream's inline search box, typed on the keyboard (SDL text input fed to ImGui while a box has the cursor); upstream's `MELEE_TEST_*` hooks read the environment.
 - Training Mode CE: `mu-engine/tools/app_tmce_test.sh` (the TM-CE disc profile into the Training Lab); the panel's MODS page names the built-in packs (TM-CE, 20XX TE) and whether they are loaded, as upstream's.
+- Tests: `mu-engine/tests/online/online_marks_a.txt` (trace marks pressed in an online match) and `app_online_menus_test.sh` `MU_COSMETICS_A` (the skins-off-online note); `app_online_test.sh` `MU_COSMETICS`.
