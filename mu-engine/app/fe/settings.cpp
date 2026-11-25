@@ -310,7 +310,8 @@ uint32_t word_options2() {
   const auto& s = settings;
   if (s.vanilla || s.vanilla_only || online.load(std::memory_order_relaxed)) return 0;
   return (s.te_options2 & te_mask2() & ~(MU_GAME_OPTION2_STADIUM_FROZEN | MU_GAME_OPTION2_ARCADE_PACK)) |
-         (s.cpu_20xx ? MU_GAME_OPTION2_TE_20XX_CPUS : 0u) | (s.stadium_frozen ? MU_GAME_OPTION2_STADIUM_FROZEN : 0u);
+         (s.cpu_20xx ? MU_GAME_OPTION2_TE_20XX_CPUS : 0u) | (s.stadium_frozen ? MU_GAME_OPTION2_STADIUM_FROZEN : 0u) |
+         (mods_arcade_pack() ? MU_GAME_OPTION2_ARCADE_PACK : 0u);   // the 2D-style build's own codes (mods.cpp)
 }
 uint32_t cpu_word_of_settings() {
   const auto& s = settings;

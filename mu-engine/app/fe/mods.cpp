@@ -28,6 +28,7 @@
 #include "sha256.h"              // this repository, port/runtime/host
 
 #include <algorithm>
+#include <chrono>
 #include <climits>
 #include <cstdio>
 #include <cstring>
@@ -283,11 +284,41 @@ bool maker_attach(const std::string& iso) {
   return true;
 }
 
+// melee-unlocked's content fingerprints of the mod discs it recognises (port/app/source_host.cpp kKnownPacks), computed the
+// same way (layer_fingerprint.cpp). The 2D-style build runs its own camera and HUD codes natively (MU_GAME_OPTION2_ARCADE_PACK,
+// offline), with the Arcade look's hitbox switches and 2D camera on, as upstream sets them for it.
+struct KnownPack { const char* fingerprint; const char* name; };
+constexpr KnownPack kKnownPacks[] = {
+  {"9a1a48b999a2f8f4deaee2554e5f177cb265666b95676a508406db80b181246b", "Akaneia 1.0.1"},
+  {"61834b65d921668ff11702c458a1ae6946172b0a4c8321a47e2c2ddff9aef51d", "20XX TE 2d r4"},
+  {"23859e58d0f6153bbc9a813f4eac2b3ae1b69e90d5e5a0ef1f57829b1ed588ff", "2D-style build 2.0"},
+  {"59933964cb939eb7e32c05f4b9cdfb332dd12043a3c82ccb9d1f204c7a314891", "2D-style build demo"},
+};
+bool arcade_pack = false;
+void recognise(const std::string& iso) {
+  const auto t0 = std::chrono::steady_clock::now();
+  std::string error;
+  const std::string fp = iso_layer_fingerprint(options.iso, iso, &error);
+  const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+  if (fp.empty()) { say("mods: %s could not be fingerprinted (%s)", base_name(iso).c_str(), error.c_str()); return; }
+  const KnownPack* known = nullptr;
+  for (const auto& k : kKnownPacks) if (fp == k.fingerprint) known = &k;
+  say("mods: %s content %s (%.1f s)%s%s", base_name(iso).c_str(), fp.substr(0, 16).c_str(), s, known ? ", recognised as " : "", known ? known->name : "");
+  // Tests (MU_TEST_ARCADE_FINGERPRINT=<fingerprint>): another disc stands in for the 2D-style build, whose disc is not here.
+  const char* stand_in = std::getenv("MU_TEST_ARCADE_FINGERPRINT");
+  if ((known && std::strncmp(known->name, "2D-style build", 14) == 0) || (stand_in && fp == stand_in)) {
+    arcade_pack = true;
+    for (const char* key : {"arcade_hitboxes", "arcade_projectile_hitboxes", "arcade_hitboxes_behind", "arcade_camera_2d"}) settings_set_quiet(key, "1");
+    say("mods: the 2D-style build found; its codes run natively (offline), with the Arcade look's hitboxes and 2D camera");
+  }
+}
+
 // After the layers: which of these the profile is, and its content identity for replays.
 void identify(const std::function<bool(const char*)>& has) {
   std::vector<const Layer*> isos;
   for (const auto& layer : layers) if (layer.kind == Layer::Iso) isos.push_back(&layer);
   const bool one_iso = isos.size() == 1;
+  for (const Layer* iso : isos) recognise(iso->path);
   akaneia = one_iso && has("/mxdt.dat") && has("/plsn.dat") && has("/plts.dat");
   if (akaneia) say("mods: an m-ex disc with added fighters (Akaneia or ACE) found; its fighters are the game's native ones (offline; online matches get the retail files)");
   if (has("/tm/eventmenu.dat")) {
@@ -336,6 +367,7 @@ void maker_command(const uint8_t* p, uint32_t n, std::vector<uint8_t>& reply) {
 }  // namespace
 
 bool mods_tmce() { return tmce; }
+bool mods_arcade_pack() { return arcade_pack; }
 std::string mods_fingerprint() { return retail_view ? std::string() : fingerprint; }
 bool mods_te_owned() { return te_owned; }
 bool mods_hackpack() { return pack_loaded; }

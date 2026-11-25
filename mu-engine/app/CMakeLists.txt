@@ -146,7 +146,7 @@ file(GLOB _zstd_sources "${MU_TREE}/port/third_party/zstd/common/*.c" "${MU_TREE
 add_library(mu_zstd STATIC ${_zstd_sources})   # melee-unlocked's vendored zstd 1.5.7 (BSD-3-Clause): .slpz replays
 target_compile_definitions(mu_zstd PRIVATE ZSTD_DISABLE_ASM=1)
 target_compile_options(mu_zstd PRIVATE -O2 -w)
-add_library(mu_fe OBJECT "${FE}/settings.cpp" "${FE}/mods.cpp" ${_fe_features} "${FE}/phob_adapter.cpp" "${MU_TREE}/port/runtime/host/phob.cpp" "${MU_RUN}/features/snapshot_store.cpp" ${_fe_enet})
+add_library(mu_fe OBJECT "${FE}/settings.cpp" "${FE}/mods.cpp" "${FE}/layer_fingerprint.cpp" ${_fe_features} "${FE}/phob_adapter.cpp" "${MU_TREE}/port/runtime/host/phob.cpp" "${MU_RUN}/features/snapshot_store.cpp" ${_fe_enet})
 set_source_files_properties(${_fe_enet} PROPERTIES COMPILE_DEFINITIONS "HAS_FCNTL=1;HAS_POLL=1;HAS_INET_PTON=1;HAS_INET_NTOP=1;HAS_SOCKLEN_T=1;HAS_MSGHDR_FLAGS=1"
   COMPILE_OPTIONS "-w;-include;arpa/inet.h")
 set_target_properties(mu_fe PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)

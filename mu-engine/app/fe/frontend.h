@@ -92,6 +92,8 @@ void mods_configure_costumes(const std::string& profile);  // a session that can
 void mods_session_can_go_online();                        // skins are served in their online form (features/cosmetics.cpp)
 bool mods_te_owned();
 bool mods_tmce();                              // mods.cpp: the profile carries Training Mode CE's files
+bool mods_arcade_pack();                       // mods.cpp: the profile is the 2D-style m-ex build (MU_GAME_OPTION2_ARCADE_PACK)
+std::string iso_layer_fingerprint(const std::string& base_iso, const std::string& mod_iso, std::string* error);   // layer_fingerprint.cpp
 bool mods_hackpack();
 uint32_t mods_flags();
 uint32_t mods_stage_bits();
