@@ -116,7 +116,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Mute character voices | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Faster sound effects | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Auto L-cancel | host | active offline (the options module, settings.ini `autolcancel`, the panel), and online in a Direct match when every player offered it: each side's `autolcancel 1` goes out in the build message with the Switch's flags (`mu-engine/net/patches/net-0011`, copied from Melee-NX-NetPlay: 0x08 reads the agreement, 0x10 offers it, so Mac and Switch builds agree with each other; `runner/netplay_bridge` `set_auto_lcancel`, `auto_lcancel_agreed`); online the press goes on the controller the local inputs come from, for the local fighter only. Never in Unranked, Teams or Party, or against Slippi Dolphin. `app_online_menus_test.sh ... online_direct_a online_direct_b` with `autolcancel 1` on both sides (`MU_INI_A`/`MU_INI_B`): `opponent ... is a Melee-NX-NetPlay build: ... Auto L-cancel offered`, `automatic L-cancel on in this Direct match: every player offered it`, 5 and 1 presses, net check EQUAL (12 checkpoints), 0 desync messages |
-| L-cancel flash (MU missed / success / both) | host + renderer | active: the overlays (`fe/overlay_draw.cpp`), settings.ini |
+| L-cancel flash (MU missed / success / both) | host + renderer | active: the overlays (`fe/overlay_draw.cpp`), settings.ini. Not ported yet: the Switch's flash on the fighter's model (its frontend/patches/0120 tints Aurora's GX draws; here it needs the same tint in `port/runtime/gx/gx_metal.mm`) and 20XX TE's own flash modes |
 | Player-pasted Gecko codes | host + game image | active offline: melee-unlocked's user_gecko.cpp compiled from the fetched tree (`mu-engine/app/fe/patches/0122`, `fe/features/gecko.cpp` from the Switch) with the game image's own `mu_user_gecko_write` / `mu_user_gecko_read` (found by name, `mu-engine/patches/0016`; bound at the first frame, after the host has loaded the image); codes from `melee-unlocked/GeckoCodes.ini` (Dolphin's format), each switched on the panel's GECKO CODES > Your codes (greyed with upstream's reason when it cannot run), kept as upstream's `geckocode NAME` lines and `geckochosen 1`; applied once per frame offline, suspended online, in replays and in a vanilla-only session. Not here: typing or pasting a code in the panel, and upstream's function rewrites ("return N at once" by overwriting the native function's entry), refused by name. `mu-engine/tools/app_gecko_test.sh`: P1's model scale code (044805B0 3FC00000) runs ("1 can run on the Source Port, 1 switched on", "player codes run (offline)") and the game image hands the variable back as 3FC00000 through the match; the fighter is not drawn larger here, because the VS mode's scene start refills the start data and builds the fighters within one frame on the Mac (the disc is read at once) before the frame's code pass, as upstream's own per-frame pass would; a C2 injection and waxo's No Character Shadows are refused with their reasons |
 | Gecko code kinds accepted | host | active (row above): upstream's own compiler and plan decide, unchanged; the "function returns N" kind is refused on the Mac |
 | Gecko code kinds refused | host | refused by design, as upstream, with its reasons on each greyed row (`app_gecko_test.sh`: "injects PowerPC code (C2), which this build cannot run"); here also the function rewrites |
@@ -193,7 +193,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Border art | renderer | active: the overlays (a .bmp in the Borders folder) |
 | Built-in CRT look | renderer | active: settings.ini crt_filter 1/2 and crt_curve, drawn in the Metal present pass; off by default |
 | RetroArch shader presets | renderer | not wired |
-| Easter egg | renderer + game image | not wired (not on the Switch either) |
+| Easter egg | renderer + game image | not wired: the Switch has melee-unlocked's character select egg now (its egg.cpp, 3a90423); not copied to the Mac yet |
 
 ## 7. Controllers
 
@@ -209,7 +209,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Dolphin profile import | host | active: fe/controls.cpp; reads the app's Dolphin folder, else Slippi Dolphin's or Dolphin's GCPad profiles |
 | Deadzone, radius, snapback filter, trigger cap and click point | host | active: fe/controls.cpp's setup page, applied after the app's input (IOKit adapter and SDL pads) |
 | Box controllers | host | active: fe/controls.cpp box mode (melee-unlocked's box_melee.h) |
-| PhobGCC settings on a stock controller | host + renderer | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
+| PhobGCC settings on a stock controller | host + renderer | partial: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) with its own calibration; melee-unlocked's PhobGCC filter on the adapter's raw reports (the Switch's phob.cpp and patches/0123) is not ported yet |
 | PhobScope and Phob Check | renderer + host | not wired |
 | "Play as P2/P3/P4" | host + renderer | active in the app's form: a controller's fixed port in its configuration (input_config, the launcher's controller pages; window_sdl.cpp gives fixed ports first) |
 | Rumble and its switch | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
@@ -226,7 +226,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Quality presets | renderer | active: the Picture page's Quality preset row sets internal resolution, sharpening and anisotropy (fe/features/overlays.cpp, from the Switch); its MSAA value is not used (the Mac's Metal renderer has no MSAA) |
 | "Low spec" switch | renderer | upstream stub (replaced by Lightweight, which is active) |
 | Internal resolution | renderer | active: the app's Metal renderer and launcher settings |
-| Anti-aliasing | renderer | partial: supersampling through Internal resolution above the display's size; no MSAA in the Metal renderer |
+| Anti-aliasing | renderer | partial: supersampling through Internal resolution above the display's size; no MSAA in the Metal renderer. The Switch's `ssaa 2..4` setting (6e87ad8) is not copied: the Mac's Internal resolution already renders above the display |
 | Anisotropic filtering | renderer | active: the panel's texture filtering row |
 | Sharpening | renderer | active: settings.ini sharpness (the present pass's sharpening) |
 | Brightness, contrast, vibrance | renderer | active: settings.ini brightness / contrast / vibrance, in the Metal present pass; off by default |
@@ -252,7 +252,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Speed nudging for online time sync | host | active: Slippi's time-sync speed goes to the host's pacing and to the sound output's resampling ratio (audio_set_speed, the Switch's frontend/patches/0110 applied to port/runtime/host/audio_sdl.cpp); not run online |
 | Mono / Stereo | game image + host | in the engine |
 | Audio mode: shared, low latency, exclusive, ASIO; output device picker | host | active: the app's audio output (32 kHz, volume from the launcher) |
-| Menu sounds in the settings UI | renderer | not wired |
+| Menu sounds in the settings UI | renderer | not wired: the Switch's feat/ui3 panel (093c5c0) has them; its panel changes are not merged into the Mac's mu_panel.cpp yet |
 
 ## 10. Saves
 
@@ -268,7 +268,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Feature | Side | Mac status |
 |---|---|---|
 | PC settings overlay | renderer | active: melee-unlocked's own panel code (VIDEO, AUDIO, GAME, CONTROLS, OVERLAYS, CUSTOMIZE, GECKO CODES, MODS) drawn with Dear ImGui on the Metal renderer; L + R + Start, F1 or Escape opens it; controller and keyboard navigation (`mu-engine/app/ui`) |
-| Settings appearances | renderer | partial: the Clean side style with melee-unlocked's palettes and accents; the other menu styles are not ported |
+| Settings appearances | renderer | partial: the Clean side style with melee-unlocked's palettes and accents; the other menu styles (Icon tiles, GD Melee, Radial, Wide tabs, Simple, the legacy menus), transparency and custom accent are on the Switch since 093c5c0 but not merged into the Mac's panel yet (an 844-line change to a file the Mac has diverged from) |
 | Settings search | renderer | active: melee-unlocked's search code in the panel |
 | Settings file | host | active: what the panel changes is saved to launcher.ini for the next start |
 | Pause menu on Esc | renderer | active: Escape opens the settings panel |
@@ -303,7 +303,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Optional part downloads | launcher + host + external | not wired |
 | Lab view and Pro AI asset downloads | host + external | not wired |
 | "What's new" | launcher | partial: the Play page's What's new link opens this repository's README section |
-| Launcher languages | launcher | not wired |
+| Launcher languages | launcher | not wired: the Switch's home screen uses melee-unlocked's lang/ tables (mu_lang.cpp); the Mac launcher is AppKit and has none yet |
 | Launcher colour and rail picture | launcher | active: launcher colour wheel |
 | Mods page | launcher | active: the launcher's Mods page lists, installs and removes mods with the shared installer (mu-engine/modinstall through mu-engine/app/mods_facade.cpp), and Use picks a profile for an offline start |
 | Mods catalog | launcher + external | active: melee-unlocked's mods-catalog-2.json from the fetched tree, installed by the shared installer (`mu-engine/tools/mod_install_test.sh`) |
