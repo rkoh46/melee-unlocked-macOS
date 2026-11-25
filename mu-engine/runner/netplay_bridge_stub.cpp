@@ -25,4 +25,6 @@ void end_kept_search(const char*) {}
 FrameTrace frame_trace() { return {}; }
 void set_delay(int, bool) {}
 void replay_event(uint8_t, const uint8_t*, uint32_t) {}
+void set_suggestion_hooks(int (*)(int, uint8_t*), int (*)()) {}
+void suggestion_note_poll() {}
 }

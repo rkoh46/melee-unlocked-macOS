@@ -226,9 +226,20 @@ int perf_history(float* sim_ms, int capacity) {
 
 // ---- the host services' frontend hooks (patches/0011): the option words, the disc and the commands are fe/settings.cpp's
 // and fe/mods.cpp's ----
+// The game's poll and the input-suggestion reads (below) never read the controllers at the same time.
+std::mutex g_input_mutex;
+std::atomic<uint32_t> g_last_poll_retrace{0};
+std::atomic<uint64_t> g_last_poll_ns{0};
+uint64_t now_ns() { return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count()); }
 extern "C" int mu_frontend_pad_read(MuPadStatus out[4]) {
   host::PadState pads[4];
-  host::input_poll(pads);
+  if (g_net_on) netplay_bridge::suggestion_note_poll();   // a change read from here on is in the next frame's pad (net-0001)
+  {
+    std::lock_guard<std::mutex> lock(g_input_mutex);
+    g_last_poll_retrace.store(host::retrace_count(), std::memory_order_relaxed);
+    host::input_poll(pads);
+  }
+  g_last_poll_ns.store(now_ns(), std::memory_order_relaxed);
   for (int i = 0; i < 4; ++i) {
     out[i].button = pads[i].button; out[i].stick_x = pads[i].stick_x; out[i].stick_y = pads[i].stick_y;
     out[i].sub_x = pads[i].sub_x; out[i].sub_y = pads[i].sub_y; out[i].trigger_l = pads[i].trig_l; out[i].trigger_r = pads[i].trig_r;
@@ -244,6 +255,60 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
   for (uint32_t i = 0; i < frames * 2; ++i) { const uint16_t s = uint16_t(rl[i]); be[i * 2] = uint8_t(s >> 8); be[i * 2 + 1] = uint8_t(s); }
   host::audio_push(be.data(), be.size());
 }
+
+// Slippi 3.7.0's input suggestions (net-0001, as the Switch's play_io.cpp mu_net_suggest_read): the netplay object's sampler
+// thread reads the local controller about a thousand times a second during an online game, as the game will get it at its
+// next poll, in wire form. The app's whole input path (GameCube adapter, SDL gamepads, keyboard, the player's remap and
+// controller setup on their own filter lane), never at the same time as the game's poll; nothing while melee-unlocked's
+// panel is open or hands the controllers back. A controller script (tests) has nothing new between polls, except with
+// MU_SUGGEST_LEAD_MS=N: then a read N ms before the next poll returns what the script gives that poll (scene-format scripts).
+namespace fe { thread_local bool suggestion_read = false; bool panel_holds_pads(); }
+namespace {
+std::string g_play_script_path;
+std::atomic<uint32_t> g_script_match_start{0}, g_script_scene{0};
+int suggest_read(int port, uint8_t out[8]) {
+  if (!g_play || port < 0 || port > 3) return 0;
+  static const bool generated = std::getenv("MELEE_ONLINE_TEST_INPUTS") != nullptr;   // the game's own test inputs play
+  if (generated) return 0;
+  host::PadState pads[4];
+  if (!g_play_script_path.empty()) {
+    struct Lead {
+      bool on = false; double seconds = 0; host::InputScript script;
+      Lead() {
+        const char* v = std::getenv("MU_SUGGEST_LEAD_MS");
+        const double ms = v && *v ? std::atof(v) : 0.0;
+        if (ms <= 0.0 || ms >= 16.0) return;
+        std::ifstream file(g_play_script_path);
+        on = file && script.load(file); seconds = ms / 1000.0;
+      }
+    };
+    static Lead lead;
+    if (!lead.on) return 0;
+    std::lock_guard<std::mutex> lock(g_input_mutex);
+    const uint32_t polled = g_last_poll_retrace.load(std::memory_order_relaxed);
+    const bool ahead = double(now_ns() - g_last_poll_ns.load(std::memory_order_relaxed)) * 1e-9 >= 1.0 / 60.0 - lead.seconds;
+    const uint32_t scene = g_script_scene.load(std::memory_order_relaxed);
+    const auto sample = lead.script.sample(ahead ? polled + 1 : polled, g_script_match_start.load(std::memory_order_relaxed), uint8_t(scene >> 8), uint8_t(scene));
+    for (int i = 0; i < 4; ++i) {
+      pads[i] = {}; pads[i].err = sample[i].connected ? 0 : -1; pads[i].button = sample[i].buttons;
+      pads[i].stick_x = sample[i].sx; pads[i].stick_y = sample[i].sy; pads[i].sub_x = sample[i].cx; pads[i].sub_y = sample[i].cy;
+    }
+  } else {
+    std::lock_guard<std::mutex> lock(g_input_mutex);
+    if (fe::panel_holds_pads()) return 0;
+    fe::suggestion_read = true;
+    host::input_poll(pads);
+    fe::suggestion_read = false;
+  }
+  const host::PadState& p = pads[port];
+  if (p.err != 0) return 0;
+  out[0] = uint8_t(p.button >> 8); out[1] = uint8_t(p.button);
+  out[2] = uint8_t(p.stick_x); out[3] = uint8_t(p.stick_y); out[4] = uint8_t(p.sub_x); out[5] = uint8_t(p.sub_y);
+  out[6] = p.trig_l; out[7] = p.trig_r;
+  return 1;
+}
+}  // namespace
+extern "C" int mu_net_suggest_setting(void);   // fe/features/options.cpp: settings.ini input_suggestions (default on)
 
 int main(int argc, char** argv) {
   mu_abi_install_crash_report();
@@ -436,6 +501,7 @@ int main(int argc, char** argv) {
       if ((words >> first >> a >> b) && first == "@scene") { scene_format = true; break; }
     }
   }
+  g_play_script_path = play_script;
   if (scene_format) {
     std::ifstream in(play_script);
     std::string why;
@@ -446,6 +512,8 @@ int main(int argc, char** argv) {
       // @match entries count from the match's start; outside a match there is none (0), so the scene blocks drive the pads.
       if (state.match_frame == 0) s_scene_match_start = 0;
       else if (!s_scene_match_start) s_scene_match_start = std::max<uint32_t>(1, host::retrace_count() - state.match_frame);
+      g_script_match_start.store(s_scene_match_start, std::memory_order_relaxed);   // input suggestions' look ahead (tests)
+      g_script_scene.store(uint32_t(state.scene_major & 0xFF) << 8 | (state.scene & 0xFF), std::memory_order_relaxed);
       const auto pads = s_scene_script.sample(host::retrace_count(), s_scene_match_start, uint8_t(state.scene_major), uint8_t(state.scene));
       for (unsigned port = 0; port < pads.size(); ++port) {
         out[port].err = pads[port].connected ? 0 : -1;
@@ -497,6 +565,7 @@ int main(int argc, char** argv) {
     net.iso_path = iso; net.embedded_image = true;
     if (&fe::features::online_replay_for_report) net_host::set_replay_path_hook(fe::features::online_replay_for_report);   // Slippi's replay upload
     net.discord = discord_on && menus_online;   // Discord Rich Presence for the player's own sign-in (never a test's)
+    if (g_play) netplay_bridge::set_suggestion_hooks(suggest_read, mu_net_suggest_setting);   // Slippi 3.7.0's input suggestions, sent
     if (const int start = net_host::start(net, net_say)) {
       host::log("online: the netplay host could not start (%d); playing offline", start);
     } else {

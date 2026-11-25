@@ -62,11 +62,16 @@ void input_mark_match_start() {}
 void notify_local(const std::string&, const std::string&) {}
 }
 namespace gx { void gpu_sync_all() {} }
-// mumac: Slippi 3.7.0's input suggestions are not sent from the Mac yet: the netplay object's sampler thread needs a controller
-// read that can run beside the game's own poll (the Switch's play_io.cpp mu_net_suggest_read), which the Mac's input path does
-// not offer. Off: the other player's suggestions are still received and used as Slippi 3.7.0 uses them.
-extern "C" int mu_net_suggest_setting(void) { return 0; }
-extern "C" int mu_net_suggest_read(int, uint8_t*) { return 0; }
+// mumac: Slippi 3.7.0's input suggestions. The netplay object (net-0001) asks for these two by name; they are local to this
+// object (build.sh), so the host hands its own over (set_suggestion_hooks: the app's input path, mu-engine/app/suggest_mac.cpp).
+// Without them (the headless runner) nothing is sent and the setting reads off; received suggestions are used either way.
+namespace {
+std::atomic<int (*)(int, uint8_t*)> g_suggest_read{nullptr};
+std::atomic<int (*)()> g_suggest_setting{nullptr};
+}
+extern "C" int mu_net_suggest_setting(void) { auto f = g_suggest_setting.load(); return f ? f() : 0; }
+extern "C" int mu_net_suggest_read(int port, uint8_t* out) { auto f = g_suggest_read.load(); return f ? f(port, out) : 0; }
+extern "C" void mu_net_suggest_note_poll(void);   // net-0001
 namespace slippi {
 // Only the reporter's thread asks (patches/net-0008); the host's answer may wait for its replay writer.
 const std::string& last_replay_path() { static std::string path; path = g_replay_path ? g_replay_path() : std::string(); return path; }
@@ -174,6 +179,9 @@ void replay_event(uint8_t command, const uint8_t* payload, uint32_t size) {
 bool handle(uint8_t command, const uint8_t* payload, uint32_t size, std::vector<uint8_t>* reply) {
   return slippi::online::handle(command, payload, size, *reply);
 }
+// mumac: the host's controller read and setting for input suggestions, and its pad poll.
+void set_suggestion_hooks(int (*read)(int, uint8_t*), int (*setting)()) { g_suggest_read.store(read); g_suggest_setting.store(setting); }
+void suggestion_note_poll() { mu_net_suggest_note_poll(); }
 bool request_match(int mode, const std::string& connect_code, uint8_t character, uint8_t color) {
   if (mode <= 0 || mode > 4) return false;                  // Ranked is refused; see ranked_refusal()
   std::vector<uint8_t> ignored;

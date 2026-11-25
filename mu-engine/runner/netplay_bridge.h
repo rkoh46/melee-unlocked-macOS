@@ -103,4 +103,10 @@ NETPLAY_API void set_delay(int frames, bool automatic);
 // The game's replay events (0x36 Game Start, 0x38 Post-Frame, 0x39 Game End; payload after the command byte), for the
 // Discord presence. Anything else is ignored.
 NETPLAY_API void replay_event(uint8_t command, const uint8_t* payload, uint32_t size);
+// Slippi 3.7.0's input suggestions, the sending side (net-0001): `read` gives the local controller on a port (0..3) as the
+// game's next poll would, in wire form (buttons big-endian, stick x/y, C-stick x/y, L, R), from the netplay object's sampler
+// thread; 0 when it cannot. `setting`: the player's choice, 1 on. Either may be null (then nothing is sent). Set before start.
+NETPLAY_API void set_suggestion_hooks(int (*read)(int port, uint8_t out[8]), int (*setting)());
+// The game is about to read its controllers (the host's pad poll, simulation thread): a change read after this is in the next frame.
+NETPLAY_API void suggestion_note_poll();
 }

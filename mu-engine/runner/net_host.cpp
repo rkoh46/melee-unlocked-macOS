@@ -359,6 +359,7 @@ bool parse_option(const std::string& arg, const std::function<std::string()>& ne
   else if (arg == "--online") o->online = next();
   else if (arg == "--user-dir") o->user_dir = next();
   else if (arg == "--fake-user") o->fake_user = true;
+  else if (arg == "--fake-user-index") o->fake_user_index = uint32_t(std::strtoul(next().c_str(), nullptr, 0));   // tests: which made-up user, without generated inputs
   else if (arg == "--net-retry") o->retry_seconds = int(std::strtol(next().c_str(), nullptr, 0));
   else if (arg == "--net-delay") { const std::string v = next(); o->delay_auto = v == "auto"; if (!o->delay_auto) o->delay = int(std::strtol(v.c_str(), nullptr, 0)); }
   else if (arg == "--net-character") o->character = int(std::strtol(next().c_str(), nullptr, 0));
@@ -420,7 +421,7 @@ int start(const Options& given, Log log) {
     net.code = colon == std::string::npos ? "" : options.online.substr(colon + 1);
     if (net.mode < 0) { say("--online wants unranked, direct:CODE, teams or party"); return 2; }
     setup.services = true; setup.fake_user = options.fake_user; setup.iso_path = options.iso_path;
-    setup.local_index = int(options.inputs);        // only names the made-up user of a mock test
+    setup.local_index = int(options.fake_user_index ? options.fake_user_index : options.inputs);   // only names the made-up user of a mock test
 #ifdef __SWITCH__
     setup.user_dir = options.user_dir.empty() ? "sdmc:/switch/melee-nx-netplay/User/Slippi" : options.user_dir;   // the app's sign-in folder (port/app/main_switch.cpp)
 #else

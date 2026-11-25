@@ -81,7 +81,7 @@ extern "C" const uint8_t mu_ui_font_black[], mu_ui_font_black_end[], mu_ui_font_
 extern "C" const uint8_t mu_ui_bailey[], mu_ui_bailey_end[], mu_ui_mark[], mu_ui_mark_end[];
 
 namespace fe::features { __attribute__((weak)) bool practice_menu_chord(int port); }
-namespace fe { void mac_chords(host::PadState pads[4]); bool mac_controls_frame(host::PadState pads[4]); }   // features/proai.cpp: the Practice menu
+namespace fe { void mac_chords(host::PadState pads[4]); bool mac_controls_frame(host::PadState pads[4], int lane); extern thread_local bool suggestion_read; }   // features/proai.cpp: the Practice menu
 
 namespace fe {
 namespace {
@@ -958,6 +958,16 @@ void menu_init(const RuntimeSettings& initial, std::function<void(const RuntimeS
   if (const char* open = std::getenv("MELEE_MENU_OPEN")) fe::g_open_at_frame = std::atoi(open);   // screenshot aid: open at this retrace
 }
 bool menu_is_open() { return fe::g_open.load(); }
+}  // namespace host
+namespace fe {
+// mumac: the panel keeps the game's controllers (open, a binding being captured, or handing them back after it closed): input
+// suggestions read nothing then.
+bool panel_holds_pads() {
+  std::lock_guard<std::mutex> lock(g_mutex);
+  return g_open.load() || g_remap_on.load() || g_nav_closed_frames < 60;   // a binding capture runs only while it is open
+}
+}  // namespace fe
+namespace host {
 bool menu_capturing() { return fe::g_open.load() && fe::g_remap_on.load(); }
 bool menu_changed() { return fe::g_changed.load(); }
 RuntimeSettings menu_settings() { std::lock_guard<std::mutex> lock(fe::g_mutex); return fe::g_settings; }
@@ -983,8 +993,10 @@ bool menu_touch(float, float) { return false; }
 // play_io.cpp's menu_frame calls this with the game's controllers (simulation thread): the open combo, the panel's
 // queued changes, the remap's capture, and neutral controllers for the game while the panel is open.
 void app_menu_frame(PadState pads[4]) {
+  // mumac: an input-suggestion read (mu_play_main.cpp suggest_read) gets the controller setup on its own lane and nothing else.
+  if (fe::suggestion_read) { fe::mac_controls_frame(pads, 1); return; }
   // mumac: the frontend's controller setup (controls_mac.cpp, fe/controls.cpp) and its chords (chords_mac.cpp).
-  const bool capturing = fe::mac_controls_frame(pads);
+  const bool capturing = fe::mac_controls_frame(pads, 0);
   fe::mac_chords(pads);
   if (capturing) for (int i = 0; i < 4; ++i) { const int8_t err = pads[i].err; pads[i] = {}; pads[i].err = err; }   // the capture's presses are not the panel's
   {

@@ -10,6 +10,9 @@
 #   MU_INI_A / MU_INI_B: extra settings.ini lines for a side ("slippi_menus 1" is always there); MU_USER_A / MU_USER_B: a folder
 #   copied into that side's user folder (mu-engine/tests/online/users/direct-a: a Direct code history); MU_ARGS_A / MU_ARGS_B:
 #   more engine options for a side (the warm-up room: MU_ARGS_A="--feature-test unranked-as-direct" with online_warmup_a/b).
+#   MU_SCRIPT_PLAYS=1: the scripts' own pads play the match instead of generated buttons; with MU_SUGGEST_LEAD_MS=N each script
+#   change is also read N ms before the poll that takes it, so Slippi 3.7.0 input suggestions are sent (MU_SUGGEST_TRACE=1
+#   logs the first ones; MU_NET_SUGGESTIONS=0 turns them off).
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"; repo="$(cd "$here/../.." && pwd -P)"
@@ -42,7 +45,7 @@ sleep 1
 for side in a b; do
   MELEE_MM_LOOPBACK_PORT=$port MELEE_SERVICES_LOOPBACK_PORT=$hport sandbox-exec -p "$profile" timeout 1200 "$engine" --iso "$iso" --profile-dir "$out/$side" \
     --sys-dir "$repo/port/slippi_sys" --hidden --volume 0 --no-audio-device --frames "$frames" --fake-user --user-dir "$out/$side/user" --play-script "$out/$side/pads.txt" \
-    --net-inputs $([ $side = a ] && echo 1 || echo 2) $([ $side = a ] && echo "${MU_ARGS_A:-}" || echo "${MU_ARGS_B:-}") > "$out/$side.log" 2>&1 &
+    $([ -n "${MU_SCRIPT_PLAYS:-}" ] && echo --fake-user-index || echo --net-inputs) $([ $side = a ] && echo 1 || echo 2) $([ $side = a ] && echo "${MU_ARGS_A:-}" || echo "${MU_ARGS_B:-}") > "$out/$side.log" 2>&1 &
   eval "pid_$side=$!"
 done
 wait $pid_a; ra=$?; wait $pid_b; rb=$?
@@ -50,7 +53,7 @@ pkill -P $mock 2>/dev/null; pkill -P $mockhttp 2>/dev/null; kill $mock $mockhttp
 echo "side a exit $ra, side b exit $rb"
 grep -h "match" "$out/mock.log" | head -4
 grep -h "mock http:" "$out/http.log" | head -12
-for side in a b; do echo "== $side"; grep -E "kept search|search:|net check|online: on|Opponent|play while" "$out/$side.log" | sed 's/^\[ *[0-9.]*\] //' | head -14; done
+for side in a b; do echo "== $side"; grep -E "kept search|search:|net check|online: on|Opponent|play while|input suggestions" "$out/$side.log" | sed 's/^\[ *[0-9.]*\] //' | head -14; done
 # The per-frame hashes both sides reached (each side stops at its own frame count): equal on every checkpoint they share.
 python3 -I - "$out/a.log" "$out/b.log" <<'PY'
 import re, sys

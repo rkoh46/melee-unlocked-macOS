@@ -38,7 +38,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Time sync, frame advance/skip | host | active (the app's netplay; frame-rate nudges go to the host's pacing) |
 | Desync detection and notice | game image + host | active: the game's checksum comparison (0 desync messages in the tests) |
 | Player drop handling (3.7.0) | game image + host | partial: Slippi 3.7.0 despawn frames in the ONLINE_INPUTS reply; not tested with a real drop |
-| Slippi input suggestions (3.7.0) | host | partial: the netplay object is Slippi 3.7.0's (mu-engine/net): the other player's suggestions are received and used by Slippi 3.7.0's rules; this player's are not sent (the Switch's sampler reads the controllers beside the game's poll; the Mac's input path has no such read yet) |
+| Slippi input suggestions (3.7.0) | host | active: sent and used (net-0001). The netplay object's sampler thread reads the local controller about a thousand times a second through the app's input path (mu_play_main.cpp suggest_read: adapter, SDL gamepads, keyboard, remap and controller setup on their own filter lane; nothing while the settings panel holds the controllers), never at the same time as the game's poll; settings.ini `input_suggestions` (on by default, as upstream). Loopback test from the game's menus with the scripts playing (`MU_SCRIPT_PLAYS=1 MU_SUGGEST_LEAD_MS=8 app_online_menus_test.sh`): `input suggestions: sent and used`, 6 and 4 sent, the other side `6 replies predicted from one`, net check equal, 0 desync messages. Not yet played against a real opponent |
 | Version gate | host | active: the engine's netplay reports Slippi 3.7.0 (Melee-NX-NetPlay's 3.7.0 netplay: the WebSocket queue, appVersion 3.7.0 in the join) and says so when Slippi names a newer release; loopback queue stand-in: `join ... appVersion 3.7.0`. The legacy engine (port/runtime/hle) is still 3.6.4, which Slippi's service now refuses |
 | Replay recording (.slp) | game image + host | active: every match, offline and online (`mu-engine/app/replays.cpp`) |
 | Compressed replays (.slpz) | host | active: settings.ini compressreplays 1 (melee-unlocked's zstd) |
@@ -51,8 +51,8 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Stage pool and random stage | game image + host | active: the netplay object's stage pool from the queue's stage list (Slippi 3.7.0 rules); loopback matches picked from it |
 | Pause in Direct and Friends | host | active: Slippi's rule (Start pauses Direct); between two Melee-NX-NetPlay-family builds the build message can turn it off (settings.ini, net-0004) |
 | Skip in Unranked | host | wired: settings.ini blockcode1..3 go to the netplay object's skip list (net-0004); not run on the Mac |
-| Early inputs ("subframe rollback") | host + game image | partial: see "Slippi input suggestions (3.7.0)": received, not sent |
-| Early rollback from early pads | host | partial: received suggestions are used as Slippi 3.7.0 uses them (net-0001); not sent from the Mac |
+| Early inputs ("subframe rollback") | host + game image | active: see "Slippi input suggestions (3.7.0)": sent and received |
+| Early rollback from early pads | host | active: received suggestions are used as Slippi 3.7.0 uses them, and this player's are sent (net-0001) |
 | Build message and setup hash | host | active between Melee-NX-NetPlay-family builds (net-0004, message 0xD0): loopback log `opponent 1 is a Melee-NX-NetPlay build: Direct pause on, shield colour none, port colours -1/-1`; ignored by Slippi Dolphin. No setup hash |
 | Opponent shield colour | game image + host | wired (net-0004, between our builds): settings.ini online shield colour; not run on the Mac |
 | Online port colours | game image + host | wired (net-0004, between our builds); not run on the Mac |

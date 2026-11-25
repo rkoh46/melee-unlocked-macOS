@@ -23,8 +23,9 @@ std::string guid_of(SDL_Gamepad* pad) {
 }
 }  // namespace
 
-// True when the pads must not reach the menu as they are (a binding is being captured).
-bool mac_controls_frame(host::PadState pads[4]) {
+// True when the pads must not reach the menu as they are (a binding is being captured). Lane 0: the game's poll; lane 1: an
+// input-suggestion read (mu_play_main.cpp suggest_read), with its own filter state and no capture.
+bool mac_controls_frame(host::PadState pads[4], int lane) {
   if (!options.play) return false;
   host::PadState raw[4];
   for (int i = 0; i < 4; ++i) raw[i] = pads[i];
@@ -35,16 +36,16 @@ bool mac_controls_frame(host::PadState pads[4]) {
     for (int port = 0; port < 4; ++port) {
       host::PadState& p = pads[port];
       if (p.err != 0) continue;
-      if (adapter_ports & (1u << port)) { controls_apply_adapter(port, &p, 0); continue; }
+      if (adapter_ports & (1u << port)) { controls_apply_adapter(port, &p, lane); continue; }
       auto* pad = static_cast<SDL_Gamepad*>(host::input_port_gamepad(port));
       if (!pad) continue;
       const std::string guid = guid_of(pad);
       const host::ControllerConfig* config = host::controller_config_for(guid);
       const host::PadState before = raw[port];
-      controls_apply_sdl(guid, pad, &before, &p, config ? config->map.trigger_press : defaults.trigger_press, 0);
+      controls_apply_sdl(guid, pad, &before, &p, config ? config->map.trigger_press : defaults.trigger_press, lane);
     }
   }
-  return controls_capture_frame(raw);
+  return lane == 0 && controls_capture_frame(raw);
 }
 
 // launcher.ini's padx.<id> lines (start), and the setups as they are now (exit).
