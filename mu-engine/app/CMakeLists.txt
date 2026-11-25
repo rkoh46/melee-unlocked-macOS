@@ -1,5 +1,5 @@
-# melee-unlocked engine player for macOS (the app's MU engine executable). Added by the top-level CMakeLists.txt when
-# MELEE_BUILD_MU_ENGINE is on (setup.sh and tools/mac/rebuild.sh turn it on after mu-engine/build.sh game).
+# melee-unlocked engine player for macOS (the app's engine executable). Added by the top-level CMakeLists.txt; needs
+# mu-engine/fetch.sh and mu-engine/build.sh game first (setup.sh and tools/mac/rebuild.sh run them).
 #
 # One process: melee-unlocked's host services drive the game image (mu-engine/runner: loader and macOS back ends);
 # the app's own GX decoder (port/runtime/gx/gx_core.cpp, a build-time copy with the changes below), Metal renderer,
@@ -202,8 +202,7 @@ add_executable(melee_unlocked_mac
 set_source_files_properties(${_dd_objc} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 target_include_directories(melee_unlocked_mac PRIVATE "${MU_RUN}" "${MU_RUN}/macos" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
   "${DD}/host" "${DD}/gx" "${DD}/ppc" "${DD}/hle" "${MU_REPO}/native" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/third_party/slippilib" "${MU_REPO}/build/mu-engine/gen")
-target_compile_definitions(melee_unlocked_mac PRIVATE MU_HIGH_BASE=${MU_HIGH_BASE} MELEE_PORT_VERSION="${MELEE_PORT_VERSION}"
-  MELEE_SOURCE_ART_DIR="${MU_REPO}/port/app/art/controller")
+target_compile_definitions(melee_unlocked_mac PRIVATE MU_HIGH_BASE=${MU_HIGH_BASE} MELEE_PORT_VERSION="${MELEE_PORT_VERSION}")
 target_compile_features(melee_unlocked_mac PRIVATE cxx_std_17)
 target_include_directories(melee_unlocked_mac BEFORE PRIVATE "${MU_UI}" "${FE}" "${MU_UI_GEN}" "${MU_REPO}/mu-engine/modinstall" "${CMAKE_CURRENT_BINARY_DIR}/gen")
 file(GLOB _net_patches "${MU_REPO}/mu-engine/net/patches/*.patch" "${MU_REPO}/mu-engine/net/hle/*" "${MU_REPO}/mu-engine/net/enet/*")
@@ -214,16 +213,15 @@ add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engi
   COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
 add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
 add_dependencies(melee_unlocked_mac mu_netplay_object)
-target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_jukebox mu_gecko mu_rvz mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
+target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_jukebox mu_gecko mu_rvz mu_zstd curl "${MU_OUT}/netplay.o" iconv ${MELEE_SDL3_TARGET} z
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX" "-framework AudioToolbox" "-framework CoreAudio")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")
 # mu_panel.cpp asks for the Practice menu weakly (the Switch's features/proai.cpp): absent, its row is left out.
 target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi")
 
-# The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page: linked into the app
-# (melee_port_mac) as objects so its definitions replace the launcher's weak "no installer" ones. melee-unlocked's
-# catalog and the LZMA SDK decoders come from the fetched tree at build time.
+# The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page, linked into the launcher
+# (melee_launcher_mac) as objects. melee-unlocked's catalog and the LZMA SDK decoders come from the fetched tree at build time.
 file(READ "${MU_TREE}/mods-catalog-2.json" _catalog)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/gen/mods_catalog_json.h.new" "// generated from the fetched tree's mods-catalog-2.json\n#pragma once\nstatic const char kModsCatalogJson[] = R\"MUCATALOG(${_catalog})MUCATALOG\";\n")
 configure_file("${CMAKE_CURRENT_BINARY_DIR}/gen/mods_catalog_json.h.new" "${CMAKE_CURRENT_BINARY_DIR}/gen/mods_catalog_json.h" COPYONLY)
@@ -235,13 +233,11 @@ add_library(mu_modinstall_objs OBJECT "${MU_APPSRC}/mods_facade.cpp"
 target_include_directories(mu_modinstall_objs PRIVATE "${MI}" "${MU_TREE}/port/third_party/lzma" "${MU_REPO}/port/third_party" "${CMAKE_CURRENT_BINARY_DIR}/gen")
 target_compile_features(mu_modinstall_objs PRIVATE cxx_std_17)
 # melee-unlocked's crash report (crash_report.cpp, its port/app/launcher_crash_*.h from the fetched tree) for the launcher's
-# "Save crash report": linked into the app the same way, replacing the launcher's weak "not in this build" answer.
+# "Save crash report": linked into the launcher the same way.
 file(STRINGS "${MU_REPO}/VERSION" _mu_app_version LIMIT_COUNT 1)
 add_library(mu_crash_objs OBJECT "${MU_APPSRC}/crash_report.cpp")
 target_include_directories(mu_crash_objs PRIVATE "${MU_TREE}/port/app")
 target_compile_definitions(mu_crash_objs PRIVATE MELEE_PORT_VERSION="${_mu_app_version}")
 target_compile_features(mu_crash_objs PRIVATE cxx_std_17)
-if(TARGET melee_port_mac)
-  target_sources(melee_port_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs> $<TARGET_OBJECTS:mu_crash_objs>)
-  target_link_libraries(melee_port_mac PRIVATE curl z)
-endif()
+target_sources(melee_launcher_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs> $<TARGET_OBJECTS:mu_crash_objs>)
+target_link_libraries(melee_launcher_mac PRIVATE curl z)

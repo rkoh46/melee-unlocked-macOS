@@ -1,0 +1,2 @@
+# Patches keep the line endings of the files they change (melee-unlocked has CRLF files): never normalise them.
+mu-engine/patches/*.patch -text

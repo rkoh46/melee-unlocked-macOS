@@ -4,8 +4,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/rkoh46/melee-unlocked-macOS/melee-unlocked-macos/install.sh | zsh
 #
 # It checks the Mac, gets Apple's developer tools if needed, downloads (or updates) the source into ~/Dashdance, asks for your
-# Melee disc image, builds the app from it on this Mac (the melee-unlocked engine needs Docker: OrbStack or Docker Desktop),
-# puts melee-unlocked-macOS in Applications and opens it. Run it again to update.
+# Melee disc image, builds the app on this Mac (melee-unlocked's game is compiled in a container: it needs Docker, OrbStack or
+# Docker Desktop, running), puts melee-unlocked-macOS in Applications and opens it with your disc. Run it again to update.
 set -euo pipefail
 yellow() { printf '\n\033[1;33m%s\033[0m\n' "$1"; }
 fail() { printf '\n\033[1;31m%s\033[0m\n' "$1" >&2; exit 1; }
@@ -13,6 +13,10 @@ DIR="${DASHDANCE_DIR:-$HOME/Dashdance}"
 [[ -d "$HOME/iSlippi/.git" && ! -e "$DIR" ]] && mv "$HOME/iSlippi" "$DIR"   # a download from before the rename
 
 [[ "$(uname)" == "Darwin" && "$(uname -m)" == "arm64" ]] || fail "melee-unlocked-macOS needs a Mac with Apple silicon (M1 or newer)."
+
+if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
+  fail "melee-unlocked-macOS is built in a container: install OrbStack (https://orbstack.dev) or Docker Desktop, start it, and paste the install line again."
+fi
 
 if ! xcode-select -p >/dev/null 2>&1; then
   yellow "melee-unlocked-macOS needs Apple's free developer tools."
@@ -23,9 +27,6 @@ fi
 
 if [[ -d "$DIR/.git" ]]; then
   yellow "Updating melee-unlocked-macOS in $DIR"
-  # The build verifies the Slippi files against an upstream commit in this repo's history, so a shallow
-  # download from an older installer has to be completed first.
-  [[ "$(git -C "$DIR" rev-parse --is-shallow-repository)" == "true" ]] && git -C "$DIR" fetch --unshallow --quiet origin
   # A download from before the move (rkoh46/dashdance, branch dashdance2) switches to this repository's branch when it has
   # no local changes; with local changes it is left alone and says so.
   git -C "$DIR" remote set-url origin https://github.com/rkoh46/melee-unlocked-macOS.git 2>/dev/null || true
@@ -40,7 +41,7 @@ if [[ -d "$DIR/.git" ]]; then
   git -C "$DIR" pull --ff-only --quiet
 else
   yellow "Downloading melee-unlocked-macOS into $DIR"
-  git clone --branch melee-unlocked-macos --quiet https://github.com/rkoh46/melee-unlocked-macOS.git "$DIR"   # full history: see above
+  git clone --branch melee-unlocked-macos --quiet https://github.com/rkoh46/melee-unlocked-macOS.git "$DIR"
 fi
 
 ISO="${1:-${DASHDANCE_ISO:-}}"
@@ -54,7 +55,7 @@ while [[ -z "$ISO" || ! -f "$ISO" ]]; do
 done
 print -r -- "$ISO" > "$DIR/.disc-path"
 
-yellow "Building melee-unlocked-macOS from your disc (about fifteen minutes the first time)"
+yellow "Building melee-unlocked-macOS (about fifteen minutes the first time)"
 DASHDANCE_NO_OPEN=1 "$DIR/setup.sh" "$ISO" < /dev/tty   # setup may run Homebrew's installer, which needs the terminal to ask for your password
 
 APP="${DASHDANCE_APP_NAME:-melee-unlocked-macOS}"   # setup.sh packages the app under this name
