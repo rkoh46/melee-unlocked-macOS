@@ -49,6 +49,10 @@ uint8_t* ptr(uint32_t addr, uint32_t bytes) {
   return p;
 }
 uint8_t rd8(uint32_t addr) {
+  // The scene bytes the app's input scripts key on (@scene, the classic game's 0x80479D30 / 0x80479D33): melee-unlocked's
+  // native game keeps its globals elsewhere, so the frame observer's scene answers for them.
+  if (addr == 0x80479D30u) return g_scene_major;
+  if (addr == 0x80479D33u) return g_scene_minor;
   const uint8_t* p = linux_host::memory_pointer(addr, 1);
   return p ? *p : 0;
 }

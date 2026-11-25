@@ -46,6 +46,9 @@ if [[ -x "$MU_EXE" ]]; then
   python3 -I "$ROOT/tools/mu_launcher_art.py" "$ROOT/build/mu-engine/mu/port/app" "$APP/Contents/Resources/mu-art" >/dev/null
   # The engine embeds Source Sans 3 (the settings panel's fonts): its SIL Open Font License travels with it.
   cp "$ROOT/build/mu-engine/mu/port/runtime/gx/ui_sources/gd_melee/assets/kit/SourceSans3-OFL.md" "$APP/Contents/Resources/mu-art/SourceSans3-OFL.md"
+  # The licences of what else the engine compiles in from the fetched tree: Dear ImGui (MIT) and zstd (BSD-3-Clause).
+  cp "$ROOT/build/mu-engine/mu/port/third_party/imgui/LICENSE.txt" "$APP/Contents/Resources/mu-art/imgui-LICENSE.txt"
+  cp "$ROOT/build/mu-engine/mu/port/third_party/zstd/LICENSE" "$APP/Contents/Resources/mu-art/zstd-LICENSE.txt"
 else
   echo "melee-unlocked engine: no $MU_EXE, this bundle plays the classic engine only"
 fi

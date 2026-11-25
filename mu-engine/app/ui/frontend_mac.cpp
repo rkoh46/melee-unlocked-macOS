@@ -1,12 +1,19 @@
-// See frontend.h and mods_service.h.
+// The parts of Melee-NX-NetPlay's frontend (fe/frontend.h) that its Switch app files (app.cpp, play_main.cpp,
+// mods_service.cpp) answer there, for the Mac engine: the log, launcher.ini, the online session and the mod installer.
+// See also fe_mac.h and mods_service.h.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "frontend.h"
+#include "fe_mac.h"
 #include "mods_service.h"
 #include "mi_fetch_curl.h"
 #include "mods_catalog_json.h"
 #include "host_services.h"
+#include "../slippi_menus.h"
+#include "aurora/aurora.h"
+#include "host.h"
 
 #include <algorithm>
+#include <chrono>
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
@@ -24,7 +31,6 @@ void say(const char* format, ...) {
 namespace {
 std::mutex g_ini_mutex;
 std::string launcher_ini() { return options.out_dir + "/../launcher.ini"; }
-std::string settings_file() { return options.out_dir + "/settings.ini"; }
 std::map<std::string, std::string> read_kv(const std::string& path, std::vector<std::string>* order) {
   std::map<std::string, std::string> out;
   std::ifstream in(path);
@@ -53,15 +59,6 @@ std::string app_ini(const std::string& key, const std::string& fallback) {
   return it == kv.end() ? fallback : it->second;
 }
 void app_ini_set(const std::string& key, const std::string& value) { std::lock_guard<std::mutex> lock(g_ini_mutex); write_kv(launcher_ini(), key, value); }
-std::string settings_get(const std::string& key) {
-  std::lock_guard<std::mutex> lock(g_ini_mutex);
-  const auto kv = read_kv(settings_file(), nullptr);
-  const auto it = kv.find(key);
-  return it == kv.end() ? std::string() : it->second;
-}
-bool settings_change(const std::string& key, const std::string& value) { std::lock_guard<std::mutex> lock(g_ini_mutex); write_kv(settings_file(), key, value); return true; }
-void settings_write_key(const std::string& key, const std::string& value) { settings_change(key, value); }
-void settings_set_quiet(const std::string&, const std::string&) {}
 namespace { std::atomic<bool> g_online{false}; }
 bool session_online() { return g_online.load(); }
 void set_session_online(bool online) { g_online.store(online); }
@@ -88,3 +85,27 @@ std::vector<std::string> mod_profile_choices() {
   return out;
 }
 }  // namespace fe
+
+// ---- the rest of play mode's frontend, as the Mac engine has it ----
+namespace fe {
+uint32_t online_delay_frames() { return options.online_delay > 0 ? uint32_t(options.online_delay) : 0u; }   // the launcher's setting
+void decoder_sync() {}   // the GX stream is decoded on the simulation thread itself (mu_play_main.cpp on_fifo)
+std::vector<std::string> controls_rate_lines() { return {}; }   // the Switch's Pro Controller / Joy-Con rates
+// Slippi's menu files (mods.cpp asks for them): mu-engine/app/slippi_menus.cpp serves the bundle's slippi_sys.
+bool slippi_menus_on() { return slippi_menus::active(); }
+void slippi_files_build() { slippi_menus::disc_ready(); }
+std::vector<std::string> slippi_files_publish() { return {}; }
+int slippi_file_read(uint64_t offset, void* out, size_t bytes) { return slippi_menus::read(offset, out, bytes); }
+}  // namespace fe
+
+namespace host {
+uint64_t now_ns() { return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
+}
+
+// The Switch frontend's picture options (Aurora, patches/0109): logged here; the Metal renderer does not draw them yet.
+void aurora_set_picture(const AuroraPicture*) {}
+namespace aurora::window {
+void set_frame_buffer_aspect(float) {}
+void set_frame_buffer_scale(float) {}
+}
+

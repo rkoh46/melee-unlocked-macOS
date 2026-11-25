@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -127,6 +128,26 @@ __attribute__((weak)) void cancel() {}
 __attribute__((weak)) std::string catalog_error() { return "this build has no mod installer"; }
 __attribute__((weak)) std::string downloads_dir() { return {}; }
 }
+// The mod profile the engine loads at its next start: settings.ini's mod_profile (fe/settings.cpp reads it; the engine's
+// MODS page writes the same key).
+namespace {
+std::string settings_ini_path() { const char* h = std::getenv("HOME"); return std::string(h ? h : ".") + "/Library/Application Support/Dashdance/melee-unlocked/settings.ini"; }
+std::string mod_profile_next() {
+  std::ifstream in(settings_ini_path());
+  std::string line, out;
+  while (std::getline(in, line)) if (line.rfind("mod_profile ", 0) == 0) { out = line.substr(12); while (!out.empty() && (out.back() == '\r' || out.back() == ' ')) out.pop_back(); }
+  return out;
+}
+void mod_profile_set(const std::string& profile) {
+  std::vector<std::string> lines; bool found = false;
+  { std::ifstream in(settings_ini_path()); std::string line; while (std::getline(in, line)) lines.push_back(line); }
+  for (auto& l : lines) if (l.rfind("mod_profile ", 0) == 0 || l.rfind("# mod_profile ", 0) == 0) { l = "mod_profile " + profile; found = true; }
+  if (!found) lines.push_back("mod_profile " + profile);
+  std::ofstream out(settings_ini_path(), std::ios::trunc);
+  for (const auto& l : lines) out << l << "\n";
+}
+}  // namespace
+
 
 // ---- the colour picker (launcher_theme_picker.inl): a 268 x 324 popover with an HSV wheel, a value bar, hex, Apply ----
 @class MULaunchView;
@@ -442,14 +463,18 @@ __attribute__((weak)) std::string downloads_dir() { return {}; }
     text(sub, LR(CX + 10, y + 17, CW - 120, 15), f_small(), r.failed ? C_BAD : r.state == 1 ? C_OK : C_FAINT);
     NSString* name = [NSString stringWithFormat:@"mod:%zu", i];
     if (r.state == 3) [self button:@"modcancel" rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Cancel" primary:NO enabled:YES];
-    else if (r.state == 1) [self button:[@"remove-" stringByAppendingString:name] rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Remove" primary:NO enabled:!mu_mods::busy()];
+    else if (r.state == 1) {
+      const bool chosen = mod_profile_next() == r.id;
+      [self button:[@"use-" stringByAppendingString:name] rect:LR(CX + CW - 190, y + 4, 88, 26) title:chosen ? @"In use" : @"Use" primary:chosen enabled:YES];
+      [self button:[@"remove-" stringByAppendingString:name] rect:LR(CX + CW - 96, y + 4, 88, 26) title:@"Remove" primary:NO enabled:!mu_mods::busy()];
+    }
     else [self button:[@"install-" stringByAppendingString:name] rect:LR(CX + CW - 96, y + 4, 88, 26) title:r.state == 2 ? @"Update" : @"Install" primary:NO
               enabled:!mu_mods::busy() && !st.iso.empty() && (r.automatic || r.file_ready)];
     y += 37;
   }
   [self button:@"modsfolder" rect:LR(CX, WIN_H - 46, 150, 30) title:@"Open Mods folder" primary:NO enabled:YES];
   NSString* note = !self.modsMessage.empty() ? ns(self.modsMessage)
-                 : @"Mods install as discs built from your own disc. Loading them in the Source Port on the Mac comes next.";
+                 : @"Mods install as discs built from your own disc. Use one and it loads at the next offline start (Online off).";
   text(note, LR(CX + 160, WIN_H - 48, CW - 160, 34), f_small(), self.modsMessage.empty() ? C_FAINT : C_WARN, LEFT, 0, true);
   // While a job runs the page repaints itself twice a second.
   if (mu_mods::busy() && !self.modsTimer) {
@@ -524,6 +549,10 @@ __attribute__((weak)) std::string downloads_dir() { return {}; }
     }
   }
   else if ([key isEqualToString:@"modcancel"]) mu_mods::cancel();
+  else if ([key hasPrefix:@"use-mod"]) {   // Use chooses the mod for the next start; In use goes back to the retail game
+    const std::vector<mu_mods::Row> list = mu_mods::rows();
+    if (index >= 0 && index < (int)list.size()) mod_profile_set(mod_profile_next() == list[index].id ? std::string() : list[index].id);
+  }
   else if ([key isEqualToString:@"scale"]) { const int v[] = {0, 1, 2, 3, 4}; s.scale = v[std::clamp(index, 0, 4)]; }
   else if ([key isEqualToString:@"fullscreen"]) s.fullscreen = index == 1;
   else if ([key isEqualToString:@"vsync"]) s.vsync = index == 1;

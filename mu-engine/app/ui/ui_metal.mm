@@ -8,6 +8,7 @@
 
 #include "ui_metal.h"
 #include "mu_ui.h"
+#include "frontend.h"
 #include "aurora/imgui.h"
 
 #include <imgui.h>
@@ -69,6 +70,7 @@ void ui_frame(void* encoder, void* pass, void* command_buffer, int w, int h) {
   feed_mouse(io, scale);
   if (pass) ImGui_ImplMetal_NewFrame((__bridge MTLRenderPassDescriptor*)pass);
   ImGui::NewFrame();
+  fe::overlay_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));   // the feature modules' overlays, the replay viewer, the Practice menu
   fe::mu_ui::panel_draw(int(io.DisplaySize.x), int(io.DisplaySize.y));
   ImGui::Render();
   if (enc) ImGui_ImplMetal_RenderDrawData(ImGui::GetDrawData(), (__bridge id<MTLCommandBuffer>)command_buffer, enc);

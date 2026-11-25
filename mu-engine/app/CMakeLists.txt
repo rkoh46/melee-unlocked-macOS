@@ -89,35 +89,84 @@ add_library(mu_imgui STATIC "${IMGUI}/imgui.cpp" "${IMGUI}/imgui_draw.cpp" "${IM
 target_include_directories(mu_imgui PUBLIC "${IMGUI}" "${IMGUI_METAL}")
 set_source_files_properties("${IMGUI_METAL}/imgui_impl_metal.mm" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 target_compile_features(mu_imgui PRIVATE cxx_std_17)
-set(_mu_ui_sources "${MU_UI}/mu_panel.cpp" "${MU_UI}/mu_mods.cpp" "${MU_UI}/frontend_mac.cpp" "${MU_UI}/ui_metal.mm" "${_ui_embed}")
+# The frontend layer of Melee-NX-NetPlay (mu-engine/app/fe): settings.ini and the option words (settings.cpp), mod
+# profiles on the disc (mods.cpp), the feature modules (fe/features: options, Training, replays and their library,
+# overlays, search, spectator, network overlay, Fight a pro) and Fight a pro's own inference engine (fe/proai).
+set(FE "${MU_APPSRC}/fe")
+set(FE_GEN "${CMAKE_CURRENT_BINARY_DIR}/gen/fe")
+execute_process(COMMAND bash "${FE}/gen_fe.sh" "${MU_TREE}" "${FE_GEN}" RESULT_VARIABLE _fe_rc)
+if(NOT _fe_rc EQUAL 0)
+  message(FATAL_ERROR "melee-unlocked engine: fe/gen_fe.sh could not take its files from ${MU_TREE}")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FE}/gen_fe.sh" "${FE}/patches/0112-phillip-ai-own-engine.patch"
+  "${FE}/patches/0113-practice-menu-download-question.patch" "${FE}/proai/catalog.json")
+file(READ "${FE}/proai/catalog.json" _proai_catalog)
+file(WRITE "${FE_GEN}/proai_catalog.cpp.new"
+  "// Generated from fe/proai/catalog.json.\nextern const char fe_proai_catalog_json[];\nconst char fe_proai_catalog_json[] = R\"PROAICATALOG(${_proai_catalog})PROAICATALOG\";\n")
+configure_file("${FE_GEN}/proai_catalog.cpp.new" "${FE_GEN}/proai_catalog.cpp" COPYONLY)
+file(WRITE "${FE_GEN}/zstdshim/zstd/zstd.h" "#include \"${MU_TREE}/port/third_party/zstd/zstd.h\"\n")
+file(WRITE "${FE_GEN}/slpshim/slippilib/SlippiGame.h" "#include \"${MU_TREE}/port/third_party/slippilib/SlippiGame.h\"\n")
+file(GLOB _fe_features CONFIGURE_DEPENDS "${FE}/features/*.cpp")
+set(_enet "${MU_REPO}/port/third_party/enet")
+set(_fe_enet "${_enet}/callbacks.c" "${_enet}/compress.c" "${_enet}/host.c" "${_enet}/list.c" "${_enet}/packet.c" "${_enet}/peer.c"
+  "${_enet}/protocol.c" "${_enet}/unix.c")
+file(GLOB _zstd_sources "${MU_TREE}/port/third_party/zstd/common/*.c" "${MU_TREE}/port/third_party/zstd/compress/*.c" "${MU_TREE}/port/third_party/zstd/decompress/*.c")
+add_library(mu_zstd STATIC ${_zstd_sources})   # melee-unlocked's vendored zstd 1.5.7 (BSD-3-Clause): .slpz replays
+target_compile_definitions(mu_zstd PRIVATE ZSTD_DISABLE_ASM=1)
+target_compile_options(mu_zstd PRIVATE -O2 -w)
+add_library(mu_fe OBJECT "${FE}/settings.cpp" "${FE}/mods.cpp" ${_fe_features} "${MU_RUN}/features/snapshot_store.cpp" ${_fe_enet})
+set_source_files_properties(${_fe_enet} PROPERTIES COMPILE_DEFINITIONS "HAS_FCNTL=1;HAS_POLL=1;HAS_INET_PTON=1;HAS_INET_NTOP=1;HAS_SOCKLEN_T=1;HAS_MSGHDR_FLAGS=1"
+  COMPILE_OPTIONS "-w;-include;arpa/inet.h")
+set_target_properties(mu_fe PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
+target_include_directories(mu_fe BEFORE PRIVATE "${FE_GEN}/slpshim" "${FE_GEN}/zstdshim")
+target_include_directories(mu_fe PRIVATE "${FE}" "${FE}/features" "${FE_GEN}" "${MU_RUN}" "${MU_RUN}/features" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
+  "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/runtime/ppc" "${MU_TREE}/port/runtime/gx" "${MU_TREE}/native" "${MU_REPO}/build/mu-engine/gen"
+  "${_enet}/include" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/host" "${DD}/host")
+target_compile_definitions(mu_fe PRIVATE MU_FOREIGN_ELF MU_SQUAD=1 MELEE_NO_SLIPPI MELEE_PORT_VERSION="mu-native" MU_HIGH_BASE=${MU_HIGH_BASE})
+target_compile_options(mu_fe PRIVATE -O2 -fno-strict-aliasing -Wno-deprecated-declarations)
+add_library(mu_proai OBJECT "${FE}/proai/onnx_lite.cpp" "${FE}/proai/ort_lite.cpp" "${FE_GEN}/proai/phillip_ai.cpp" "${FE_GEN}/proai_catalog.cpp"
+  "${FE}/proai/proai_fetch_curl.cpp")
+set_target_properties(mu_proai PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
+target_include_directories(mu_proai PRIVATE "${MU_REPO}/port/third_party" "${FE}/proai/include" "${FE}/proai" "${FE_GEN}/proai" "${FE_GEN}/abi" "${FE}" "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/runtime/abi" "${DD}/host")
+target_compile_definitions(mu_proai PRIVATE MU_PROAI_FRONTEND=1)
+target_compile_options(mu_proai PRIVATE -O2 -fno-strict-aliasing)
+set(_mu_fe_ui_sources "${FE}/app_menu.cpp" "${FE}/overlay_draw.cpp" "${FE_GEN}/proai/practice_menu.cpp" "${FE}/proai/practice_overlay.cpp")
+set_source_files_properties("${FE}/overlay_draw.cpp" PROPERTIES INCLUDE_DIRECTORIES "${FE};${FE_GEN};${DD}/host")
+set_source_files_properties("${MU_UI}/chords_mac.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_TREE}/port/runtime/abi;${DD}/host;${MU_TREE}/port/runtime/host")
+set_source_files_properties("${FE}/app_menu.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_RUN};${MU_TREE}/port/linux;${MU_TREE}/port/runtime/abi;${DD}/host")
+set_source_files_properties("${FE_GEN}/proai/practice_menu.cpp" "${FE}/proai/practice_overlay.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI}/mac_include;${FE};${FE}/proai/include;${FE}/proai;${FE_GEN}/proai;${FE_GEN};${MU_TREE}/port/runtime/hle;${MU_TREE}/port/runtime/abi"
+  COMPILE_DEFINITIONS "MU_PROAI_FRONTEND=1")
+set(_mu_ui_sources ${_mu_fe_ui_sources} "${MU_UI}/chords_mac.cpp" "${MU_UI}/mu_panel.cpp" "${MU_UI}/mu_mods.cpp" "${MU_UI}/frontend_mac.cpp" "${MU_UI}/ui_metal.mm" "${_ui_embed}")
 set_source_files_properties("${MU_UI}/ui_metal.mm" PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 set_source_files_properties("${MU_UI}/mu_panel.cpp" PROPERTIES COMPILE_DEFINITIONS "app_menu_frame=menu_frame")
 add_executable(melee_unlocked_mac
-  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${MU_APPSRC}/replays.cpp" "${DD}/host/vcdiff.cpp"
-  "${MU_TREE}/port/runtime/hle/native_replay_stream.cpp" "${MU_TREE}/port/third_party/slippilib/SlippiGame.cpp" "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
+  "${MU_APPSRC}/mu_play_main.cpp" "${MU_APPSRC}/host_shim.cpp" "${MU_APPSRC}/slippi_menus.cpp" "${DD}/host/vcdiff.cpp"
+  "${MU_RUN}/macos/frontend_hooks_none.cpp" "${_embed}"
   "${CMAKE_CURRENT_BINARY_DIR}/gen/gx_core.cpp" "${DD}/gx/gx_texture.cpp" "${DD}/gx/gx_shader.cpp" "${DD}/gx/gx_msl.cpp" "${DD}/gx/render_observer.cpp" "${DD}/gx/authored_pose.cpp" "${DD}/gx/subframe.cpp"
   "${DD}/host/window_sdl.cpp" "${DD}/host/input_config.cpp" "${DD}/host/input_script.cpp" ${_mu_ui_sources}
   "${DD}/host/audio_sdl.cpp" "${DD}/host/gc_adapter_iokit.cpp" ${_dd_objc})
 set_source_files_properties(${_dd_objc} PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
-set_source_files_properties("${MU_TREE}/port/runtime/hle/native_replay_stream.cpp" PROPERTIES COMPILE_OPTIONS "-include;${MU_APPSRC}/gmtime_s.h")
 target_include_directories(melee_unlocked_mac PRIVATE "${MU_RUN}" "${MU_RUN}/macos" "${MU_TREE}/port/linux" "${MU_TREE}/port/runtime/abi"
   "${DD}/host" "${DD}/gx" "${DD}/ppc" "${DD}/hle" "${MU_REPO}/native" "${MU_REPO}/port/third_party" "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/third_party/slippilib" "${MU_REPO}/build/mu-engine/gen")
 target_compile_definitions(melee_unlocked_mac PRIVATE MU_HIGH_BASE=${MU_HIGH_BASE} MELEE_PORT_VERSION="${MELEE_PORT_VERSION}"
   MELEE_SOURCE_ART_DIR="${MU_REPO}/port/app/art/controller")
 target_compile_features(melee_unlocked_mac PRIVATE cxx_std_17)
-target_include_directories(melee_unlocked_mac BEFORE PRIVATE "${MU_UI}" "${MU_UI_GEN}" "${MU_REPO}/mu-engine/modinstall" "${CMAKE_CURRENT_BINARY_DIR}/gen")
+target_include_directories(melee_unlocked_mac BEFORE PRIVATE "${MU_UI}" "${FE}" "${MU_UI_GEN}" "${MU_REPO}/mu-engine/modinstall" "${CMAKE_CURRENT_BINARY_DIR}/gen")
 # The netplay object (mu-engine/build.sh net: this repository's Slippi netplay with only netplay_bridge::* global).
 add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engine/build.sh" net
   DEPENDS "${MU_RUN}/netplay_bridge_mac.cpp" "${DD}/hle/slippi_online.cpp" "${DD}/hle/slippi_net.cpp" "${DD}/hle/slippi_net.h" "${DD}/hle/slippi_online.h"
   COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
 add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
 add_dependencies(melee_unlocked_mac mu_netplay_object)
-target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
+target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")
 # mu_panel.cpp asks for the Practice menu weakly (the Switch's features/proai.cpp): absent, its row is left out.
-target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi")
+target_link_options(melee_unlocked_mac PRIVATE "LINKER:-U,__ZN2fe8features19practice_menu_chordEi"
+  # fe/features/present (display-rate presentation through Aurora) is not built: its weak entry points stay unresolved.
+  "LINKER:-U,__ZN2fe7present17register_settingsEv" "LINKER:-U,__ZN2fe7present18mark_discontinuityEv"
+  "LINKER:-U,__ZN2fe7present24configure_from_argumentsERKNSt3__16vectorINS1_12basic_stringIcNS1_11char_traitsIcEENS1_9allocatorIcEEEENS6_IS8_EEEE")
 
 # The mod installer (mu-engine/modinstall, from Melee-NX-NetPlay) for the launcher's Mods page: linked into the app
 # (melee_port_mac) as objects so its definitions replace the launcher's weak "no installer" ones. melee-unlocked's

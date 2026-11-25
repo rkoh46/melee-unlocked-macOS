@@ -12,11 +12,12 @@
 #include "abi_macos.h"
 #include "net_host.h"
 #include "slippi_menus.h"
-#include "replays.h"
+#include "feature_calls.h"
 
 #include "audio.h"
 #include "app/game_menu.h"     // ui/app/game_menu.h: the menu interface melee-unlocked's panel (ui/mu_panel.cpp) implements
 #include "frontend.h"
+#include "fe_mac.h"
 #include "ui_metal.h"
 #include "gx_core.h"
 #include "gx_metal.h"
@@ -27,6 +28,10 @@
 #include <mach-o/dyld.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
+#include <unistd.h>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -37,6 +42,7 @@
 #include <vector>
 
 extern "C" const uint8_t mu_embedded_game[], mu_embedded_game_end[];
+extern "C" int32_t mu_frontend_command(uint8_t, const uint8_t*, uint32_t, uint8_t*, uint32_t, uint32_t*);   // fe/mods.cpp
 
 namespace fs = std::filesystem;
 
@@ -47,7 +53,17 @@ void mu_shim_open_log(const std::string& path);
 }
 
 namespace {
+using Clock = std::chrono::steady_clock;
 std::atomic<bool> g_quit{false};
+bool g_play = false;              // play mode: the frontend layer (fe/) is on; scripted runs (tests) leave it off
+bool g_net_on = false;
+bool g_online_now = false;
+uint32_t g_scene_major = ~0u, g_scene_minor = ~0u;
+std::vector<std::string> g_restart_args;   // a feature module asked to start the game again with these (the replay viewer's Watch)
+std::atomic<bool> g_online_flag{false};
+// The performance HUD's history (fe::perf_history): the simulation thread's frame times, newest last.
+std::mutex g_perf_mutex;
+std::vector<float> g_perf;
 bool g_vanilla = false;
 uint32_t g_last_match_frame = 0;
 double g_last_frame_time = -1;
@@ -57,6 +73,33 @@ FILE* g_digest = nullptr;   // --digest: the parity runner's per-retrace state r
 void net_say(const char* format, ...) {
   char line[1024]; va_list args; va_start(args, format); std::vsnprintf(line, sizeof line, format, args); va_end(args);
   host::log("%s", line);
+}
+// A replay recorded without a Gecko code list (at most its 8-byte terminator) is the retail game's: a Vanilla session or a
+// scripted match. It plays back only in a Vanilla session (the replay keeps the option words, not the Vanilla choice),
+// so --replay of such a file starts this program as Vanilla. Reads the .slp's raw event stream up to the first frame.
+bool replay_is_vanilla(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::vector<uint8_t> d((std::istreambuf_iterator<char>(in)), {});
+  static const uint8_t raw_key[] = {'U', 3, 'r', 'a', 'w', '[', '$', 'U', '#', 'l'};
+  auto at = std::search(d.begin(), d.end(), std::begin(raw_key), std::end(raw_key));
+  if (at == d.end()) return false;
+  size_t i = size_t(at - d.begin()) + sizeof raw_key + 4;
+  uint16_t sizes[256] = {};
+  size_t gecko = 0; bool have_sizes = false;
+  while (i < d.size()) {
+    const uint8_t cmd = d[i];
+    if (cmd == 0x35) {
+      if (i + 1 >= d.size()) return false;
+      const size_t n = d[i + 1];
+      for (size_t k = 0; k + 3 <= n - 1 && i + 2 + k + 2 < d.size(); k += 3) sizes[d[i + 2 + k]] = uint16_t(d[i + 3 + k] << 8 | d[i + 4 + k]);
+      i += 1 + n; have_sizes = true; continue;
+    }
+    if (!have_sizes || cmd == 0x37 || cmd == 0x39) break;   // the first frame: the code list came before it
+    if (cmd == 0x10 && i + 1 + 516 <= d.size() && d[i + 1 + 514] == 0x3D) gecko += size_t(d[i + 1 + 512] << 8 | d[i + 1 + 513]);
+    if (!sizes[cmd]) return false;
+    i += 1 + sizes[cmd];
+  }
+  return have_sizes && gecko <= 8;
 }
 std::string home_dir() { const char* h = std::getenv("HOME"); return h ? h : "."; }
 
@@ -68,7 +111,20 @@ void on_fifo(const uint8_t* data, uint32_t size, void*) {
   for (; i < size; ++i) gx::write_fifo(data[i], 1);
 }
 
+// Pacing (play mode offline): one retrace per console frame against the wall clock, as the frontend paces it on the
+// Switch; a replay's fast forward and seeks turn it off (fe::options.pace). Online, the host paces (the netplay host
+// moves its clock).
+void pace() {
+  static Clock::time_point next{};
+  const auto now = Clock::now();
+  if (!fe::options.pace) { next = now; return; }
+  next += std::chrono::nanoseconds(16683333);   // 60/1.001 Hz
+  if (now - next > std::chrono::milliseconds(100) || next - now > std::chrono::milliseconds(100)) next = now;
+  std::this_thread::sleep_until(next);
+}
+
 void on_retrace(void*) {
+  if (g_play && !g_net_on) pace();
   host::mu_shim_retrace();
   host::window_pump();
   if (host::window_closed() || g_quit.load()) linux_host::request_stop(0);
@@ -89,19 +145,72 @@ void on_frame(const MuStatePod& state, const linux_host::Counters& counters, voi
   net_host::on_retrace(row, size_t(n), fighting, g_last_frame_time < 0 ? -1.0 : (now - g_last_frame_time) * 1000.0);
   g_last_frame_time = now;
   if (g_frames_limit && counters.retraces >= g_frames_limit) linux_host::request_stop(0);
+  if (!g_play) return;
+  {
+    static double last = -1;
+    std::lock_guard<std::mutex> lock(g_perf_mutex);
+    if (last >= 0) g_perf.push_back(float((now - last) * 1000.0));
+    if (g_perf.size() > 600) g_perf.erase(g_perf.begin(), g_perf.begin() + 300);
+    last = now;
+  }
+  if (state.scene_major != g_scene_major || state.scene != g_scene_minor) {
+    g_scene_major = state.scene_major; g_scene_minor = state.scene;
+    host::log("play: scene %u/%u at retrace %u", g_scene_major, g_scene_minor, counters.retraces);
+  }
+  // Online as melee-unlocked's host decides it: Slippi's online flow (major scene 8) with the netplay host on. The option
+  // words follow (fe/settings.cpp).
+  const bool online = g_net_on && state.scene_major == 8;
+  if (online != g_online_now) {
+    g_online_now = online; g_online_flag.store(online);
+    fe::settings_online(online);
+    host::log("play: %s at retrace %u: the option words are now the %s ones", online ? "online" : "offline again", counters.retraces, online ? "online" : "player's");
+  }
+  fe::features::Retrace info;
+  info.retrace = counters.retraces; info.scene_major = state.scene_major; info.scene_minor = state.scene;
+  info.match_frame = state.match_frame; info.fighting = fighting; info.online = online; info.state = &state;
+  fe::features::call_retrace(info);
+  if (g_restart_args.empty() && fe::features::call_take_restart(&g_restart_args)) {
+    host::log("play: the game starts again with %zu more argument(s) (asked for by a feature module)", g_restart_args.size());
+    linux_host::request_stop(0);
+  }
+}
+
+// The host's slippi_command with the netplay host on: the frontend's commands (fe/mods.cpp, the feature modules) first,
+// then the netplay host, whose answers the modules may read.
+int32_t (*g_net_command)(uint8_t, const uint8_t*, uint32_t, uint8_t*, uint32_t, uint32_t*) = nullptr;
+int32_t command(uint8_t c, const uint8_t* payload, uint32_t size, uint8_t* response, uint32_t capacity, uint32_t* response_size) {
+  if (response_size) *response_size = 0;
+  const int32_t mine = mu_frontend_command(c, payload, size, response, capacity, response_size);
+  if (mine != INT32_MIN) return mine;
+  if (!g_net_command) return -1;
+  const int32_t result = g_net_command(c, payload, size, response, capacity, response_size);
+  if (result == 0 && response && response_size) fe::features::call_reply(c, response, *response_size);
+  fe::features::call_exchange(c, payload, size, response, response_size ? *response_size : 0, result, false);
+  return result;
+}
+void tables_hook(MuHostApi* host, MuGameApi* game) {
+  if (g_play) fe::features::call_tables(host, game);   // first, before anything below wraps the table
+  if (!host) return;
+  net_host::install(host);
+  if (g_net_on && g_play) { g_net_command = host->slippi_command; host->slippi_command = command; }
+  mu_abi_adapt_host_table(host);
 }
 } // namespace
 
-// ---- the host services' frontend hooks (patches/0011) ----
-// The first option word: Vanilla, and Slippi's menus once their files are served.
-extern "C" int mu_frontend_option(int which, uint32_t* value) {
-  if (value && replays::word(which, value)) return 1;   // a replay plays with the option words it was recorded with
-  if (which != 0 || !value) return 0;
-  *value = (g_vanilla ? MU_GAME_OPTION_VANILLA : 0u) | (slippi_menus::active() && !g_vanilla ? MU_GAME_OPT_SLIPPI_MENUS : 0u);
-  return 1;
+namespace fe {
+std::function<void(host::RuntimeSettings&)> mac_menu_initial;
+std::function<void(const host::RuntimeSettings&, host::MenuChange)> mac_menu_apply;
+// The newest `capacity` simulation-thread frame times, oldest first (the overlays' performance graph).
+int perf_history(float* sim_ms, int capacity) {
+  std::lock_guard<std::mutex> lock(g_perf_mutex);
+  const int n = std::min(capacity, int(g_perf.size()));
+  for (int i = 0; i < n; ++i) sim_ms[i] = g_perf[g_perf.size() - size_t(n) + size_t(i)];
+  return n;
 }
-extern "C" void mu_frontend_disc_ready(void) { if (!g_vanilla) slippi_menus::disc_ready(); }
-extern "C" int mu_frontend_disc_read(uint64_t offset, void* out, size_t bytes) { return slippi_menus::read(offset, out, bytes); }
+}  // namespace fe
+
+// ---- the host services' frontend hooks (patches/0011): the option words, the disc and the commands are fe/settings.cpp's
+// and fe/mods.cpp's ----
 extern "C" int mu_frontend_pad_read(MuPadStatus out[4]) {
   host::PadState pads[4];
   host::input_poll(pads);
@@ -123,7 +232,7 @@ extern "C" void mu_frontend_audio(const int16_t* rl, uint32_t frames) {
 
 int main(int argc, char** argv) {
   mu_abi_install_crash_report();
-  std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir;
+  std::string iso, profile_dir, log_file, cache_dir, capture_path, script, sys_dir, replay, replay_dir, play_script;
   bool record = true, script_codes = false, audio_device = true, script_clock = false;
   net_host::Options net;
   bool offline = false;
@@ -144,6 +253,7 @@ int main(int argc, char** argv) {
     else if (a == "--hidden") hidden = true;
     else if (a == "--no-vsync") vsync = false;
     else if (a == "--script") script = next();
+    else if (a == "--play-script") play_script = next();   // tests: a controller script through the app's input layer, in play mode
     else if (a == "--sys-dir") sys_dir = next();
     else if (a == "--offline") offline = true;
     else if (a == "--replay") replay = next();
@@ -173,11 +283,11 @@ int main(int argc, char** argv) {
   if (log_file.empty()) log_file = (mu_dir / "engine.log").string();
   host::mu_shim_open_log(log_file);
   if (cache_dir.empty()) { cache_dir = (mu_dir / "shaders").string(); fs::create_directories(cache_dir, ec); }
-  // Replays: every match is recorded to the replay folder the app shares with the classic engine; --replay plays one.
-  replays::configure(replay_dir.empty() ? (support / "Replays").string() : replay_dir, record);
+  // Play mode: everything but the scripted runs (tests), which play exactly as the parity runner does.
+  g_play = script.empty();
   if (!replay.empty()) {
-    if (!replays::start_playback(replay)) { std::fprintf(stderr, "cannot play the replay %s\n", replay.c_str()); return 1; }
-    offline = true; script.clear();
+    offline = true; script.clear(); g_play = true;
+    if (!vanilla && replay_is_vanilla(replay)) { vanilla = true; host::log("replay: recorded without a code list (the retail game): playing it as Vanilla"); }
   }
   g_vanilla = vanilla || (!script.empty() && !script_codes);   // a scripted match plays the retail game, as the parity runner does
   // Slippi's files: the bundle's slippi_sys (Contents/Resources next to Contents/MacOS), or --sys-dir.
@@ -188,7 +298,7 @@ int main(int argc, char** argv) {
       if (fs::is_directory(bundled, ec)) sys_dir = bundled.string();
     }
   }
-  if (!script.empty() || replays::active()) sys_dir.clear();   // scripted runs and replays: no Slippi menus
+  if (!script.empty() || !replay.empty()) sys_dir.clear();   // scripted runs and replays: no Slippi menus
   slippi_menus::set_sys_dir(sys_dir);
   // Online: the player's own Slippi sign-in (support/Slippi/user.json, as the classic engine) unless the launcher said
   // offline; a search starts from the game's Online Play page. --online without menus (tests) asks for a match at boot.
@@ -213,6 +323,28 @@ int main(int argc, char** argv) {
     }
   }
 
+  // The frontend layer (fe/, Melee-NX-NetPlay's play mode): settings.ini (melee-unlocked's game options), the replays
+  // (recorded to the folder the app shares with the classic engine; --replay plays one with the viewer), the mod profile
+  // chosen for this start, Training, the overlays and Fight a pro.
+  std::string profile_card;
+  if (g_play) {
+    fe::options.play = true; fe::options.app = true;
+    fe::options.out_dir = mu_dir.string(); fe::options.base_dir = mu_dir.string(); fe::options.iso = iso;
+    fe::options.offline = offline; fe::options.online_delay = net.delay;
+    for (int i = 1; i < argc; ++i) fe::options.rest.push_back(argv[i]);
+    fe::settings_app_defaults(!sys_dir.empty() && !vanilla);
+    fe::settings_load((mu_dir / "settings.ini").string());
+    fe::settings_set_quiet("replay_dir", replay_dir.empty() ? (support / "Replays").string() : replay_dir);
+    if (!record) fe::settings_set_quiet("savereplays", "0");
+    if (vanilla) fe::settings_set_quiet("vanilla", "1");
+    if (sys_dir.empty()) fe::settings_set_quiet("slippi_menus", "0");
+    // A mod profile is for offline play: a session that can go online plays the retail files (as on the Switch).
+    const bool can_go_online = !offline && !vanilla && !sys_dir.empty();
+    if (can_go_online && !fe::settings_profile().empty())
+      host::log("play: mod profile \"%s\" is not loaded: this session can go online (start offline to play it)", fe::settings_profile().c_str());
+    profile_card = fe::mods_configure(can_go_online || vanilla ? std::string() : fe::settings_profile());
+  }
+
   gx::MetalOptions gfx;
   gfx.efb_scale = scale; gfx.vsync = vsync; gfx.cache_dir = cache_dir;
   gfx.capture_path = capture_path; gfx.capture_frame = capture_frame;
@@ -226,22 +358,24 @@ int main(int argc, char** argv) {
   gx::metal_set_overlay(backend, host::game_overlay);
   // melee-unlocked's settings panel (L + R + Start, or F1 / Escape): drawn with ImGui over the picture; what it changes
   // applies here, on the simulation thread.
-  fe::options.out_dir = mu_dir.string(); fe::options.iso = iso;
-  {
-    host::RuntimeSettings rs;
+  if (!g_play) { fe::options.out_dir = mu_dir.string(); fe::options.iso = iso; }
+  fe::mac_menu_initial = [=](host::RuntimeSettings& rs) {
     rs.scale = scale; rs.vsync = vsync; rs.volume = volume; rs.fullscreen = fullscreen; rs.online_delay = net.delay;
-    host::menu_init(rs, [backend, gfx](const host::RuntimeSettings& s, host::MenuChange what) mutable {
-      switch (what) {
-        case host::MenuChange::Volume: host::audio_set_volume(s.volume); break;
-        case host::MenuChange::Fullscreen: host::window_set_fullscreen(s.fullscreen); break;
-        case host::MenuChange::Graphics: case host::MenuChange::Anisotropy:
-          gfx.efb_scale = s.scale; gfx.vsync = s.vsync; gfx.anisotropy = s.anisotropy; gx::metal_set_options(backend, gfx); break;
-        default: break;
-      }
-    });
-  }
+  };
+  fe::mac_menu_apply = [backend, gfx](const host::RuntimeSettings& s, host::MenuChange what) mutable {
+    switch (what) {
+      case host::MenuChange::Volume: host::audio_set_volume(s.volume); break;
+      case host::MenuChange::Fullscreen: host::window_set_fullscreen(s.fullscreen); break;
+      case host::MenuChange::Graphics: case host::MenuChange::Anisotropy:
+        gfx.efb_scale = s.scale; gfx.vsync = s.vsync; gfx.anisotropy = s.anisotropy; gx::metal_set_options(backend, gfx); break;
+      default: break;
+    }
+  };
+  if (g_play) fe::app_menu_setup();   // melee-unlocked's options, the feature modules' pages (fe/app_menu.cpp)
+  else { host::RuntimeSettings rs; fe::mac_menu_initial(rs); host::menu_init(rs, fe::mac_menu_apply); }
   gx::metal_set_ui_pass(mu_ui_metal::pass());
   host::window_input_init();
+  if (!play_script.empty() && !host::input_load_script(play_script.c_str())) { std::fprintf(stderr, "cannot read %s\n", play_script.c_str()); return 2; }
   gx::init(backend);
   const bool audio = host::audio_open(volume, nullptr, audio_device);
   if (!audio) host::log("audio: device unavailable, continuing silent");
@@ -250,11 +384,12 @@ int main(int argc, char** argv) {
   config.iso_path = iso;
   config.game_path = "(embedded)";
   config.log_path = log_file + ".host";
-  config.card_dir = (mu_dir / "Card A").string();
+  config.card_dir = profile_card.empty() ? (mu_dir / "Card A").string() : profile_card;
   config.pace = true;
   config.headless = true;          // the host's own SDL window, pads and sound are not built: this program brings them
   config.no_gc_adapter = true;
   config.vanilla_game = vanilla;   // Vanilla: melee-unlocked as the disc plays (MU_GAME_OPTION_VANILLA)
+  if (g_play) config.vanilla_game = fe::settings_vanilla();
   if (!script.empty()) {        // a scripted match (tests): the same pads, seed and clock as the parity runner
     config.input_script = script; config.vanilla_game = !script_codes;
     if (!script_clock) { config.has_rng_seed = true; config.rng_seed = 0x12345678; config.has_time_base = true; config.time_base = 0; }
@@ -267,13 +402,14 @@ int main(int argc, char** argv) {
     if (const int start = net_host::start(net, net_say)) {
       host::log("online: the netplay host could not start (%d); playing offline", start);
     } else {
-      net_on = true;
+      net_on = true; g_net_on = true;
       fe::set_session_online(true);
       config.input_script.clear();
       host::log("online: on (user folder %s)%s", net.user_dir.c_str(), menus_online ? "; a search starts from the game's Online Play page" : "");
     }
   } else if (menus_online) host::log("online: no Slippi sign-in in %s: the Online Play page will ask to log in", net.user_dir.c_str());
-  linux_host::set_tables_hook([](MuHostApi* host, MuGameApi*) { if (host) { replays::install(host); net_host::install(host); mu_abi_adapt_host_table(host); } });
+  if (g_play && !net_on) config.pace = false;   // paced here (on_retrace), so the replay viewer can fast-forward
+  linux_host::set_tables_hook(tables_hook);
   linux_host::set_video_sinks(on_fifo, on_retrace, nullptr);
   int code = 0;
   std::string error;
@@ -282,10 +418,11 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "cannot start: %s\n", error.c_str());
     code = 1;
   } else {
+    if (g_play) fe::settings_report();
     linux_host::set_frame_observer(on_frame, nullptr);
     code = linux_host::run();
+    if (g_play) fe::features::call_run_end();   // the game stopped; its memory is still mapped
     linux_host::set_frame_observer(nullptr, nullptr);
-    replays::finish();
     const auto& c = linux_host::counters();
     host::log("melee-unlocked engine: stopped with code %d after %u retraces, %llu FIFO bytes, %llu audio blocks", code, c.retraces,
               (unsigned long long)c.fifo_bytes, (unsigned long long)c.audio_blocks);
@@ -317,5 +454,20 @@ int main(int argc, char** argv) {
   }
   delete backend;
   host::window_destroy();
+  if (!g_restart_args.empty()) {   // the replay viewer's Watch: the game takes a replay only at boot, so this program starts again
+    std::vector<std::string> args;
+    for (int i = 0; i < argc; ++i) {
+      const std::string a = argv[i];
+      if (a == "--replay" && i + 1 < argc) { ++i; continue; }   // the earlier replay's choice is replaced
+      args.push_back(a);
+    }
+    for (const auto& a : g_restart_args) args.push_back(a);
+    std::vector<char*> cargs;
+    for (auto& a : args) cargs.push_back(a.data());
+    cargs.push_back(nullptr);
+    char exe[4096]; uint32_t size = sizeof exe;
+    if (_NSGetExecutablePath(exe, &size) == 0) execv(exe, cargs.data());
+    host::log("play: could not start again: %s", std::strerror(errno));
+  }
   return code;
 }

@@ -41,11 +41,11 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Slippi input suggestions (3.7.0) | host | not wired: the reply carries the latest real input as every prediction (Slippi's behaviour without suggestions) |
 | Version gate | host | not wired: online play is the next milestone (netplay host as on the Switch) |
 | Replay recording (.slp) | game image + host | active: every match, offline and online (`mu-engine/app/replays.cpp`) |
-| Compressed replays (.slpz) | host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Replay playback | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Replay viewer controls | host + renderer | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Replay takeover | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
-| Replay coach tips | game image + host + renderer | not wired: online play is the next milestone (netplay host as on the Switch) |
+| Compressed replays (.slpz) | host | active: settings.ini compressreplays 1 (melee-unlocked's zstd) |
+| Replay playback | game image + host | active: `--replay` and the launcher's Watch, through the replays module (`fe/features/replays.cpp`); a replay without a code list plays as Vanilla |
+| Replay viewer controls | host + renderer | active: Start/Z pause, D-pad seek and step, L speed, R fast forward, X/Y tips (the replays module, drawn by `fe/overlay_draw.cpp`) |
+| Replay takeover | game image + host | active: A takes over (the replays module) |
+| Replay coach tips | game image + host + renderer | active: melee-unlocked's coach (replay_coach.cpp from the fetched tree) through the replays module |
 | Game reporting | host + external | not wired: online play is the next milestone (netplay host as on the Switch) |
 | Quick chat | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
 | Stage pool and random stage | game image + host | not wired: online play is the next milestone (netplay host as on the Switch) |
@@ -89,34 +89,34 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Slippi General Codes + Lagless FoD | game image | in the engine |
 | UCF 0.84 | game image | engine option, no setting |
 | UCF 0.8 | game image | engine option, no setting |
-| Unlock everything | game image | engine option, no setting |
-| Show results screen | game image | engine option, no setting |
-| Freeze Pokemon Stadium | game image | engine option, no setting |
-| Freeze Final Destination | game image | engine option, no setting |
-| Fountain of Dreams reflections | game image | engine option, no setting |
-| Full FoD reflections | game image | engine option, no setting |
-| Widescreen 16:9 (Slippi code) | game image | engine option, no setting |
+| Unlock everything | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Show results screen | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Freeze Pokemon Stadium | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Freeze Final Destination | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Fountain of Dreams reflections | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Full FoD reflections | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Widescreen 16:9 (Slippi code) | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | True widescreen | game image + renderer | engine option, no setting |
-| Disable screen shake | game image | engine option, no setting |
-| Screen shake strength | game image | engine option, no setting |
-| PAL stock icons | game image | engine option, no setting |
-| Stock icon and damage number size | game image | engine option, no setting |
-| Always show player tags | game image | engine option, no setting |
-| Low poly fighters | game image | engine option, no setting |
-| Hide KO explosions | game image | engine option, no setting |
-| Hide emblems behind percents | game image | engine option, no setting |
-| Training HUD on/off | game image | engine option, no setting |
-| Character select background plays through | game image | engine option, no setting |
-| Game language | game image | engine option, no setting |
-| Shield colours per port | game image + host | engine option, no setting |
-| Community codes: HUD transparency, Nana's percent, ally indicators, respawn platform by stocks, hide GO!, V-cancel sound, hide fighter shadows, centre the 2P HUD, hitbox colours by id, priority order, knockback angles | game image (+ renderer for Nana and ally overlays via `hud_extras`) | engine option, no setting |
-| Offline codes: Instant Melee, unrestricted pause camera, Boot to CSS | game image | engine option, no setting |
-| Zelda starts as Sheik | game image + host | engine option, no setting |
-| Offline input delay | host | not wired |
-| Mute character voices | game image | engine option, no setting |
-| Faster sound effects | game image | engine option, no setting |
-| Auto L-cancel | host | not wired |
-| L-cancel flash (MU missed / success / both) | host + renderer | not wired |
+| Disable screen shake | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Screen shake strength | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| PAL stock icons | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Stock icon and damage number size | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Always show player tags | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Low poly fighters | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Hide KO explosions | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Hide emblems behind percents | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Training HUD on/off | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Character select background plays through | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Game language | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Shield colours per port | game image + host | active: the options module (`fe/features/options.cpp`), settings.ini |
+| Community codes: HUD transparency, Nana's percent, ally indicators, respawn platform by stocks, hide GO!, V-cancel sound, hide fighter shadows, centre the 2P HUD, hitbox colours by id, priority order, knockback angles | game image (+ renderer for Nana and ally overlays via `hud_extras`) | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Offline codes: Instant Melee, unrestricted pause camera, Boot to CSS | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Zelda starts as Sheik | game image + host | active: the options module, settings.ini and the panel |
+| Offline input delay | host | active: the options module, settings.ini and the panel |
+| Mute character voices | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Faster sound effects | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Auto L-cancel | host | active: the options module, settings.ini and the panel |
+| L-cancel flash (MU missed / success / both) | host + renderer | active: the overlays (`fe/overlay_draw.cpp`), settings.ini |
 | Player-pasted Gecko codes | host + game image | engine option, no setting |
 | Gecko code kinds accepted | host | not wired |
 | Gecko code kinds refused | host | not wired |
@@ -128,39 +128,39 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | 20XX TE menu music from Sound Test | game image + host | engine option, no setting |
 | 20XX TE L-cancel training wheels | game image | engine option, no setting |
 | 20XX TE memory-card replay browser, eight-character tags, save extensions | n/a | not wired |
-| 20XX CPUs | game image | engine option, no setting |
-| CPU training options | game image | engine option, no setting |
-| Vanilla-only session | host | not wired |
-| Code-free retail game | game image | engine option, no setting |
+| 20XX CPUs | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| CPU training options | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Vanilla-only session | host | active: settings.ini vanilla_only (its own memory card folder, no mods) |
+| Code-free retail game | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 
 ## 5. Training tools
 
 | Feature | Side | Mac status |
 |---|---|---|
-| Practice menu | renderer + host | not wired |
-| Practice CPU | game image + host | engine option, no setting |
-| Save states in Training | game image + host | engine option, no setting |
+| Practice menu | renderer + host | active: melee-unlocked's Practice menu (Start + D-pad Up + Z in offline Training, or the panel's Training row), drawn with ImGui; tested in Training |
+| Practice CPU | game image + host | active: from the Practice menu (the Training module, `fe/features/training.cpp`) |
+| Save states in Training | game image + host | active: the Training module (snapshot store) |
 | Record and play back the CPU | game image | engine option, no setting |
 | Collision bubbles | game image | engine option, no setting |
-| Frame data and input overlay | renderer + host | not wired |
+| Frame data and input overlay | renderer + host | active: the overlays module and `fe/overlay_draw.cpp` |
 | Lab dummy DI, after-hitstun reaction, tech choice | game image | engine option, no setting |
-| Frame advance | host + game image | engine option, no setting |
+| Frame advance | host + game image | active: the Training module |
 | Fixed or frozen random seed | host + game image | engine option, no setting |
-| Fight a pro (Phillip) | host + game image + external | engine option, no setting |
-| Practice ghost AI | host | not wired |
-| Pro habit tables | host | not wired |
+| Fight a pro (Phillip) | host + game image + external | active: Phillip's policies on the Switch build's own ONNX engine (`fe/proai`, onnxruntime-shaped calls, no onnxruntime library); downloaded when the player asks (Hugging Face, SHA-256 checked); tested: Zain's Marth policy fought in Training (0.6 ms per step) |
+| Practice ghost AI | host | active: `fe/features/proai.cpp` |
+| Pro habit tables | host | active: `fe/features/proai.cpp` (melee-unlocked's tables) |
 | Training Mode CE events | game image + host | engine option, no setting |
 | Training Mode CE on-screen displays | game image | engine option, no setting |
 | TM-CE console global OSD shortcut | n/a | not wired |
 | Practice from replays | game image + host + renderer | engine option, no setting |
 | Lossless adapter lag test | game image + host | engine option, no setting |
-| Display latency test | renderer | not wired |
+| Display latency test | renderer | active: the overlays (latencytest) |
 
 ## 6. Mods, added content, cosmetics, music
 
 | Feature | Side | Mac status |
 |---|---|---|
-| Mod profiles and disc-file overlay | host | not wired |
+| Mod profiles and disc-file overlay | host | active: the profile chosen for the next start (settings.ini mod_profile: the launcher's Mods page Use button, or the panel's MODS page) is loaded at an offline start (`fe/mods.cpp`); tested with a save layer |
 | Content view switch | game image + host | engine option, no setting |
 | m-ex content | game image | engine option, no setting |
 | m-ex stages | game image | engine option, no setting |
@@ -172,25 +172,25 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | 20XX Hack Pack: stage variants and stage select pages | game image + host | engine option, no setting |
 | 20XX Hack Pack: music playlists | game image + host | engine option, no setting |
 | 20XX Hack Pack: debug menu, training displays, hidden characters | game image | engine option, no setting |
-| Per-profile and vanilla-only memory cards | host | not wired |
+| Per-profile and vanilla-only memory cards | host | active: `fe/mods.cpp` (card-<profile>), settings.ini vanilla_only |
 | Costume, stage and effect imports | host + renderer | not wired |
 | Skin cycling on the select screens | game image + host | engine option, no setting |
 | Voice mods | host + game image | engine option, no setting |
 | Texture packs | renderer | not wired |
 | Game music | game image | engine option, no setting |
-| Music volume | host / game image | engine option, no setting |
+| Music volume | host / game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
 | Custom music packs / jukebox | host | not wired |
 | Look presets | renderer | not wired |
 | Lightweight levels and visual effects tiers | renderer (+ game image for low poly) | engine option, no setting |
 | "Get mod looks" | launcher / external | not wired |
-| Arcade look: attack and projectile hitboxes | game image | engine option, no setting |
-| Arcade look: grid or plain background | game image + renderer | engine option, no setting |
-| Arcade look: 2D camera | game image offline; renderer online | engine option, no setting |
-| Arcade look: combo counter | renderer | not wired |
+| Arcade look: attack and projectile hitboxes | game image | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Arcade look: grid or plain background | game image + renderer | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Arcade look: 2D camera | game image offline; renderer online | active: settings.ini (melee-unlocked's key, `mu-engine/app/fe/settings.cpp`), with a row in the settings panel where the Switch has one |
+| Arcade look: combo counter | renderer | active: the overlays |
 | 2D-style m-ex build | game image | engine option, no setting |
 | Lab view | renderer | not wired |
 | Looping video backgrounds | renderer | not wired |
-| Border art | renderer | not wired |
+| Border art | renderer | active: the overlays (a .bmp in the Borders folder) |
 | Built-in CRT look | renderer | not wired |
 | RetroArch shader presets | renderer | not wired |
 | Easter egg | renderer + game image | engine option, no setting |
