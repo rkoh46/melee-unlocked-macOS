@@ -437,11 +437,9 @@ std::array<Category, 8> build_rows(bool in_game) {
   static const struct { int cat; const char* label; const char* why; } kAbsent[] = {
     {0, "Upscaling (DLSS, XeSS, FSR), frame generation, NVIDIA Reflex, HDR, ray tracing", "Windows graphics cards only."},
     {0, "Graphics backend", "One renderer on the Mac: Metal."},
-    {0, "Widescreen (true widescreen), Look, Visual effects, Lightweight", "Not wired on the Mac yet."},
     {0, "RetroArch shader presets, texture packs, animated menu backgrounds", "Not wired on the Mac yet."},
     {1, "Audio mode, ASIO buffer, Audio buffer", "macOS has one audio path (Core Audio through SDL)."},
     {1, "Use custom music, Menu sounds", "Not wired on the Mac yet."},
-    {2, "Background input, Discord", "Not wired on the Mac engine yet."},
     {2, "YouGame", "Left out: melee-unlocked's own online service."},
     {3, "Keyboard and HID controller editors, PhobGCC menu", "The launcher's controller pages edit them; the rows above cover each controller."},
     {4, "Controller overlay placement (dragging)", "The overlays have fixed places."},
@@ -973,6 +971,8 @@ bool menu_changed() { return fe::g_changed.load(); }
 RuntimeSettings menu_settings() { std::lock_guard<std::mutex> lock(fe::g_mutex); return fe::g_settings; }
 void menu_toggle() { fe::g_toggle_request.store(true); }
 void menu_close() { std::lock_guard<std::mutex> lock(fe::g_mutex); fe::set_open_locked(false); }
+// mumac: the window went in or out of full screen by its own shortcut or the green button: the panel's row follows.
+void menu_sync_fullscreen(bool on) { std::lock_guard<std::mutex> lock(fe::g_mutex); if (fe::g_settings.fullscreen != on) { fe::g_settings.fullscreen = on; fe::g_changed = true; } }
 void menu_open_extra(const std::string& title) {
   std::lock_guard<std::mutex> lock(fe::g_mutex);
   fe::g_open_title = title;

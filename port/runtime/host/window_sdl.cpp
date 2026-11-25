@@ -49,6 +49,14 @@ ResizeCallback g_resize;
 MessageCallback g_message;
 std::atomic<bool> g_closed{false};
 std::atomic<bool> g_fullscreen_toggle{false};
+// Background input (melee-unlocked's Game option, on by default): off, every controller port reads neutral while another
+// window has focus (still plugged in). The keyboard only ever counts while the game window has focus.
+std::atomic<bool> g_focused{true};
+std::atomic<bool> g_background_input{true};
+// The pointer hides after resting two seconds over the game and shows while the settings panel is open or the window is
+// in the background (melee-unlocked's cursor_idle rule). Main thread only.
+uint64_t g_pointer_moved_ms = 0;
+bool g_pointer_hidden = false;
 std::atomic<int> g_last_key_press{-1};   // scancode of the latest key press, for remapping in the in-game menu
 std::atomic<bool> g_capture{false};
 std::mutex g_ui_mutex;
@@ -513,8 +521,13 @@ void window_pump() {
       case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: case SDL_EVENT_WINDOW_RESIZED: resized = true; break;
       case SDL_EVENT_GAMEPAD_ADDED: open_gamepad(event.gdevice.which); break;
       case SDL_EVENT_GAMEPAD_REMOVED: close_gamepad(event.gdevice.which); break;
+      case SDL_EVENT_WINDOW_FOCUS_GAINED: g_focused.store(true); break;
+      case SDL_EVENT_WINDOW_FOCUS_LOST: g_focused.store(false); break;
+      case SDL_EVENT_MOUSE_MOTION: case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_WHEEL: g_pointer_moved_ms = SDL_GetTicks(); break;
       case SDL_EVENT_KEY_DOWN:
         if (event.key.key == SDLK_RETURN && (event.key.mod & SDL_KMOD_ALT) && !event.key.repeat) g_fullscreen_toggle.store(true);
+        // The Mac's own full-screen shortcut (Control-Command-F), as the View menu has it.
+        if (event.key.key == SDLK_F && (event.key.mod & SDL_KMOD_GUI) && (event.key.mod & SDL_KMOD_CTRL) && !event.key.repeat) g_fullscreen_toggle.store(true);
         if (event.key.key == SDLK_Q && (event.key.mod & SDL_KMOD_GUI) && !event.key.repeat) { g_closed.store(true); request_exit(0); }   // Cmd+Q in full screen
         if (!event.key.repeat) g_last_key_press.store((int)event.key.scancode);
         if ((event.key.key == SDLK_F1 || event.key.key == SDLK_ESCAPE) && !event.key.repeat && !menu_capturing()) menu_toggle();
@@ -529,6 +542,15 @@ void window_pump() {
     refresh_client_size();
     if (g_resize) g_resize(g_client_w, g_client_h);
   }
+#if defined(__APPLE__) && TARGET_OS_OSX
+  {
+    const bool show = !g_focused.load() || menu_is_open() || SDL_GetTicks() - g_pointer_moved_ms < 2000;
+    if (show == g_pointer_hidden) {
+      if (show) SDL_ShowCursor(); else SDL_HideCursor();
+      g_pointer_hidden = !show;
+    }
+  }
+#endif
 }
 
 float window_safe_top_pixels() { return g_safe_top.load(); }
@@ -561,6 +583,10 @@ bool window_division_region(float out[4]) {
   return true;
 }
 void window_set_fullscreen(bool enabled) { if (g_window) SDL_SetWindowFullscreen(g_window, enabled); }
+bool window_is_fullscreen() { return g_window && (SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN) != 0; }
+void window_set_background_input(bool on) { g_background_input.store(on); }
+bool window_background_input() { return g_background_input.load(); }
+bool window_focused() { return g_window && g_focused.load(); }
 
 // ---- launcher services: controllers without a window
 void window_input_init() {
@@ -711,6 +737,8 @@ void input_poll(PadState out[4]) {
     taken[port] = true; read_gamepad(pad, out[port]); g_gamepad_port[port] = SDL_GetGamepadID(pad); ++port;
   }
   if (!(adapter_mask & 1u)) { out[0].err = 0; read_keyboard(out[0]); read_touch(out[0]); }
+  if (g_window && !g_focused.load() && !g_background_input.load())   // Background input off, another window in front
+    for (int i = 0; i < 4; ++i) if (out[i].err == 0) { const int8_t err = out[i].err; out[i] = {}; out[i].err = err; }
 }
 
 // The letterbox is never bare black: Melee's menu grid continues around the picture, faintly, the way Apple asks games to

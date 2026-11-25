@@ -174,6 +174,17 @@ void mod_profile_set(const std::string& profile) {
 @property(nonatomic) NSMutableDictionary<NSString*, NSValue*>* buttons;   // name -> rect, rebuilt every paint
 @property(nonatomic) NSTimer* modsTimer;   // repaints the Mods page while a job runs
 @property(nonatomic) std::string modsMessage;
+// Watch live: the Slippi Launcher's spectate folder, each new game file opened as it appears (melee-unlocked's Watch live).
+@property(nonatomic) BOOL liveWatch;
+@property(nonatomic) NSMutableSet<NSString*>* liveSeen;
+@property(nonatomic) NSTimer* liveTimer;
+@property(nonatomic) NSTask* watchTask;    // the engine playing a replay now (one at a time)
+@property(nonatomic) NSString* liveStatus;
+// The update check: this repository's branch on GitHub against the commit this app was built from (Info.plist MUBuildCommit).
+// Never melee-unlocked's own updater: this app is built from source, so an update is the install line run again.
+@property(nonatomic) NSString* updateText;
+@property(nonatomic) BOOL updateAvailable;
+- (void)checkForUpdate;
 - (void)openTheme;
 - (void)closeTheme;
 @end
@@ -350,8 +361,10 @@ void mod_profile_set(const std::string& profile) {
   [self button:@"play" rect:LR(CX, 134, CW, 62) title:@"PLAY" primary:YES enabled:!s.iso.empty()];
 
   const CGFloat pitch = 24; CGFloat y = 210;
-  NSString* version = [NSString stringWithFormat:@"Version %s (melee-unlocked 1.0.5 engine)", MELEE_PORT_VERSION];
-  [self row:y dot:C_OK words:version link:@"What's new" name:@"whatsnew"]; y += pitch;
+  NSString* version = [NSString stringWithFormat:@"Version %s (melee-unlocked 1.0.5 engine)%@", MELEE_PORT_VERSION,
+                                                 self.updateText.length ? [@" · " stringByAppendingString:self.updateText] : @""];
+  [self row:y dot:self.updateAvailable ? C_WARN : C_OK words:version link:self.updateAvailable ? @"How to update" : @"What's new"
+       name:self.updateAvailable ? @"howtoupdate" : @"whatsnew"]; y += pitch;
   if (s.engine == 2 && mu) {
     text(@"Vanilla: the game as the disc plays it, with melee-unlocked's engine (no codes, nothing unlocked)", LR(CX, y - 3, CW, 17), f_small(), C_DIM);
   } else if (!s.account_name.empty()) {
@@ -422,7 +435,8 @@ void mod_profile_set(const std::string& profile) {
   NSString* mu = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/MeleeUnlockedEngine"];
   const BOOL can_watch = [NSFileManager.defaultManager isExecutableFileAtPath:mu] || [NSFileManager.defaultManager isExecutableFileAtPath:playback];
   if (rows.empty()) text(@"No replays yet. Every game you play is saved here as a .slp file.", LR(CX, y, CW, 20), f_body(), C_DIM);
-  for (size_t i = 0; i < rows.size() && i < 8; ++i) {
+  const size_t shown = self.liveWatch ? 7 : 8;
+  for (size_t i = 0; i < rows.size() && i < shown; ++i) {
     const host::GameRow& r = rows[i];
     round_rect(LR(CX, y, CW, 38), 8, C_FIELD, C_FIELD, &C_FIELD_BORDER);
     text(ns(r.title), LR(CX + 12, y + 3, CW - 190, 18), f_body(), C_TEXT);
@@ -434,8 +448,101 @@ void mod_profile_set(const std::string& profile) {
     }
     y += 44;
   }
-  [self button:@"replaysfolder" rect:LR(CX, WIN_H - 50, 170, 32) title:@"Open Replays folder" primary:NO enabled:YES];
-  if (!can_watch) text(@"Watching a replay needs the melee-unlocked engine in this build.", LR(CX + 180, WIN_H - 50, CW - 180, 32), f_small(), C_FAINT, LEFT, 0, true);
+  if (self.liveWatch) text(self.liveStatus ?: @"", LR(CX, 58 + 7 * 44 + 6, CW, 34), f_small(), C_DIM, LEFT, 0, true);
+  [self button:@"replaysfolder" rect:LR(CX, WIN_H - 50, 166, 32) title:@"Open Replays folder" primary:NO enabled:YES];
+  [self button:@"openreplay" rect:LR(CX + 174, WIN_H - 50, 140, 32) title:@"Open a replay..." primary:NO enabled:can_watch];
+  [self button:@"watchlive" rect:LR(CX + 322, WIN_H - 50, CW - 322, 32) title:self.liveWatch ? @"Stop watching live" : @"Watch live"
+       primary:self.liveWatch enabled:can_watch];
+  if (!can_watch) text(@"Watching a replay needs the melee-unlocked engine in this build.", LR(CX, WIN_H - 82, CW, 28), f_small(), C_FAINT, LEFT, 0, true);
+}
+// The Slippi Launcher's spectate folder: its own setting (spectateSlpPath), else <its replay folder>/Spectate, else its default
+// ~/Documents/Slippi/Spectate (as melee-unlocked's live_spectate_folder reads it on Windows).
+- (NSString*)spectateFolder {
+  if (const char* dir = std::getenv("MELEE_SPECTATE_DIR")) return ns(dir);   // tests: a folder of their own
+  NSString* settings = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Slippi Launcher/Settings"];
+  if (NSData* data = [NSData dataWithContentsOfFile:settings]) {
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    NSDictionary* d = [json isKindOfClass:NSDictionary.class] ? json : nil;
+    if ([d[@"settings"] isKindOfClass:NSDictionary.class]) d = d[@"settings"];
+    if ([d[@"spectateSlpPath"] isKindOfClass:NSString.class] && [d[@"spectateSlpPath"] length]) return d[@"spectateSlpPath"];
+    if ([d[@"rootSlpPath"] isKindOfClass:NSString.class] && [d[@"rootSlpPath"] length]) return [d[@"rootSlpPath"] stringByAppendingPathComponent:@"Spectate"];
+  }
+  return [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/Slippi/Spectate"];
+}
+- (NSArray<NSString*>*)liveFiles:(NSString*)folder {
+  NSMutableArray<NSString*>* out = [NSMutableArray array];
+  for (NSString* name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:folder error:nil] ?: @[])
+    if ([name.pathExtension.lowercaseString isEqualToString:@"slp"]) [out addObject:[folder stringByAppendingPathComponent:name]];
+  return out;
+}
+- (void)toggleLive {
+  if (self.liveWatch) {
+    self.liveWatch = NO; [self.liveTimer invalidate]; self.liveTimer = nil;
+    host::log("launcher: watch live off");
+    return;
+  }
+  NSString* folder = [self spectateFolder];
+  self.liveWatch = YES;
+  self.liveSeen = [NSMutableSet setWithArray:[self liveFiles:folder]];   // games already there are not live
+  self.liveStatus = [NSString stringWithFormat:@"Watching %@ for live games: start spectating in the Slippi Launcher and each new game opens here.",
+                                               [folder stringByAbbreviatingWithTildeInPath]];
+  host::log("launcher: watch live on (%s, %lu files already there)", folder.UTF8String, (unsigned long)self.liveSeen.count);
+  __weak MULaunchView* weak = self;
+  self.liveTimer = [NSTimer timerWithTimeInterval:1.0 repeats:YES block:^(NSTimer* t) {
+    MULaunchView* v = weak;
+    if (!v || !v.liveWatch) { [t invalidate]; return; }
+    if (v.watchTask && v.watchTask.isRunning) return;   // the game being watched first; the next one opens after it
+    NSString* newest = nil; NSDate* newest_at = nil;
+    for (NSString* path in [v liveFiles:folder]) {
+      if ([v.liveSeen containsObject:path]) continue;
+      NSDate* at = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil].fileModificationDate;
+      if (!newest || [at compare:newest_at] == NSOrderedDescending) { newest = path; newest_at = at; }
+    }
+    if (!newest) return;
+    [v.liveSeen addObject:newest];
+    host::log("launcher: watch live opens %s", newest.UTF8String);
+    v.liveStatus = [NSString stringWithFormat:@"Watching live: %@", newest.lastPathComponent];
+    [v setNeedsDisplay:YES];
+    [v watch:newest];
+  }];
+  [NSRunLoop.mainRunLoop addTimer:self.liveTimer forMode:NSRunLoopCommonModes];   // the launcher runs modally
+}
+- (void)checkForUpdate {
+  if (const char* off = std::getenv("MELEE_UPDATE_CHECK"); off && *off == '0') return;
+  NSString* commit = [NSBundle.mainBundle objectForInfoDictionaryKey:@"MUBuildCommit"];
+  if (![commit isKindOfClass:NSString.class] || commit.length < 7) { host::log("launcher: update check skipped (no build commit in Info.plist)"); return; }
+  // GitHub's compare of the built commit with the branch: "ahead_by" newer commits on the branch. MELEE_UPDATE_URL: tests.
+  NSString* base = std::getenv("MELEE_UPDATE_URL") ? ns(std::getenv("MELEE_UPDATE_URL")) : @"https://api.github.com/repos/rkoh46/melee-unlocked-macOS/compare/";
+  NSURL* url = [NSURL URLWithString:[NSString stringWithFormat:@"%@%@...melee-unlocked-macos", base, commit]];
+  NSMutableURLRequest* request = [NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:10];
+  [request setValue:@"melee-unlocked-macOS" forHTTPHeaderField:@"User-Agent"];
+  [request setValue:@"application/vnd.github+json" forHTTPHeaderField:@"Accept"];
+  __weak MULaunchView* weak = self;
+  [[NSURLSession.sharedSession dataTaskWithRequest:request completionHandler:^(NSData* data, NSURLResponse* response, NSError* error) {
+    const NSInteger status = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse*)response).statusCode : 0;
+    NSDictionary* json = data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+    if (error || status != 200 || ![json isKindOfClass:NSDictionary.class]) {
+      host::log("launcher: update check failed (%s)", error ? error.localizedDescription.UTF8String : [NSString stringWithFormat:@"HTTP %ld", (long)status].UTF8String);
+      return;
+    }
+    const long ahead = [json[@"ahead_by"] respondsToSelector:@selector(longValue)] ? [json[@"ahead_by"] longValue] : 0;
+    NSString* state = [json[@"status"] isKindOfClass:NSString.class] ? json[@"status"] : @"";
+    host::log("launcher: update check: built from %s, the branch is %s (%ld newer)", commit.UTF8String, state.UTF8String, ahead);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      MULaunchView* v = weak;
+      if (!v) return;
+      v.updateAvailable = ahead > 0;
+      v.updateText = ahead > 0 ? [NSString stringWithFormat:@"%ld newer change%@ on GitHub", ahead, ahead == 1 ? @"" : @"s"] : @"up to date";
+      [v setNeedsDisplay:YES];
+    });
+  }] resume];
+}
+- (void)openReplay {
+  NSOpenPanel* panel = [NSOpenPanel openPanel];
+  panel.message = @"Choose a Slippi replay to watch";
+  panel.allowedFileTypes = @[@"slp", @"slpz"];
+  panel.directoryURL = [NSURL fileURLWithPath:ns(self.settings->replay_dir)];
+  if ([panel runModal] == NSModalResponseOK) [self watch:panel.URL.path];
 }
 // ---- Mods: melee-unlocked's catalog, installed by this app's own installer (download, SHA-256, archive, xdelta3) ----
 - (void)paintMods {
@@ -531,6 +638,9 @@ void mod_profile_set(const std::string& profile) {
   else if ([key isEqualToString:@"modsfolder"]) [self reveal:support + "/melee-unlocked/Mods" create:YES];
   else if ([key isEqualToString:@"logs"]) [self reveal:support + "/melee-unlocked" create:YES];
   else if ([key isEqualToString:@"replaysfolder"]) [self reveal:s.replay_dir create:YES];
+  else if ([key isEqualToString:@"openreplay"]) [self openReplay];
+  else if ([key isEqualToString:@"howtoupdate"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];
+  else if ([key isEqualToString:@"watchlive"]) [self toggleLive];
   else if ([key isEqualToString:@"whatsnew"]) [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"https://github.com/rkoh46/melee-unlocked-macOS#melee-unlocked-macos-this-branch"]];
   else if ([key isEqualToString:@"show"] || [key isEqualToString:@"watch"]) {
     const std::vector<host::GameRow> rows = self.dashboard.rows();
@@ -574,6 +684,7 @@ void mod_profile_set(const std::string& profile) {
                        @"--volume", [NSString stringWithFormat:@"%d", self.settings->volume]];
     NSError* error = nil;
     if (![task launchAndReturnError:&error]) host::mac_show_error("The replay could not start", error.localizedDescription.UTF8String);
+    else self.watchTask = task;
     return;
   }
   NSString* exe = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Contents/MacOS/DashdancePlayback"];
@@ -656,6 +767,8 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
     if (std::getenv("MELEE_LAUNCHER_PLAY") && !settings.iso.empty())   // test runs: press PLAY a moment after the window shows
       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [NSApp stopModalWithCode:NSModalResponseOK]; });
     if (std::getenv("MELEE_LAUNCHER_THEME")) dispatch_async(dispatch_get_main_queue(), ^{ [view openTheme]; });   // screenshots
+    [view checkForUpdate];
+    if (std::getenv("MELEE_LAUNCHER_LIVE")) dispatch_async(dispatch_get_main_queue(), ^{ [view toggleLive]; [view setNeedsDisplay:YES]; });   // tests
     const NSModalResponse r = [NSApp runModalForWindow:window];
     [view closeTheme];
     [window orderOut:nil];

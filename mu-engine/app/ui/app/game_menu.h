@@ -41,6 +41,7 @@ enum class MenuChange { Graphics, Volume, TouchControls, Fullscreen, Hud, Widesc
 // Console: the Watch replays page lists these (newest first) and calls `watch` with the chosen one.
 void menu_open_replays();                  // opens the menu on the Watch replays page
 void menu_close();
+void menu_sync_fullscreen(bool on);       // mumac: the window's full screen changed outside the panel
 void menu_set_notice(const std::string& text);   // a line in place of the Watch replays page's hint
 void menu_set_replays(std::function<std::vector<std::string>()> list, std::function<void(const std::string&)> watch);
 // `apply` runs on the simulation thread whenever the player changes a value.

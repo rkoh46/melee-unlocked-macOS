@@ -82,6 +82,8 @@ static inline int gmtime_s(struct tm* out, const time_t* t) { return gmtime_r(t,
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+namespace host { void window_pump(); bool window_closed(); }   // port/runtime/host/window_sdl.cpp: the window answers while a replay waits
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
@@ -296,6 +298,10 @@ struct Playback {
   std::string result_head, result_value, result_detail; int result_sign = 0;
   // Analyze: 1 playing forward unseen to the end, then back to where it was.
   int analyze = 0; int32_t analyze_origin = 0; bool analyzed = false;
+  // mumac: a recording still being written (Watch live: the Slippi Launcher's spectate folder, a game in progress): its
+  // frames are waited for as they arrive, as upstream's source_host.cpp does (replay_frame_ready, replay_hold_for_live_frame).
+  bool live = false;
+  uintmax_t live_size = ~uintmax_t{0}; double live_growth = 0, live_look = -1; bool abandoned = false;
 } pb;
 bool playing = false;
 std::atomic<bool> repaint{false};
@@ -542,6 +548,8 @@ bool open_replay(const std::string& given) {
   if (!pb.check.begin(pb.game_start, s->geckoCodes)) say("replay: the fidelity check cannot start: %s", pb.check.error().c_str());
   pb.first = Slippi::GAME_FIRST_FRAME;
   pb.last = pb.game->GetLatestIndex();
+  pb.live = pb.game_end.empty() && !pb.game->IsProcessingComplete();
+  if (pb.live) say("replay: %s has no Game End yet (a game still being written): its frames are waited for as they arrive", path.c_str());
   // Jump-back points cover the whole replay: one every 4 seconds, further apart for a long match, so that at most
   // kGridStates are kept and the store (kKeepSlots) never has to drop one (upstream keeps up to 50 for the same reason).
   pb.keep_every = std::max<int32_t>(240, (pb.last - pb.first + kGridStates) / kGridStates);
@@ -555,9 +563,69 @@ bool open_replay(const std::string& given) {
 }
 
 const MuReplayStart* h_replay_start() { return playing ? &pb.start : nullptr; }
+
+void sleep_ms(int ms);
+// ---- live recordings (mumac, after upstream port/app/source_host.cpp replay_recording_abandoned / replay_frame_ready) ----
+// A recording that stops growing is over when nothing has added to it for 30 s (macOS cannot ask who holds a file open for
+// writing; a live broadcast keeps growing, and a paused one is waited for that long). A file last written long before it
+// was opened ends at once.
+bool live_abandoned() {
+  if (pb.abandoned) return true;
+  const double now = now_s();
+  if (pb.live_look >= 0 && now - pb.live_look < 0.5) return false;
+  pb.live_look = now;
+  std::error_code ec;
+  const uintmax_t size = std::filesystem::file_size(pb.path, ec);
+  if (ec) return false;
+  if (size != pb.live_size) {
+    const bool first = pb.live_size == ~uintmax_t{0};
+    pb.live_size = size; pb.live_growth = now;
+    if (!first) return false;
+    const auto written = std::filesystem::last_write_time(pb.path, ec);
+    if (!ec) {
+      const double age = std::chrono::duration<double>(std::filesystem::file_time_type::clock::now() - written).count();
+      if (age > 0.0) pb.live_growth = now - age;
+    }
+  }
+  if (now - pb.live_growth < 30.0) return false;
+  say("replay: %s has not grown for 30 s and has no Game End: playback ends at frame %d", pb.path.c_str(), pb.game->GetLatestIndex());
+  return pb.abandoned = true;
+}
+// A frame of a live recording that can be played: there, all of its inputs in, and final (Slippi 3.7+ marks finalized frames).
+bool live_frame_ready(int32_t frame) {
+  const bool exists = pb.game->DoesFrameExist(frame);
+  if (pb.game->IsProcessingComplete()) return true;
+  if (!exists || !pb.game->GetFrame(frame)->inputsFullyFetched) return false;
+  const auto v = pb.game->GetVersion();
+  const bool has_finalized = v[0] > 3 || (v[0] == 3 && v[1] >= 7);
+  return !has_finalized || pb.game->GetLastFinalizedFrame() >= frame;
+}
+// Top of a frame (the gate): a live recording's next frame is waited for here, the way Dolphin's mirror mode holds the game,
+// so the match never runs a frame without its inputs. The window keeps answering meanwhile.
+void live_hold(int32_t frame) {
+  if (live_frame_ready(frame)) { pb.last = std::max(pb.last, pb.game->GetLatestIndex()); return; }
+  const double started = now_s();
+  bool told = false;
+  while (!live_frame_ready(frame) && !live_abandoned()) {
+    if (!told && now_s() - started > 1.0) { say("replay: waiting for frame %d of the live game (read to frame %d)", frame, pb.game->GetLatestIndex()); told = true; }
+    host::window_pump();
+    if (host::window_closed()) { linux_host::request_stop(0); break; }
+    publish();
+    sleep_ms(4);
+  }
+  if (told) say("replay: frame %d came after %.1f s", frame, now_s() - started);
+  pb.last = std::max(pb.last, pb.game->GetLatestIndex());
+  if (pb.game->IsProcessingComplete() && pb.live) { pb.live = false; say("replay: the live game ended at frame %d", pb.game->GetLatestIndex()); }
+}
+
 void h_replay_frame(int32_t frame, MuReplayFrame* out) {
   *out = MuReplayFrame{};
-  if (!playing || !pb.game->DoesFrameExist(frame)) { out->result = MU_REPLAY_TERMINATE; return; }
+  if (!playing) { out->result = MU_REPLAY_TERMINATE; return; }
+  if (pb.live && !pb.game->IsProcessingComplete() && !live_frame_ready(frame)) {   // waited for at the gate; ends only when abandoned
+    out->result = live_abandoned() ? MU_REPLAY_TERMINATE : MU_REPLAY_WAIT;
+    return;
+  }
+  if (!pb.game->DoesFrameExist(frame)) { out->result = MU_REPLAY_TERMINATE; return; }
   Slippi::FrameData* f = pb.game->GetFrame(frame);
   out->result = MU_REPLAY_CONTINUE;
   // Takeover: this port is played from the controller (shim/mu_replay.c mu_replay_input); the others keep the recording
@@ -968,6 +1036,7 @@ int replay_gate(uint8_t, const uint8_t* p, uint32_t n, std::vector<uint8_t>& rep
     return 1;
   }
   pb.frame = frame;
+  if (pb.live) live_hold(frame);
   if (pb.seek_target != INT32_MIN && frame >= pb.seek_target) { pb.seek_target = INT32_MIN; say("replay: at frame %d", frame); }
   keep_if_due(frame);
   // Analyze (the Replays page, or the test): run to the end unseen so the game measures every moment, then come back.
@@ -991,6 +1060,8 @@ int replay_gate(uint8_t, const uint8_t* p, uint32_t n, std::vector<uint8_t>& rep
     while (pb.paused && !pb.go_back && pb.seek_target == INT32_MIN && pb.want_take < 0) {
       publish();
       sleep_ms(16);
+      host::window_pump();                        // mumac: the window keeps answering while paused
+      if (host::window_closed()) { linux_host::request_stop(0); pb.paused = false; break; }
       // A test run never waits for a controller that is not there: after 20 s paused it plays on.
       if (!test_run().name.empty() && now_s() - paused_at > 20) { say("replay: test: paused for 20 s at frame %d, playing on", frame); pb.paused = false; break; }
       const uint16_t b = poll_buttons();

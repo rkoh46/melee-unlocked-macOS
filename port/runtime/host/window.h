@@ -14,6 +14,11 @@ void* window_create(int w, int h, const wchar_t* title, bool visible = true);
 void window_set_resize_callback(ResizeCallback cb);
 void window_pump();
 void window_set_fullscreen(bool enabled);
+bool window_is_fullscreen();
+// Background input (on by default): off, the controllers read neutral while another window has focus.
+void window_set_background_input(bool on);
+bool window_background_input();
+bool window_focused();                 // the game window has keyboard focus (false without a window)
 // Pixels at the top of the window covered by the Dynamic Island, notch or status bar (0 on the Mac).
 float window_safe_top_pixels();
 // All four safe-area insets in pixels (island, notch, rounded corners, home indicator); zeros on the Mac.
@@ -28,7 +33,7 @@ float window_pixels_per_point();
 struct GameRect { float x, y, w, h; };
 GameRect window_game_rect(float ww, float wh, float aspect);
 void window_gamepad_rumble(int port, bool on);   // SDL gamepad on that GameCube port, if any
-bool window_take_fullscreen_toggle();   // true once per Alt+Enter press in the game window
+bool window_take_fullscreen_toggle();   // true once per Alt+Enter or Control-Command-F press in the game window
 double window_refresh_rate();
 void window_destroy();
 void window_set_title(const wchar_t* title);

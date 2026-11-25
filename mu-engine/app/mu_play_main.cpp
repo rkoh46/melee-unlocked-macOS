@@ -30,6 +30,7 @@
 #include "input_config.h"
 #include "window.h"
 
+#include <IOKit/pwr_mgt/IOPMLib.h>
 #include <mach-o/dyld.h>
 #include <algorithm>
 #include <atomic>
@@ -153,6 +154,14 @@ void on_frame(const MuStatePod& state, const linux_host::Counters& counters, voi
   g_last_frame_time = now;
   if (g_frames_limit && counters.retraces >= g_frames_limit) linux_host::request_stop(0);
   if (!g_play) return;
+  // Full screen: Control-Command-F or Alt+Return toggles it (window_sdl.cpp); the panel's row follows the window, whichever
+  // way it changed (the green button too).
+  if (host::window_take_fullscreen_toggle()) host::window_set_fullscreen(!host::window_is_fullscreen());
+  if ((counters.retraces & 15) == 0) {
+    static int last = -1;
+    const int now_fs = host::window_is_fullscreen() ? 1 : 0;
+    if (now_fs != last) { if (last >= 0) { host::menu_sync_fullscreen(now_fs != 0); host::log("window: %s", now_fs ? "full screen" : "windowed"); } last = now_fs; }
+  }
   {
     static double last = -1;
     std::lock_guard<std::mutex> lock(g_perf_mutex);
@@ -441,6 +450,12 @@ int main(int argc, char** argv) {
       fe::present::loop(b, q, stop, [] {}, render);
     }, [] { return fe::present::active(); });
   void* layer = host::window_create(1280, 960, L"melee-unlocked-macOS", !hidden);
+  // Controllers do not count as activity to macOS: while the game's window is up the display stays awake (melee-unlocked's
+  // SetThreadExecutionState). Released when the program ends.
+  IOPMAssertionID display_awake = kIOPMNullAssertionID;
+  if (!hidden && IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep, kIOPMAssertionLevelOn,
+                                             CFSTR("melee-unlocked-macOS is running a game"), &display_awake) == kIOReturnSuccess)
+    host::log("power: the display stays awake while the game runs");
   int client_w = 0, client_h = 0;
   host::window_client_size(&client_w, &client_h);
   gx::Backend* backend = gx::create_metal_backend(layer, client_w, client_h, gfx);
@@ -615,6 +630,7 @@ int main(int argc, char** argv) {
   host::gcadapter_shutdown();
   host::log("metal: %llu frames presented", (unsigned long long)gx::metal_frames_presented(backend));
   host::window_set_resize_callback(nullptr);
+  if (display_awake != kIOPMNullAssertionID) IOPMAssertionRelease(display_awake);
   gx::metal_set_overlay(backend, nullptr);
   gx::metal_set_ui_pass(nullptr);
   if (host::menu_changed()) {   // what the panel changed is the launcher's next start too (launcher.ini, the keys it reads)

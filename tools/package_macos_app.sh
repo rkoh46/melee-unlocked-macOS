@@ -20,6 +20,10 @@ if [[ "$APP_NAME" != "Dashdance" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" -c "Set :CFBundleDisplayName $APP_NAME" \
     -c "Set :CFBundleIdentifier app.dashdance.macos.${APP_NAME:l}" "$APP/Contents/Info.plist"
 fi
+# The commit this app was built from, for the launcher's update check (it compares it with this repository's branch on GitHub).
+if COMMIT="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)"; then
+  /usr/libexec/PlistBuddy -c "Add :MUBuildCommit string $COMMIT" "$APP/Contents/Info.plist"
+fi
 cp "$EXE" "$APP/Contents/MacOS/Dashdance"
 cp -R "$ROOT/port/slippi_sys" "$APP/Contents/Resources/slippi_sys"
 # Replay playback: the game translated with Slippi's playback codes, a second executable the dashboard starts for

@@ -214,7 +214,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | "Play as P2/P3/P4" | host + renderer | not wired |
 | Rumble and its switch | host | active: the app's controller path (keyboard, SDL gamepads, GameCube adapter over IOKit, rumble) |
 | Button chords | host | active: Start + D-pad Down/Up + Z (ui/chords_mac.cpp, melee-unlocked's settings_chord.h) |
-| Background input | host | not wired |
+| Background input | host | active: settings.ini `background_input` (on by default, as upstream) with a row on the panel's Game page; off, every controller port reads neutral while another window has focus (port/runtime/host/window_sdl.cpp); the keyboard only counts with focus either way. Not tried by hand |
 
 ## 8. Display
 
@@ -273,9 +273,9 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Settings file | host | active: what the panel changes is saved to launcher.ini for the next start |
 | Pause menu on Esc | renderer | active: Escape opens the settings panel |
 | "Settings: F1" reminder | renderer | not wired |
-| Frame counter and performance graph | renderer | not wired |
-| Player nicknames above fighters | renderer | not wired |
-| Controller input overlay | renderer | not wired |
+| Frame counter and performance graph | renderer | active: settings.ini `showfps 1` (presented and game frames a second, simulation time) and `performance 1` (the last seconds of simulation time), the overlays module (fe/features/overlays.cpp, fe/overlay_draw.cpp); seen in a playback screenshot |
+| Player nicknames above fighters | renderer | wired: settings.ini `playernicknames 1` draws the netplay host's names over the fighters online (the overlays module); not run online on the Mac |
+| Controller input overlay | renderer | active: settings.ini `inputoverlay 1` with `inputoverlayvalues`, `inputoverlaystick`, `inputoverlayports`, `inputoverlayhideborder` (the overlays module); seen in a playback screenshot. Fixed place (no dragging) |
 | Note when skins are off online | renderer | not wired |
 | Accessibility-type options | see sections 4, 8 | not wired |
 | Text size or colour-blind setting | n/a | not wired |
@@ -298,7 +298,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | RVZ and WIA conversion | launcher | not wired (left out: the Mac app is built from source) |
 | CISO, GCZ | launcher | not wired |
 | Pipeline precompile page | launcher | not wired |
-| Update check and one-click update | launcher + host + external | not wired (left out: the Mac app is built from source) |
+| Update check and one-click update | launcher + host + external | partial: the launcher's Play page compares the commit the app was built from (Info.plist MUBuildCommit, written by tools/package_macos_app.sh) with this repository's branch on GitHub (rkoh46/melee-unlocked-macOS, never melee-unlocked's updater) and says "N newer changes on GitHub" with How to update (the install line again) or "up to date"; `MELEE_UPDATE_CHECK=0` turns it off. No one-click update (the app is built from source) |
 | Version rollback | launcher | not wired (left out: the Mac app is built from source) |
 | Optional part downloads | launcher + host + external | not wired |
 | Lab view and Pro AI asset downloads | host + external | not wired |
@@ -310,7 +310,7 @@ melee-unlocked's x86-64 references, in the headless runner and in the app with p
 | Melee 3D | launcher | not wired |
 | Replay library | launcher | partial: the launcher's Replays page lists the games and Watch plays one in the melee-unlocked engine (`--replay`, the replays module with its viewer); no library page of its own |
 | Replay stats | launcher | partial: the replays module's coach tips are logged at playback (fe/features/replay_coach_glue.cpp); no stats page |
-| Watch live | launcher | not wired |
+| Watch live | launcher | active: the launcher's Replays page Watch live follows the Slippi Launcher's spectate folder (its Settings spectateSlpPath, else rootSlpPath/Spectate, else ~/Documents/Slippi/Spectate) and opens each new game file as it appears; the engine plays a file still being written, waiting at the top of each frame for it to arrive and ending at Game End or after 30 s without growth (replays.cpp, after melee-unlocked's source_host.cpp). Tested with tools/mac/slp_live_writer.py: a 7202-frame game written at 3x played to its Game End (0 differ); one written slower than real time waited for its frames and ended when it stopped growing. Not tried with the Slippi Launcher itself |
 | Multiplayer Lobby | launcher + external | not wired |
 | Hosted lobby service | launcher | not wired |
 | Slippi account line | launcher | not wired |
@@ -353,7 +353,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 
 | ID | Item | Mac status and port note |
 |---|---|---|
-| M1 | Replays: "Open replay" (browse) | not wired; easy: NSOpenPanel / drag onto the app |
+| M1 | Replays: "Open replay" (browse) | active: the launcher's Replays page "Open a replay..." (an open panel for .slp and .slpz) |
 | M2 | Replays: "Compress all replays now (.slpz)" | not wired; easy |
 | M3 | Replays: refuse a replay played on a mod stage | not wired; easy |
 | M4 | Replays: content fingerprint check | not wired; easy |
@@ -365,8 +365,8 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M10 | Pack skin rule online: look-only costumes stay on | active: in a session that can go online a mod profile serves only its costumes that pass melee-unlocked's own pack skin rule and skeleton check (compiled from the fetched tree's pack_skin_rule.* and cosmetic_mods.cpp), in their online form (the standard rest pose bit for bit). `mu-engine/tools/app_skins_test.sh`: a costume nudged by 1e-4 `stays on online (67 joints match)`, one moved by 5 units `the standard costume online (Skeleton joint 1 rest pose differs from the vanilla costume (moved).)` |
 | M11 | Stage graft: mod stage meshes on the original stage online | not wired; hard |
 | M12 | Alternate stage pick by held buttons | not wired; medium |
-| M13 | Keep the display awake during controller-only play | not wired; easy: IOPMAssertion (Dashdance may already do this) |
-| M14 | Mouse cursor hides over the game | not wired; easy: NSCursor hide/unhide on idle |
+| M13 | Keep the display awake during controller-only play | active: the engine holds a PreventUserIdleDisplaySleep assertion while its window is up (mu_play_main.cpp; `power: the display stays awake while the game runs`) |
+| M14 | Mouse cursor hides over the game | active: the pointer hides after two seconds at rest over the focused game window and shows while the settings panel is open (window_sdl.cpp, melee-unlocked's cursor_idle rule) |
 | M15 | Settings-panel controller ownership rules | not wired; easy |
 | M16 | Game calendar date from the real clock | not wired; easy |
 | M17 | DSP coefficient table, player dump first | not wired; easy |
@@ -385,7 +385,7 @@ ID). All are not wired on the Mac unless the status says otherwise; the note is 
 | M30 | Launcher replay choice honoured by direct starts | not wired; easy if a launcher and game are separate |
 | M31 | Windows audio session details | not wired; n/a (CoreAudio has no ducking) |
 | M32 | Replay viewer mute | not wired; easy |
-| M33 | Alt+Enter fullscreen toggle | not wired; easy: Cmd+Ctrl+F / green button |
+| M33 | Alt+Enter fullscreen toggle | active: Control-Command-F (the Mac's shortcut) and Alt+Return toggle full screen, and the green button works as everywhere; the panel's Fullscreen row follows the window and launcher.ini keeps it |
 | M34 | "Reset CPU training options" button | not wired; easy |
 | M35 | Lobby state files | not wired; medium |
 | M36 | Release start scripts | not wired; n/a (Dashdance has its own playback app) |

@@ -12,7 +12,8 @@
 //   - Zelda starts as Sheik (command 0xDE; key zelda_as_sheik);
 //   - offline Squad Strike (key squad_strike, off by default; patches/0006: the game asks test_getenv("MU_SQUAD_STRIKE"));
 //   - Slippi 3.7.0 input suggestions online (key input_suggestions, default on as upstream; the netplay object asks
-//     mu_net_suggest_setting at each online game's start: patches/net-0001, play_io.cpp mu_net_suggest_read).
+//     mu_net_suggest_setting at each online game's start: patches/net-0001, mu_play_main.cpp suggest_read);
+//   - mumac: Background input (key background_input, on by default as upstream; window_sdl.cpp).
 // Upstream's online rules: the input delay, Zelda as Sheik and the Training bits are offline only. Automatic
 // L-cancel is allowed offline and in Direct upstream (host/lcancel_policy.h); here it is offline only,
 // because this host does not know which pad drives the local fighter in a netplay match. Shield colours
@@ -28,6 +29,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+namespace host { void window_set_background_input(bool on); }   // port/runtime/host/window_sdl.cpp
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -56,6 +58,7 @@ bool zelda_sheik = false;
 bool squad_strike = false;
 bool dsp_lowpass = false;          // the console's DSP low-pass on voices (upstream MELEE_AUDIO_POLYPHASE, off by default as upstream)        // offline Squad Strike in ordinary VS (Z on the select adds fighters); patches/0006
 std::atomic<bool> input_suggestions{true};
+bool background_input = true;      // mumac: controllers play while another window is in front (melee-unlocked's Game option)
 
 uint32_t colour_value(const std::string& value) {
   return value == "-" || value.empty() || value == "0" ? 0u : 0x1000000u | (uint32_t(std::strtoul(value.c_str(), nullptr, 16)) & 0xFFFFFFu);
@@ -70,6 +73,7 @@ bool setting(const std::string& key, const std::string& value) {
   else if (key == "squad_strike") squad_strike = value == "1";
   else if (key == "dsp_lowpass") dsp_lowpass = value == "1";
   else if (key == "input_suggestions") input_suggestions = value != "0";
+  else if (key == "background_input") { background_input = value != "0"; host::window_set_background_input(background_input); }
   else return false;
   return true;
 }
@@ -394,6 +398,9 @@ void register_options() {
   add_menu_entry({"Game", "Input suggestions (online, next game)", [] { return on_off(input_suggestions.load()); },
                   [](int) { input_suggestions = !input_suggestions.load(); }, nullptr,
                   [](fe::features::MenuEntry::Write w) { w("input_suggestions", input_suggestions.load() ? "1" : "0"); }});
+  add_menu_entry({"Game", "Background input (controllers play while another window is in front)", [] { return on_off(background_input); },
+                  [](int) { background_input = !background_input; host::window_set_background_input(background_input); }, nullptr,
+                  [](fe::features::MenuEntry::Write w) { w("background_input", background_input ? "1" : "0"); }});
 }
 }  // namespace fe::features
 
