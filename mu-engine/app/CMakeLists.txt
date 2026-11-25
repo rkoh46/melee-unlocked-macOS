@@ -112,7 +112,7 @@ execute_process(COMMAND bash "${FE}/gen_fe.sh" "${MU_TREE}" "${FE_GEN}" RESULT_V
 if(NOT _fe_rc EQUAL 0)
   message(FATAL_ERROR "melee-unlocked engine: fe/gen_fe.sh could not take its files from ${MU_TREE}")
 endif()
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FE}/gen_fe.sh" "${FE}/patches/0118-jukebox-on-the-mac.patch" "${FE}/patches/0112-phillip-ai-own-engine.patch"
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FE}/gen_fe.sh" "${FE}/patches/0118-jukebox-on-the-mac.patch" "${FE}/patches/0122-user-gecko-on-the-mac.patch" "${FE}/patches/0112-phillip-ai-own-engine.patch"
   "${FE}/patches/0113-practice-menu-download-question.patch" "${FE}/proai/catalog.json")
 file(READ "${FE}/proai/catalog.json" _proai_catalog)
 file(WRITE "${FE_GEN}/proai_catalog.cpp.new"
@@ -166,6 +166,14 @@ target_include_directories(mu_jukebox BEFORE PRIVATE "${FE}/jukebox_shim")
 target_include_directories(mu_jukebox PRIVATE "${MU_TREE}/port/runtime/hle" "${MU_TREE}/port/linux" "${MU_AUDIO_DECODERS}" "${MU_TREE}/port/runtime/host")
 target_compile_options(mu_jukebox PRIVATE -O2 -g -fno-strict-aliasing)
 set_source_files_properties("${FE}/media_decode.cpp" PROPERTIES COMPILE_OPTIONS "-w")   # the decoders' own warnings
+# The player's Gecko codes (fe/features/gecko.cpp): melee-unlocked's user_gecko.cpp (gen/fe/gecko: fe/gen_fe.sh's copy with
+# fe/patches/0122) on fe/gecko_shim/gecko_host_shim.h; its variable table (user_gecko_targets.h) and function tables from the fetched tree.
+add_library(mu_gecko OBJECT "${FE_GEN}/gecko/user_gecko.cpp")
+set_target_properties(mu_gecko PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
+target_include_directories(mu_gecko BEFORE PRIVATE "${FE}/gecko_shim")
+target_include_directories(mu_gecko PRIVATE "${MU_TREE}/port/runtime/host" "${MU_TREE}/sourceport/game/shim")
+target_compile_definitions(mu_gecko PRIVATE MELEE_NO_SLIPPI MNX_NO_FUNCTION_PATCHES)
+target_compile_options(mu_gecko PRIVATE -O2 -g -fno-strict-aliasing)
 set(_mu_fe_ui_sources "${FE}/app_menu.cpp" "${FE}/overlay_draw.cpp" "${FE_GEN}/proai/practice_menu.cpp" "${FE}/proai/practice_overlay.cpp")
 set_source_files_properties("${FE}/overlay_draw.cpp" PROPERTIES INCLUDE_DIRECTORIES "${FE};${FE_GEN};${DD}/host")
 set_source_files_properties("${FE}/controls.cpp" "${FE}/controls_files.cpp" PROPERTIES INCLUDE_DIRECTORIES "${MU_UI};${FE};${MU_TREE}/port/linux;${MU_TREE}/port/runtime/abi;${DD}/host;${MU_TREE}/port/runtime/host")
@@ -197,7 +205,7 @@ add_custom_command(OUTPUT "${MU_OUT}/netplay.o" COMMAND bash "${MU_REPO}/mu-engi
   COMMENT "melee-unlocked engine: the netplay object" VERBATIM)
 add_custom_target(mu_netplay_object DEPENDS "${MU_OUT}/netplay.o")
 add_dependencies(melee_unlocked_mac mu_netplay_object)
-target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_jukebox mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
+target_link_libraries(melee_unlocked_mac PRIVATE mu_host_mac mu_imgui mu_modinstall_objs mu_fe mu_proai mu_jukebox mu_gecko mu_zstd curl native_animation "${MU_OUT}/netplay.o" iconv ${AURORA_SDL3_TARGET} z
   "-framework AppKit" "-framework Foundation" "-framework Metal" "-framework QuartzCore" "-framework CoreText"
   "-framework CoreGraphics" "-framework IOKit" "-framework GameController" "-framework MetalFX" "-framework AudioToolbox" "-framework CoreAudio")
 set_target_properties(melee_unlocked_mac PROPERTIES OUTPUT_NAME "MeleeUnlockedEngine")

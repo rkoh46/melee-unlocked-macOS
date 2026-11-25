@@ -38,3 +38,9 @@ mkdir -p "$gen/jukebox" "$work/jb/port/runtime/hle"
 perl -pe 's/\r$//; s/^\xEF\xBB\xBF// if $. == 1' "$mu/port/runtime/hle/jukebox.cpp" > "$work/jb/port/runtime/hle/jukebox.cpp"
 patch -s -p1 -d "$work/jb" < "$here/patches/0118-jukebox-on-the-mac.patch"
 put "$work/jb/port/runtime/hle/jukebox.cpp" "$gen/jukebox/jukebox.cpp"
+# The player's Gecko codes (fe/features/gecko.cpp): melee-unlocked's user_gecko.cpp, LF, with patches/0122 (the shim host header and
+# the include paths of a copy), as Melee-NX-NetPlay's build.sh sync makes it.
+mkdir -p "$gen/gecko" "$work/gk/port/runtime/host"
+perl -pe 's/\r$//; s/^\xEF\xBB\xBF// if $. == 1' "$mu/port/runtime/host/user_gecko.cpp" > "$work/gk/port/runtime/host/user_gecko.cpp"
+patch -s -p1 -d "$work/gk" < "$here/patches/0122-user-gecko-on-the-mac.patch"
+put "$work/gk/port/runtime/host/user_gecko.cpp" "$gen/gecko/user_gecko.cpp"
