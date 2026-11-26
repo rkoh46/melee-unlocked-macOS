@@ -152,3 +152,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - The in-game panel keeps its closed sections closed at the next start (A66, launcher.ini `panel_closed`); `app_panel_sections_test.sh` with the `MELEE_TEST_SECTION_CLICK` test aid.
 - MSAA without black specks: rasterized colours clamped as the console does, varyings at the centroid; `app_graphics_test.sh msaa` counts specks (`specks.py`).
 - Diet Classic, Diet 64 and Crystal looks draw with the discs Get mod looks built (look pack, as on the Switch); `look_chosen` tells presets that share parts apart; `app_modlooks_test.sh` lookpack.
+- `app_tmce_test.sh` osd: the Switch's tmce-osd on the Mac (match inputs as `@match`); TM-CE's on-screen displays checked against the Switch's pictures.
