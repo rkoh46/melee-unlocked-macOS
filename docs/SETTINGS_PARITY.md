@@ -40,7 +40,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | Anti-aliasing (`msaa / ssaa`) | Panel: Video | There | in-game panel > VIDEO > Picture (Anti-aliasing (MSAA), Quality preset); VIDEO > Display row hidden; MSAA no longer leaves black specks (MAC_FIXES 11) |
 | Anisotropic filtering (`anisotropy`) | Panel: Video | There | in-game panel > VIDEO > Display (Anisotropic filtering); VIDEO > Picture Quality preset |
 | Get mod looks (Install: Diet Melee / Animelee / Animelee x DBZ) (`-`) | Panel: Video > Get mod looks | N/A | Windows-only (xdelta3.exe tool, ShellExecute); hidden in YouGame app |
-| Look (`- (sets lightweight + look_* keys)`) | Panel: Video > Low-Detail Modes | There | in-game panel > GAME > Looks |
+| Look (`- (sets lightweight + look_* keys)`) | Panel: Video > Low-Detail Modes | There | in-game panel > GAME > Looks; Diet Classic, Diet 64 and Crystal draw with the built disc from Get mod looks when there is one (fe/mods.cpp), `look_chosen` keeps Diet 64 / 64 Style and Diet Classic / Classic Style apart (Settings window and panel) |
 | Crystal fighter colors (`- (look preset 5/6)`) | Panel: Video > Low-Detail Modes | Added | with a Crystal look, switches between Crystal (original colours) and Crystal (player colours), presets 5 and 6: the Settings window's Look rows and the panel's Looks > Crystal fighter colours |
 | Visual effects (`effects`) | Panel: Video > Low-Detail Modes | There | in-game panel > GAME > Looks |
 | Lightweight (`lightweight`) | Panel: Video > Low-Detail Modes > Advanced lightweight levels | There | in-game panel > GAME > Looks |

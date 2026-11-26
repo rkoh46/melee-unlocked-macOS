@@ -22,6 +22,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "frontend.h"
 #include "feature_calls.h"
+#include "looks_live.h"          // the Diet and Crystal presets use a built look pack (mods_configure)
 
 #include "host_services.h"
 #include "hackpack_source.h"     // melee-unlocked (fetched tree): the Hack Pack's host side, header only
@@ -432,8 +433,25 @@ void mods_configure_costumes(const std::string& profile) {
 }
 
 // Before the host starts: which layers, and which memory card folder. Returns that folder (empty: no profile).
-std::string mods_configure(const std::string& profile) {
+std::string mods_configure(const std::string& profile_in, bool look_pack_allowed) {
   configured = true;
+  std::string profile = profile_in;
+  bool look_pack = false;
+  if (profile.empty() && look_pack_allowed) {
+    // The Diet and Crystal look presets draw with the player's own build of that artwork when Get mod looks has made it
+    // (features/modlooks.cpp: Mods/diet-classic, diet-64, crystal), as on the Switch (its src/mods.cpp): that disc's files over the
+    // retail ones offline, on the ordinary memory card (it is a look, not a mod); an online mode gets the retail files back
+    // through the content view (0xF5) as every profile does. Without the build the built-in stand-ins draw the preset.
+    static const char* const kPack[] = {nullptr, nullptr, nullptr, "diet-classic", "diet-64", "crystal", "crystal"};
+    static const char* const kDisc[] = {nullptr, nullptr, nullptr, "Diet Classic.iso", "Diet 64.iso", "Crystal.iso", "Crystal.iso"};
+    const int preset = fe::looks::preset_of();
+    if (preset >= 3 && preset <= 6) {
+      const std::string disc = options.out_dir + "/Mods/" + kPack[preset] + "/" + kDisc[preset];
+      struct stat st{};
+      if (stat(disc.c_str(), &st) == 0) { profile = kPack[preset]; look_pack = true; say("mods: the look preset %d draws with your build of its artwork (%s)", preset, disc.c_str()); }
+      else say("mods: the look preset %d has no build of its artwork (Get mod looks); the built-in stand-in draws it", preset);
+    }
+  }
   if (profile.empty()) return {};
   profile_name = profile;
   mods_dir = options.out_dir + "/Mods";   // mumac: the launcher's Mods folder (the Switch app has <out>/mods)
@@ -447,6 +465,7 @@ std::string mods_configure(const std::string& profile) {
     at = comma + 1;
   }
   if (layers.empty()) { say("mods: profile \"%s\": no layers found under %s (Profiles/<name>.ini or the folder <name>/); playing the retail game", profile.c_str(), mods_dir.c_str()); profile_name.clear(); return {}; }
+  if (look_pack) { say("mods: look pack \"%s\", %zu layers, the ordinary memory card", profile.c_str(), layers.size()); card_dir.clear(); return {}; }
   say("mods: profile \"%s\", %zu layers, memory card folder %s", profile.c_str(), layers.size(), card_dir.c_str());
   return card_dir;
 }

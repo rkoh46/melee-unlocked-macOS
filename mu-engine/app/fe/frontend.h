@@ -87,7 +87,7 @@ uint32_t& settings_te_word(int which);       // 1 or 2
 int& settings_te_music();
 void settings_state_changed();
 // mods.cpp (play mode)
-std::string mods_configure(const std::string& profile);   // before the host starts; the profile's memory card folder
+std::string mods_configure(const std::string& profile, bool look_pack_allowed = true);   // before the host starts; the profile's memory card folder
 void mods_configure_costumes(const std::string& profile);  // a session that can go online: only the profile's look-only costumes
 void mods_session_can_go_online();                        // skins are served in their online form (features/cosmetics.cpp)
 bool mods_te_owned();

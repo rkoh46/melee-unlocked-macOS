@@ -285,6 +285,12 @@ const char* const kLookKeys[] = {"lightweight", "look_fighter", "look_stage", "l
 int look_part(const LookPreset& p, int i) { const int v[] = {p.lw, p.fighter, p.stage, p.menus, p.unfiltered, p.colours, p.background, p.effects}; return v[i]; }
 int engine_int(const char* key) { return engine_has(key) ? std::atoi(host::engine_setting(key).c_str()) : 0; }
 int current_look() {
+  // The engine's look_chosen first (fe/looks_live.h): Diet 64 and 64 Style, Diet Classic and Classic Style share their parts.
+  if (const int c = engine_int("look_chosen"); c >= 0 && c < int(sizeof kLooks / sizeof kLooks[0])) {
+    bool same = true;
+    for (int k = 0; k < 8 && same; ++k) same = engine_int(kLookKeys[k]) == look_part(kLooks[c], k);
+    if (same) return c;
+  }
   for (int i = 0; i < int(sizeof kLooks / sizeof kLooks[0]); ++i) {
     bool same = true;
     for (int k = 0; k < 8 && same; ++k) same = engine_int(kLookKeys[k]) == look_part(kLooks[i], k);
@@ -378,7 +384,10 @@ const std::vector<const char*> kIcons = {"display", "speaker.wave.2", "gamecontr
     case E:
       if (std::string(r.key) == "look") {   // the preset's parts, as the engine's Look row saves them
         const int i = std::atoi(v.c_str());
-        if (i >= 0 && i < int(sizeof kLooks / sizeof kLooks[0])) for (int k = 0; k < 8; ++k) host::set_engine_setting(kLookKeys[k], std::to_string(look_part(kLooks[i], k)));
+        if (i >= 0 && i < int(sizeof kLooks / sizeof kLooks[0])) {
+          for (int k = 0; k < 8; ++k) host::set_engine_setting(kLookKeys[k], std::to_string(look_part(kLooks[i], k)));
+          host::set_engine_setting("look_chosen", std::to_string(i));   // which of the presets that share parts (Diet 64 / 64 Style ...)
+        }
         [self build];
         break;
       }

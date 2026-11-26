@@ -46,3 +46,28 @@ run diet 0
 # A page that asks for a person (no download address): the install stops and says so.
 printf '<html><body>Please complete the security check to continue.</body></html>\n' > "$fx/$(san "$ap")"
 run person 1
+# The Diet and Crystal look presets draw with the built disc (fe/mods.cpp, as the Switch's lookpack case): look 3 (Diet Classic)
+# with a disc in Mods/diet-classic loads it offline on the ordinary card; without one the built-in stand-in draws it. No real
+# Diet disc is here, so a mod disc stands in (MU_LOOKPACK_DISC, default the Akaneia disc beside the game disc, as on the
+# Switch): its character select (pictures at the select, frame 800) shows the served files.
+standin="${MU_LOOKPACK_DISC:-$(dirname "$iso")/mods/akaneia/akaneia.iso}"
+[ -f "$standin" ] || standin="$(ls "$(dirname "$iso")"/mods/akaneia/*.iso 2> /dev/null | head -1)"
+if [ -f "$standin" ]; then
+  python3 -I "$here/play_vs_script.py" "$repo/build/mu-engine/mu/port/scripts/parity_vs_onett.txt" "$root/vs.txt"
+  for c in lookpack lookpack-none; do
+    dir="$root/$c"; mkdir -p "$dir/melee-unlocked"; printf 'look 3\n' > "$dir/melee-unlocked/settings.ini"
+    [ $c = lookpack ] && { mkdir -p "$dir/melee-unlocked/Mods/diet-classic"; cp -c "$standin" "$dir/melee-unlocked/Mods/diet-classic/Diet Classic.iso" 2> /dev/null || cp "$standin" "$dir/melee-unlocked/Mods/diet-classic/Diet Classic.iso"; }
+    MELEE_CAPTURE_BURST=800,1 MELEE_UPDATE_CHECK=0 MELEE_NO_FINDER=1 timeout 600 "$engine" --iso "$iso" --profile-dir "$dir" --offline --hidden --volume 0 \
+      --no-audio-device --no-record --frames 820 --play-script "$root/vs.txt" > "$dir/log" 2>&1
+    echo "$c: engine exit $?"; grep -hE "mods: (the look preset|look pack|.*files replaced)" "$dir/log" | sed 's/^\[ *[0-9.]*\] //'
+    rm -f "$dir/melee-unlocked/Mods/diet-classic/Diet Classic.iso"
+  done
+  python3 -I - "$root" <<'PY'
+import sys
+def read(p):
+    d = open(p, "rb").read(); parts = d.split(maxsplit=4); w, h = int(parts[1]), int(parts[2]); return d[len(d) - w * h * 3:]
+a, b = read(sys.argv[1] + "/lookpack/melee-unlocked/capture/blink_00800.ppm"), read(sys.argv[1] + "/lookpack-none/melee-unlocked/capture/blink_00800.ppm")
+n = min(len(a), len(b)); px = sum(1 for i in range(0, n - 2, 3) if a[i:i+3] != b[i:i+3])
+print("lookpack: the character select with the built disc differs from the stand-in look's in %.1f%% of pixels" % (100.0 * px / (n / 3)))
+PY
+else echo "lookpack: skipped (no mod disc to stand in for the Diet build; set MU_LOOKPACK_DISC)"; fi

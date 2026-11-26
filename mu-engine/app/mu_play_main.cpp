@@ -529,7 +529,7 @@ int main(int argc, char** argv) {
     const bool can_go_online = !offline && !vanilla && !sys_dir.empty();
     if (can_go_online && !fe::settings_profile().empty())
       host::log("play: mod profile \"%s\" is not loaded: this session can go online (start offline to play it; its look-only costumes stay)", fe::settings_profile().c_str());
-    profile_card = fe::mods_configure(can_go_online || vanilla ? std::string() : fe::settings_profile());
+    profile_card = fe::mods_configure(can_go_online || vanilla ? std::string() : fe::settings_profile(), !vanilla);   // !vanilla: a Diet or Crystal look's built pack
     // A session that can go online: skins in their online form, and of a mod profile only its look-only costumes (MU's pack
     // skin rule, fe/features/cosmetics.cpp), as on the Switch.
     if (can_go_online) { fe::mods_session_can_go_online(); if (!fe::settings_profile().empty()) fe::mods_configure_costumes(fe::settings_profile()); }

@@ -38,6 +38,10 @@ struct Live {
   // flash_on: a renderer flash mode is chosen, so the game marks draw owners.
   std::atomic<uint32_t> flash[6] = {};
   std::atomic<bool> flash_on{false};
+  // The preset last chosen (settings.ini look_chosen, as on the Switch): presets that share their parts (Diet 64 and 64 Style,
+  // Diet Classic and Classic Style; upstream tells them apart by the mod artwork) are named and served by the one chosen while
+  // the parts still match it. It decides which built look pack a Diet or Crystal preset loads (fe/mods.cpp).
+  std::atomic<int> preset_chosen{-1};
   std::atomic<uint64_t> flashed{0};                      // draws the flash tinted (render thread; logged at the end)
   std::atomic<bool> true_widescreen{false};              // settings.ini truewidescreen: the renderer widens to 16:9 (bridge, patches/0116)
   std::atomic<uint8_t> scene_major{0};                   // the scene of the newest frame the renderer converted (the opening movie stays 4:3)
@@ -109,15 +113,20 @@ inline void apply_preset(int index) {
   l.lightweight.store(uint8_t(p[index].lightweight)); l.fighter.store(uint8_t(p[index].fighter)); l.stage.store(uint8_t(p[index].stage));
   l.menus.store(uint8_t(p[index].menus)); l.unfiltered.store(p[index].unfiltered); l.colours.store(uint8_t(p[index].colours));
   l.background.store(uint8_t(p[index].background)); l.effects.store(uint8_t(p[index].effects));
+  l.preset_chosen.store(index);
 }
 // The preset the current parts match, or -1 (Custom).
-inline int preset_of() {
+inline bool preset_matches(int i) {
   int n = 0; const Preset* p = presets(&n);
+  if (i < 0 || i >= n) return false;
   const Live& l = live();
-  for (int i = 0; i < n; ++i)
-    if (load(l.lightweight) == p[i].lightweight && load(l.fighter) == p[i].fighter && load(l.stage) == p[i].stage && load(l.menus) == p[i].menus &&
-        l.unfiltered.load() == p[i].unfiltered && load(l.colours) == p[i].colours && load(l.background) == p[i].background && load(l.effects) == p[i].effects)
-      return i;
+  return load(l.lightweight) == p[i].lightweight && load(l.fighter) == p[i].fighter && load(l.stage) == p[i].stage && load(l.menus) == p[i].menus &&
+         l.unfiltered.load() == p[i].unfiltered && load(l.colours) == p[i].colours && load(l.background) == p[i].background && load(l.effects) == p[i].effects;
+}
+inline int preset_of() {
+  int n = 0; presets(&n);
+  if (preset_matches(live().preset_chosen.load())) return live().preset_chosen.load();
+  for (int i = 0; i < n; ++i) if (preset_matches(i)) return i;
   return -1;
 }
 
