@@ -157,3 +157,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - Lab dummy DI, after-hitstun reaction and tech (`lab_di`, `lab_react`, `lab_tech`, Training rows; Melee-NX-NetPlay 0.4.8's training.cpp); `app_lab_dummy_test.sh`.
 - CISO and GCZ discs converted once at start into GALE01.iso (`mu-engine/app/disc_ciso_gcz.cpp` from Melee-NX-NetPlay 0.4.8); the launcher's disc chooser takes .gcz and .wia too; `ciso_gcz_check.sh`.
 - `app_subframe_tick_test.sh`: sub-frame re-posing skipped at one present per game frame (D53, already in fe/features/present), checked at 60 and 120 fps caps.
+- `app_alt_stage_test.sh` and `make_alt_stage_disc.py` (from Melee-NX-NetPlay, with a STAGE argument): a held L picks a mod profile's stage alternate (M12, already in fe/features/cosmetics.cpp).
