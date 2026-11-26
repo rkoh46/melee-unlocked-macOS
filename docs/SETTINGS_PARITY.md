@@ -10,9 +10,9 @@ settings…, `port/runtime/host/mu_settings_window.mm`, grouped as melee-unlocke
 |---|---|---|
 | There | 231 | The Mac app already had it with a working effect (location in Notes). |
 | There, row added | 24 | The engine already honoured the key but nothing let the player change it; now a row. |
-| Added | 13 | New in this change, with its effect in the engine or launcher. |
+| Added | 15 | New in this change, with its effect in the engine or launcher. |
 | Not added | 0 | Applies on the Mac but is not there yet (reason in Notes). |
-| N/A | 98 | Cannot apply on the Mac (Windows APIs, NVIDIA, the Static Recomp, melee-unlocked-only network features, internal markers). Not shown. |
+| N/A | 96 | Cannot apply on the Mac (Windows APIs, NVIDIA, the Static Recomp, melee-unlocked-only network features, internal markers). Not shown. |
 | Excluded | 21 | Left out on purpose: YouGame, the BitTorrent Multiplayer Lobby, crash upload to melee-unlocked's relay. |
 
 
@@ -135,7 +135,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | ON/OFF per installed pack (`texpackoff`) | Panel: Video > HUD and texture packs | There | in-game panel > VIDEO > Picture |
 | Use looping MP4 backgrounds (`videobackgrounds`) | Panel: Video > Animated menu backgrounds | There | in-game panel > VIDEO > Picture |
 | CSS texture target / SSS texture target (+ Relearn CSS/SSS) (`-`) | Panel: Video > Animated menu backgrounds | There | the Mac video background module finds the menu textures itself (videobackgrounds) |
-| Advanced (group open/closed) (`advancedvideo`) | Panel: Video > Advanced | N/A | remembers whether a group is open; the Mac panel and window show every row |
+| Advanced (group open/closed) (`advancedvideo`) | Panel: Video > Advanced | Added | every section of the in-game panel stays open or closed between starts (launcher.ini `panel_closed`, ui/mu_panel.cpp section_remembered); `app_panel_sections_test.sh` |
 | Reflex flash indicator (`reflexflash`) | Panel: Video > Advanced | N/A | Windows-only (NVIDIA Reflex, D3D12) |
 | Display latency test (`latencytest`) | Panel: Video > Advanced | There | in-game panel > OVERLAYS > Overlays |
 | Lossless adapter lag test (next launch only) (`lagtestnext`) | Panel: Video > Advanced | There | in-game panel > VIDEO > Advanced |
@@ -281,7 +281,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | P1 P2 P3 P4 (`inputoverlayports`) | Panel: Overlays | There | in-game panel > OVERLAYS > Overlays |
 | Hide background (`inputoverlayhideborder`) | Panel: Overlays | There | in-game panel > OVERLAYS > Overlays |
 | - (overlay position/size, set by dragging) (`inputoverlayrect0..3`) | Panel: Overlays | N/A | position by dragging; the Mac input display has a fixed place and the Size row |
-| Advanced (group open/closed) (`advancedoverlays`) | Panel: Overlays > Advanced | N/A | same as advancedvideo |
+| Advanced (group open/closed) (`advancedoverlays`) | Panel: Overlays > Advanced | Added | same as advancedvideo |
 | Render latency (under the FPS) (`reflexstats`) | Panel: Overlays > Advanced | N/A | Windows-only (Reflex/driver latency report) |
 | Skip the 3D scene underneath (`labskipscene`) | Panel: Overlays > Advanced | N/A | Static Recomp only; the Mac runs the Source Port |
 | Enable Legacy Menu (F11) (`legacymenu`) | Panel: Customize | There | in-game panel > CUSTOMIZE > Legacy menu |

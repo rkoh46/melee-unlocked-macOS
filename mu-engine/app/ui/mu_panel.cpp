@@ -877,6 +877,45 @@ void draw_remap(int w, int h) {
   ImGui::End();
 }
 
+// ---- sections kept closed between launches (A66) ----
+// Upstream's sections (pc_settings_visuals.inl settings_section) open and close by a click on their header and keep that in
+// ImGui's state storage, so every start opens them all again; its two Advanced groups alone are kept (advancedvideo,
+// advancedoverlays). Here every section is: launcher.ini `panel_closed` lists the closed ones as "<page>:<title>" joined by
+// '|'. Called around settings_section with the same ID stack it uses: before, the stored state goes into ImGui's storage (once
+// per launch and section); after, a change is written back. Not during a search (sections are not drawn then).
+std::set<std::string> g_closed_sections, g_seeded_sections;
+bool g_closed_loaded = false;
+void section_remembered(int page, const std::string& title, bool before) {
+  if (gx::g_search) return;
+  if (!g_closed_loaded) {
+    g_closed_loaded = true;
+    std::stringstream ss(fe::app_ini("panel_closed", ""));
+    for (std::string part; std::getline(ss, part, '|');) if (!part.empty()) g_closed_sections.insert(part);
+  }
+  ImGui::PushID("section"); ImGui::PushID(gx::g_search_page); ImGui::PushID(title.c_str());
+  const ImGuiID key = ImGui::GetID("open");
+  ImGui::PopID(); ImGui::PopID(); ImGui::PopID();
+  ImGuiStorage* storage = ImGui::GetStateStorage();
+  const std::string id = std::to_string(page) + ":" + title;
+  const bool closed = g_closed_sections.count(id) != 0;
+  if (before) {
+    if (g_seeded_sections.insert(id).second) storage->SetBool(key, !closed);
+    return;
+  }
+  // Tests (app_panel_sections_test.sh): MELEE_TEST_SECTION_CLICK=<title> clicks that section's header once, as the pointer does
+  // (the controller's navigation passes over headers, as upstream's).
+  static const char* test_click = std::getenv("MELEE_TEST_SECTION_CLICK");
+  static bool test_clicked = false;
+  if (test_click && !test_clicked && title == test_click) { test_clicked = true; storage->SetBool(key, !storage->GetBool(key, true)); }
+  const bool open = storage->GetBool(key, true);
+  if (open == !closed) return;
+  if (open) g_closed_sections.erase(id); else g_closed_sections.insert(id);
+  std::string joined;
+  for (const auto& c : g_closed_sections) joined += (joined.empty() ? "" : "|") + c;
+  fe::app_ini_set("panel_closed", joined);
+  host::log("settings: section \"%s\" %s (kept for the next start)", title.c_str(), open ? "opened" : "closed");
+}
+
 // ---- the panel's appearance (melee-unlocked's CUSTOMIZE page: menu style, palette, transparency, custom accent, legacy menu) ----
 // launcher.ini keys with upstream's names (port-settings.ini there): overlaystyle 0..5, overlaypalette0..6, settingstransparency
 // 0..65, menucustom and menuhue/menusat/menuval (its colour wheel as three sliders: no pointer on a controller), legacymenu and
@@ -1031,7 +1070,9 @@ void draw_rows(int style) {
     if (c.sections.empty() && !gx::g_search) ImGui::TextDisabled("Nothing on this page yet.");
     for (const Section& s : c.sections) {
       if (s.rows.empty()) continue;
+      section_remembered(page, s.title, true);
       gx::settings_section(s.title.c_str());
+      section_remembered(page, s.title, false);
       for (const Row& r : s.rows) {
         // A row's ID: its "###key" when it has one (a label that changes keeps its focus), else its place in the section.
         const size_t key = r.label.find("###");
