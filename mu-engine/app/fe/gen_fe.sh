@@ -44,3 +44,8 @@ mkdir -p "$gen/gecko" "$work/gk/port/runtime/host"
 perl -pe 's/\r$//; s/^\xEF\xBB\xBF// if $. == 1' "$mu/port/runtime/host/user_gecko.cpp" > "$work/gk/port/runtime/host/user_gecko.cpp"
 patch -s -p1 -d "$work/gk" < "$here/patches/0122-user-gecko-on-the-mac.patch"
 put "$work/gk/port/runtime/host/user_gecko.cpp" "$gen/gecko/user_gecko.cpp"
+# Its Gecko session (codes agreed online between two of these builds or with Melee-NX-NetPlay, fe/features/gecko.cpp), LF, with
+# patches/0141 (upstream's constant kOnlineCodes becomes the player's setting), as Melee-NX-NetPlay's build.sh sync makes it.
+perl -pe 's/\r$//; s/^\xEF\xBB\xBF// if $. == 1' "$mu/port/runtime/host/gecko_session.cpp" > "$work/gk/port/runtime/host/gecko_session.cpp"
+patch -s -p1 -d "$work/gk" < "$here/patches/0141-gecko-session-player-switch.patch"
+put "$work/gk/port/runtime/host/gecko_session.cpp" "$gen/gecko/gecko_session.cpp"

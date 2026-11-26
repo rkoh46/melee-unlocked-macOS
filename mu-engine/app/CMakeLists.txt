@@ -130,7 +130,7 @@ execute_process(COMMAND bash "${FE}/gen_fe.sh" "${MU_TREE}" "${FE_GEN}" RESULT_V
 if(NOT _fe_rc EQUAL 0)
   message(FATAL_ERROR "melee-unlocked engine: fe/gen_fe.sh could not take its files from ${MU_TREE}")
 endif()
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FE}/gen_fe.sh" "${FE}/patches/0118-jukebox-on-the-mac.patch" "${FE}/patches/0122-user-gecko-on-the-mac.patch" "${FE}/patches/0112-phillip-ai-own-engine.patch"
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${FE}/gen_fe.sh" "${FE}/patches/0118-jukebox-on-the-mac.patch" "${FE}/patches/0122-user-gecko-on-the-mac.patch" "${FE}/patches/0141-gecko-session-player-switch.patch" "${FE}/patches/0112-phillip-ai-own-engine.patch"
   "${FE}/patches/0113-practice-menu-download-question.patch" "${FE}/proai/catalog.json")
 file(READ "${FE}/proai/catalog.json" _proai_catalog)
 file(WRITE "${FE_GEN}/proai_catalog.cpp.new"
@@ -186,7 +186,9 @@ target_compile_options(mu_jukebox PRIVATE -O2 -g -fno-strict-aliasing)
 set_source_files_properties("${FE}/media_decode.cpp" PROPERTIES COMPILE_OPTIONS "-w")   # the decoders' own warnings
 # The player's Gecko codes (fe/features/gecko.cpp): melee-unlocked's user_gecko.cpp (gen/fe/gecko: fe/gen_fe.sh's copy with
 # fe/patches/0122) on fe/gecko_shim/gecko_host_shim.h; its variable table (user_gecko_targets.h) and function tables from the fetched tree.
-add_library(mu_gecko OBJECT "${FE_GEN}/gecko/user_gecko.cpp")
+add_library(mu_gecko OBJECT "${FE_GEN}/gecko/user_gecko.cpp"
+  # Codes agreed online (net/patches/net-0014): the session (with fe/patches/0141) and upstream's messages.
+  "${FE_GEN}/gecko/gecko_session.cpp" "${MU_TREE}/port/runtime/host/gecko_online.cpp")
 set_target_properties(mu_gecko PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
 target_include_directories(mu_gecko BEFORE PRIVATE "${FE}/gecko_shim")
 target_include_directories(mu_gecko PRIVATE "${MU_TREE}/port/runtime/host" "${MU_TREE}/sourceport/game/shim")

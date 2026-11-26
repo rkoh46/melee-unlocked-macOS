@@ -113,6 +113,7 @@ namespace fe::features {   // features/gecko.cpp: the player's Gecko codes (GECK
 __attribute__((weak)) std::vector<GeckoRow> gecko_rows();
 __attribute__((weak)) std::string gecko_file();
 __attribute__((weak)) void gecko_toggle(const std::string& name);
+__attribute__((weak)) std::vector<GeckoRow> gecko_online_rows();   // GECKO CODES > Online (net/patches/net-0014)
 }
 namespace fe { void mac_chords(host::PadState pads[4]); bool mac_controls_frame(host::PadState pads[4], int lane); extern thread_local bool suggestion_read; }   // features/proai.cpp: the Practice menu
 
@@ -557,6 +558,18 @@ std::array<Category, 8> build_rows(bool in_game) {
     where.text = (&fe::features::gecko_file ? fe::features::gecko_file() : std::string("GeckoCodes.ini")) +
                  ", in Dolphin's format ([Gecko], $Name, then XXXXXXXX YYYYYYYY lines). Read at each start.";
     g.rows.push_back(where);
+  }
+  // GECKO CODES > Online (features/gecko.cpp, net/patches/net-0014): codes agreed in Direct with a melee-unlocked-macOS or
+  // Melee-NX-NetPlay player.
+  if (&fe::features::gecko_online_rows) {
+    Section& g = section(cats[6], "Online (Direct, melee-unlocked-macOS or Melee-NX-NetPlay players)");
+    for (const auto& c : fe::features::gecko_online_rows()) {
+      if (c.info) { Row r; r.kind = Kind::Info; r.label = c.name; r.text = c.reason; g.rows.push_back(r); continue; }
+      Row r = toggle(c.name + "###geckoon-" + c.key, c.enabled, Action{Act::Gecko});
+      if (c.action) r.kind = Kind::Action;
+      r.action.key = c.key; r.enabled = c.supported; r.hint = c.reason;
+      g.rows.push_back(r);
+    }
   }
   // melee-unlocked's rows this Mac engine does not have yet, greyed under each page, with the reason (docs/FEATURES.md).
   static const struct { int cat; const char* label; const char* why; } kAbsent[] = {

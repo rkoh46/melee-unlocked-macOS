@@ -72,6 +72,18 @@ std::atomic<int (*)()> g_suggest_setting{nullptr};
 extern "C" int mu_net_suggest_setting(void) { auto f = g_suggest_setting.load(); return f ? f() : 0; }
 extern "C" int mu_net_suggest_read(int port, uint8_t* out) { auto f = g_suggest_read.load(); return f ? f(port, out) : 0; }
 extern "C" void mu_net_suggest_note_poll(void);   // net-0001
+// mumac: Gecko codes agreed online (net-0014). The netplay object declares mu_net_gecko_* weak and calls them by name; they are
+// defined here, local to this object, and forward to the host's hooks (set_gecko_hooks: fe/features/gecko.cpp). Without hooks
+// (the headless runner) nothing is wanted, offered or locked, as a program without them on the Switch.
+namespace { std::atomic<const netplay_bridge::GeckoHooks*> g_gecko{nullptr}; }
+extern "C" int mu_net_gecko_wanted(void) { auto h = g_gecko.load(); return h && h->wanted ? h->wanted() : 0; }
+extern "C" void mu_net_gecko_connected(int consent) { auto h = g_gecko.load(); if (h && h->connected) h->connected(consent); }
+extern "C" void mu_net_gecko_disconnected(void) { auto h = g_gecko.load(); if (h && h->disconnected) h->disconnected(); }
+extern "C" void mu_net_gecko_receive(const uint8_t* data, size_t size) { auto h = g_gecko.load(); if (h && h->receive) h->receive(data, size); }
+extern "C" size_t mu_net_gecko_take(uint8_t* out, size_t capacity) { auto h = g_gecko.load(); return h && h->take ? h->take(out, capacity) : 0; }
+extern "C" int mu_net_gecko_take_resend(void) { auto h = g_gecko.load(); return h && h->take_resend ? h->take_resend() : 0; }
+extern "C" size_t mu_net_gecko_lock(uint8_t* out, size_t capacity) { auto h = g_gecko.load(); return h && h->lock ? h->lock(out, capacity) : 0; }
+extern "C" void mu_net_gecko_match_started(void) { auto h = g_gecko.load(); if (h && h->match_started) h->match_started(); }
 namespace slippi {
 // Only the reporter's thread asks (patches/net-0008); the host's answer may wait for its replay writer.
 const std::string& last_replay_path() { static std::string path; path = g_replay_path ? g_replay_path() : std::string(); return path; }
@@ -182,6 +194,7 @@ bool handle(uint8_t command, const uint8_t* payload, uint32_t size, std::vector<
 // mumac: the host's controller read and setting for input suggestions, and its pad poll.
 void set_suggestion_hooks(int (*read)(int, uint8_t*), int (*setting)()) { g_suggest_read.store(read); g_suggest_setting.store(setting); }
 void suggestion_note_poll() { mu_net_suggest_note_poll(); }
+void set_gecko_hooks(const GeckoHooks& hooks) { static GeckoHooks kept; kept = hooks; g_gecko.store(&kept); }   // mumac: net-0014
 bool request_match(int mode, const std::string& connect_code, uint8_t character, uint8_t color) {
   if (mode <= 0 || mode > 4) return false;                  // Ranked is refused; see ranked_refusal()
   std::vector<uint8_t> ignored;

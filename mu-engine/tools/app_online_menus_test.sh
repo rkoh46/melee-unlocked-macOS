@@ -10,6 +10,8 @@
 #   MU_INI_A / MU_INI_B: extra settings.ini lines for a side ("slippi_menus 1" is always there); MU_USER_A / MU_USER_B: a folder
 #   copied into that side's user folder (mu-engine/tests/online/users/direct-a: a Direct code history); MU_ARGS_A / MU_ARGS_B:
 #   more engine options for a side (the warm-up room: MU_ARGS_A="--feature-test unranked-as-direct" with online_warmup_a/b).
+#   Gecko codes agreed online (net/patches/net-0014): MU_INI_A=tests/online/gecko_online_a.ini MU_FILES_A=tests/online/gecko_online_a
+#   (and _b) with MU_ENV_B="MU_TEST_GECKO_ACCEPT=all" and the Direct scripts; MU_GECKO_PROBE=1 in both MU_ENVs logs P1's model scale.
 #   MU_SCRIPT_PLAYS=1: the scripts' own pads play the match instead of generated buttons; with MU_SUGGEST_LEAD_MS=N each script
 #   change is also read N ms before the poll that takes it, so Slippi 3.7.0 input suggestions are sent (MU_SUGGEST_TRACE=1
 #   logs the first ones; MU_NET_SUGGESTIONS=0 turns them off).
@@ -32,10 +34,14 @@ for side, given, period, stick in (("a", sys.argv[1], 47, 80), ("b", sys.argv[2]
     open(f"{sys.argv[3]}/{side}/pads.txt", "w").write(head + "\n".join(lines) + "\n@scene" + gates)
 PY
 for side in a b; do v="MU_USER_$(echo $side | tr a-z A-Z)"; if [ -n "${!v:-}" ]; then mkdir -p "$out/$side/user"; cp -R "${!v}"/. "$out/$side/user/"; fi; done
+# MU_FILES_A / MU_FILES_B: a folder whose files are copied into that side's engine folder (tests/online/gecko_online_a: GeckoCodes.ini).
+for side in a b; do v="MU_FILES_$(echo $side | tr a-z A-Z)"; [ -n "${!v:-}" ] && cp -R "${!v}"/. "$out/$side/melee-unlocked/"; done
 # MU_COSMETICS_A: a Cosmetics folder (skins and selection.txt) copied to side a.
 [ -n "${MU_COSMETICS_A:-}" ] && cp -R "$MU_COSMETICS_A" "$out/a/melee-unlocked/Cosmetics"
-printf 'slippi_menus 1\n%b\n' "${MU_INI_A:-}" > "$out/a/melee-unlocked/settings.ini"
-printf 'slippi_menus 1\n%b\n' "${MU_INI_B:-}" > "$out/b/melee-unlocked/settings.ini"
+# MU_INI_A / MU_INI_B may also name a file of settings.ini lines (tests/online/gecko_online_a.ini).
+ini_lines() { if [ -f "$1" ]; then cat "$1"; else printf '%b\n' "$1"; fi; }
+{ echo "slippi_menus 1"; ini_lines "${MU_INI_A:-}"; } > "$out/a/melee-unlocked/settings.ini"
+{ echo "slippi_menus 1"; ini_lines "${MU_INI_B:-}"; } > "$out/b/melee-unlocked/settings.ini"
 profile='(version 1)(allow default)(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))'
 sandboxed() { sandbox-exec -p "$profile" "$@"; }
 mock_loop() { while :; do sandboxed python3 -I "$repo/tools/mac/mock_matchmaking_ws.py" "$port" ${MU_MOCK_ARGS:-}; sleep 0.2; done; }
@@ -45,7 +51,9 @@ sandbox-exec -p "$profile" python3 -I "$repo/tools/mac/mock_slippi_http.py" $hpo
 mockhttp=$!
 sleep 1
 for side in a b; do
-  MELEE_MM_LOOPBACK_PORT=$port MELEE_SERVICES_LOOPBACK_PORT=$hport sandbox-exec -p "$profile" timeout 1200 "$engine" --iso "$iso" --profile-dir "$out/$side" \
+  # MU_ENV_A / MU_ENV_B: more environment for a side ("MU_TEST_GECKO_ACCEPT=all MELEE_NET_LAG_MS=40").
+  envv="MU_ENV_$(echo $side | tr a-z A-Z)"
+  env ${!envv:-} MELEE_NO_ALERTS=1 MELEE_MM_LOOPBACK_PORT=$port MELEE_SERVICES_LOOPBACK_PORT=$hport sandbox-exec -p "$profile" timeout 1200 "$engine" --iso "$iso" --profile-dir "$out/$side" \
     --sys-dir "$repo/port/slippi_sys" --hidden --volume 0 --no-audio-device --frames "$frames" --fake-user --user-dir "$out/$side/user" --play-script "$out/$side/pads.txt" \
     $([ -n "${MU_SCRIPT_PLAYS:-}" ] && echo --fake-user-index || echo --net-inputs) $([ $side = a ] && echo 1 || echo 2) $([ $side = a ] && echo "${MU_ARGS_A:-}" || echo "${MU_ARGS_B:-}") > "$out/$side.log" 2>&1 &
   eval "pid_$side=$!"
@@ -55,7 +63,7 @@ pkill -P $mock 2>/dev/null; pkill -P $mockhttp 2>/dev/null; kill $mock $mockhttp
 echo "side a exit $ra, side b exit $rb"
 grep -h "match" "$out/mock.log" | head -4
 grep -h "mock http:" "$out/http.log" | head -12
-for side in a b; do echo "== $side"; grep -E "kept search|search:|net check|online: on|Opponent|play while|input suggestions" "$out/$side.log" | sed 's/^\[ *[0-9.]*\] //' | head -14; done
+for side in a b; do echo "== $side"; grep -E "kept search|search:|net check|online: on|Opponent|play while|input suggestions|gecko|Gecko|desync|Desync" "$out/$side.log" | sed 's/^\[ *[0-9.]*\] //' | head -${MU_LOG_LINES:-14}; done
 # The per-frame hashes both sides reached (each side stops at its own frame count): equal on every checkpoint they share.
 python3 -I - "$out/a.log" "$out/b.log" <<'PY'
 import re, sys

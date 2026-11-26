@@ -124,7 +124,7 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - `app_te_test.sh lock` (`--feature-test te-lock`, `fe/features/te_lock_test.cpp`): 20XX TE's lock settings through command 0xF8.
 - `mu-engine/tools/app_save_import_test.sh`: a profile's .gci goes onto its card once.
 - Launcher Replay Viewer: a picked game's card with melee-unlocked's stats and the session trace graph (`mu-engine/app/replay_stats_facade.cpp`), Move to Trash; `MELEE_LAUNCHER_PICK` for screenshots.
-- Netplay: `MELEE_SYNC_SMOOTH=1` (upstream's experimental smoother time sync, `mu-engine/net/patches/mac-0003`); `mu-engine/tools/slp_ranks.py` reads the ranked info and bot flags from a replay's game start.
+- Netplay: `MELEE_SYNC_SMOOTH=1` (upstream's experimental smoother time sync; now part of `mu-engine/net/patches/net-0014`); `mu-engine/tools/slp_ranks.py` reads the ranked info and bot flags from a replay's game start.
 - Keyboard key names in the game's prompts (command 0xDF from the keyboard layout, `fe/features/key_labels.cpp`).
 - `mu-engine/tools/slp_strip_codes.py`: a legacy-style copy of a replay (no Gecko list) for the legacy code list path.
 - Replays: a replay on a mod stage is refused with upstream's message (launcher and engine), and one recorded with other mod content is refused as upstream's check_replay_content does; `mu-engine/tools/slp_set_stage.py`.
@@ -147,3 +147,4 @@ All in `tools/mac/`, written up for agents in the `fix-logs` skill (`desync.md`,
 - Widescreen shape (`truewsaspect`: 16:9, 16:10, Custom `truewscustomw`:`truewscustomh`, Fit the window): the widened projection, the picture and FoD reflections follow the chosen aspect; Crystal fighter colours row on the panel's Looks page.
 - Plays as (Play as Pn) for each controller in game, Window size (`window` WxH), Discord Application ID (`discord_app_id`); `MELEE_TEST_VIRTUAL_PAD` and `MELEE_MENU_DEVICE` test aids; `discord_app_id_test.sh`.
 - Settings window: Widescreen shape, Window size, Look preset and Crystal fighter colours, Arcade preset / Reset buttons (the panel's buttons now set the combo counter too), Discord Application ID, cosmetic import (Import…, Add stage DAT…, Open folder); `MELEE_SETTINGS_IMPORT` / `MELEE_SETTINGS_PRESS` test aids; SETTINGS_PARITY.md: nothing left Not added.
+- Gecko codes agreed online in Direct with another melee-unlocked-macOS or a Melee-NX-NetPlay build (`gecko_online 1`, GECKO CODES > Online; Melee-NX-NetPlay's net-0014 and fe/patches/0141, melee-unlocked's gecko_session), its session waiting for the other build's message (`mac-0003`); `app_online_menus_test.sh` takes `MU_FILES_*`, `MU_ENV_*` and an ini file in `MU_INI_*`; the Gecko fixtures in `mu-engine/tests/online`.

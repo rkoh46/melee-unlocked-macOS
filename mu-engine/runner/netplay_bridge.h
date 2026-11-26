@@ -113,4 +113,19 @@ NETPLAY_API void replay_event(uint8_t command, const uint8_t* payload, uint32_t 
 NETPLAY_API void set_suggestion_hooks(int (*read)(int port, uint8_t out[8]), int (*setting)());
 // The game is about to read its controllers (the host's pad poll, simulation thread): a change read after this is in the next frame.
 NETPLAY_API void suggestion_note_poll();
+// Gecko codes agreed online (net/patches/net-0014, Melee-NX-NetPlay's protocol: melee-unlocked's gecko_online messages as
+// NP_MSG_NX_GECKO to a build whose build message has flag 0x40). The netplay object asks for these by name (mu_net_gecko_*);
+// they are local to it, so the host hands its own over (fe/features/gecko.cpp). Without them nothing is offered or run.
+// Simulation thread (inside the game's slippi_command), except `lock`, which the netplay object may call from its own thread.
+struct GeckoHooks {
+  int (*wanted)() = nullptr;                                   // 1: this player takes codes online (gecko_online 1)
+  void (*connected)(int consent) = nullptr;                    // a connection opened; consent: Direct 1v1 with a build that takes them
+  void (*disconnected)() = nullptr;
+  void (*receive)(const uint8_t* data, size_t size) = nullptr;
+  size_t (*take)(uint8_t* out, size_t capacity) = nullptr;     // the next message to send (0: none)
+  int (*take_resend)() = nullptr;                              // 1: send this side's selection again behind a fresh lock
+  size_t (*lock)(uint8_t* out, size_t capacity) = nullptr;     // the lock message sent before each selection
+  void (*match_started)() = nullptr;                           // the match's first frame: decide from both locks
+};
+NETPLAY_API void set_gecko_hooks(const GeckoHooks& hooks);
 }
