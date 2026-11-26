@@ -4,23 +4,28 @@
 // the original paints in WM_PAINT; the artwork (the MU mark and Bailey) is converted from the fetched tree's bitmaps at
 // build time into the bundle and never committed.
 //
-// Pages: Play (disc, Game Build, status rows, PLAY), Settings, Replay Viewer, Mods, and the launcher colour picker.
-// melee-unlocked's YouGame line, lobby, Build page and version picker are left out.
+// Pages: Play (disc, Game Build, status rows, PLAY), Settings, Multiplayer Lobby (mu_launcher_lobby.inl, at upstream's 980 x 768),
+// Replay Viewer, Mods, and the launcher colour picker. melee-unlocked's YouGame line, Build page and version picker are left out.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #import <AppKit/AppKit.h>
 #include "mac_launcher.h"
 #include "dashboard.h"
 #include "input_config.h"
 #include "mods_facade.h"
+#include "mu_lobby.h"
+#include "launcher_lang.h"        // mu-engine/lobby_shim: melee-unlocked's lobby text (its keys), in the launcher's language
+#include "launcher_lobby_p2p.h"   // the fetched tree's lobby helpers (code checks, colour counts, transports)
 
 #include <algorithm>
 #include <array>
 #include <memory>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <string>
 #include <vector>
 
@@ -63,6 +68,8 @@ void to_hsv(RGB8 c, double& h, double& s, double& v) {
 
 // Layout units of the original 720 x 480 client area.
 const CGFloat WIN_W = 720, WIN_H = 480, RAIL_W = 190, CX = 212, CW = 486, NAV_Y = 152, NAV_H = 34, NAV_GAP = 38;
+const CGFloat LOBBY_W = 980, LOBBY_H = 768;   // upstream's Lobby page size (launcher.cpp LOBBY_W, LOBBY_H)
+const int kNavTabs[5] = {0, 1, 4, 2, 3};      // the rail's rows -> pages
 NSRect LR(CGFloat x, CGFloat y, CGFloat w, CGFloat h) { return NSMakeRect(x, y, w, h); }
 
 // The original's fonts: the system message font at 12, 11 (small), 14 semibold (nav), 10 bold (labels), 21 bold (PLAY).
@@ -173,6 +180,15 @@ NSString* tx(NSString* english) {
   return t.length ? t : english;
 }
 
+}  // namespace
+// melee-unlocked's lobby looks its lines up by key (mu-engine/lobby_shim/launcher_lang.h): the launcher language's line, "" without.
+namespace fe::mu_lang {
+std::string by_key(const std::string& key) {
+  NSString* t = g_words ? g_words[ns(key)] : nil;
+  return t.length ? std::string(t.UTF8String) : std::string();
+}
+}  // namespace fe::mu_lang
+namespace {
 enum Align { LEFT, CENTER, RIGHT };
 void text(NSString* s, NSRect r, NSFont* font, RGB8 color, Align align = LEFT, CGFloat kern = 0, bool wrap = false) {
   s = tx(s);
@@ -290,7 +306,7 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 
 @interface MULaunchView : NSView
 @property(nonatomic) host::LauncherSettings* settings;
-@property(nonatomic) int tab;          // 0 Play, 1 Settings, 2 Replay Viewer, 3 Mods
+@property(nonatomic) int tab;          // 0 Play, 1 Settings, 2 Replay Viewer, 3 Mods, 4 Multiplayer Lobby
 @property(nonatomic) int hotNav;
 @property(nonatomic) NSString* hot;    // the button under the pointer
 @property(nonatomic) NSString* down;   // the button being pressed
@@ -320,9 +336,34 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 @property(nonatomic) BOOL notesOpen;   // What's new over the page
 @property(nonatomic) NSImage* railPicture;
 @property(nonatomic) BOOL updateAvailable;
+// The Multiplayer Lobby page (mu_launcher_lobby.inl): the lobby's snapshot, what is chosen on the page, its fields, the game of
+// an accepted match.
+@property(nonatomic) nlohmann::json lobbySnap;
+@property(nonatomic) std::string lobbyShown;
+@property(nonatomic) int lobbyTab;              // 0 chat, 1 friends, 2 history, 3 profile
+@property(nonatomic) NSString* lobbyPlayer;     // the chosen player's id
+@property(nonatomic) NSInteger lobbyFriend;
+@property(nonatomic) NSString* lobbyRoom;       // the private room in front ("" the public chat)
+@property(nonatomic) NSMutableDictionary<NSString*, NSString*>* lobbySeen;   // room -> the last message read
+@property(nonatomic) CGFloat lobbyPlayerScroll, lobbyChatScroll;
+@property(nonatomic) BOOL addingFriend, profileLoaded, editAutoReject, editSound;
+@property(nonatomic) std::vector<int> editMains;
+@property(nonatomic) int editVolume;
+@property(nonatomic) NSTextField *chatField, *nameField, *locationField, *friendField;
+@property(nonatomic) NSTask* gameTask;          // the game of a lobby match (the launcher stays, as upstream's does)
+@property(nonatomic) NSTimer* lobbyTimer;
 - (void)checkForUpdate;
 - (void)openTheme;
 - (void)closeTheme;
+- (void)selectTab:(int)tab;
+@end
+@interface MULaunchView (Lobby)
+- (NSTextField*)lobbyField:(NSString*)cue;
+- (void)hideLobbyFields;
+- (void)paintLobby;
+- (BOOL)lobbyActivate:(NSString*)key index:(int)index;
+- (void)lobbyVolumeAt:(NSPoint)p;
+- (void)lobbyTick;
 @end
 
 @implementation MUThemeView
@@ -418,12 +459,14 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 }
 - (void)drawRect:(NSRect)dirty {
   self.buttons = [NSMutableDictionary dictionary];
-  vgrad(LR(RAIL_W, 0, WIN_W - RAIL_W, WIN_H), C_CONTENT_TOP, C_CONTENT_BOT);
+  vgrad(LR(RAIL_W, 0, self.bounds.size.width - RAIL_W, self.bounds.size.height), C_CONTENT_TOP, C_CONTENT_BOT);
   [self paintRail];
+  if (self.tab != 4) [self hideLobbyFields];
   switch (self.tab) {
     case 0: [self paintPlay]; break;
     case 1: [self paintSettings]; break;
     case 2: [self paintReplays]; break;
+    case 4: [self paintLobby]; break;
     default: [self paintMods]; break;
   }
   if (self.notesOpen) [self paintNotes];
@@ -449,18 +492,20 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 }
 // ---- the rail (paint_rail): gradient, the mark on top, the page nav, Bailey under it -------------------------------
 - (void)paintRail {
-  vgrad(LR(0, 0, RAIL_W, WIN_H), C_RAIL_TOP, C_RAIL_BOT);
-  NSArray<NSString*>* names = @[@"Play", @"Settings", @"Replay Viewer", @"Mods"];
+  const CGFloat WH = self.bounds.size.height;
+  vgrad(LR(0, 0, RAIL_W, WH), C_RAIL_TOP, C_RAIL_BOT);
+  // upstream's order: Play, Settings, Multiplayer Lobby, Replay Viewer, Mods (kNavTabs: the page each row opens)
+  NSArray<NSString*>* names = @[@"Play", @"Settings", @"Multiplayer Lobby", @"Replay Viewer", @"Mods"];
   if (NSImage* dog = self.railPicture ?: self.bailey) {
-    const CGFloat top = NAV_Y + 4 * NAV_GAP + 10, room_h = WIN_H - top - 12, room_w = RAIL_W - 36;
+    const CGFloat top = NAV_Y + 5 * NAV_GAP + 10, room_h = std::min<CGFloat>(WIN_H, WH) - top - 12, room_w = RAIL_W - 36;
     const NSSize s = dog.size;
     const CGFloat k = std::min(room_w / s.width, room_h / s.height), w = s.width * k, h = s.height * k;
-    const NSRect at = LR((RAIL_W - w) / 2, top + (WIN_H - top - h) / 2, w, h);
+    const NSRect at = LR((RAIL_W - w) / 2, top + (std::min<CGFloat>(WIN_H, WH) - top - h) / 2, w, h);
     [dog drawInRect:at fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES
               hints:@{NSImageHintInterpolation: @(NSImageInterpolationHigh)}];
     self.buttons[@"dog"] = [NSValue valueWithRect:at];   // upstream: a click on the dog chooses the rail picture
   }
-  [col(C_DIVIDER) setFill]; NSRectFill(LR(RAIL_W - 1, 0, 1, WIN_H));
+  [col(C_DIVIDER) setFill]; NSRectFill(LR(RAIL_W - 1, 0, 1, WH));
   if (self.mark) {
     const NSSize s = self.mark.size;
     const CGFloat k = std::min((RAIL_W - 44) / s.width, (NAV_Y - 22) / s.height), w = s.width * k, h = s.height * k;
@@ -473,11 +518,12 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   for (int i = 0; i < (int)names.count; ++i) {
     const NSRect nr = LR(12, NAV_Y + i * NAV_GAP, RAIL_W - 24, NAV_H);
     self.buttons[[NSString stringWithFormat:@"nav:%d", i]] = [NSValue valueWithRect:nr];
-    if (self.tab == i) {
+    const bool on = self.tab == kNavTabs[i];
+    if (on) {
       round_rect(nr, 8, C_NAV_ON, C_NAV_ON, nullptr);
       round_rect(LR(12, NAV_Y + i * NAV_GAP + 8, 4, 18), 2, acc_top(), acc_bottom(), nullptr);
     } else if (self.hotNav == i) round_rect(nr, 8, C_NAV_HOT, C_NAV_HOT, nullptr);
-    text(names[i], LR(nr.origin.x + 18, nr.origin.y, nr.size.width - 18, nr.size.height), f_nav(), self.tab == i ? C_TEXT : C_DIM);
+    text(names[i], LR(nr.origin.x + 18, nr.origin.y, nr.size.width - 18, nr.size.height), f_nav(), on ? C_TEXT : C_DIM);
   }
 }
 // One status row (the original's ui_fix_status rows): a dot, dim words, a faint bar, then the row's link.
@@ -757,6 +803,32 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   }];
   [NSRunLoop.mainRunLoop addTimer:self.liveTimer forMode:NSRunLoopCommonModes];   // the launcher runs modally
 }
+// upstream's select_tab: the Lobby page opens at its own size (980 x 768, the screen permitting), the others at 720 x 480.
+- (void)selectTab:(int)tab {
+  self.tab = tab;
+  const bool lobby = tab == 4;
+  NSSize size = NSMakeSize(lobby ? LOBBY_W : WIN_W, lobby ? LOBBY_H : WIN_H);
+  NSWindow* w = self.window;
+  if (w && !std::getenv("MELEE_LAUNCHER_SHOT") && !std::getenv("MELEE_LAUNCHER_OFFSCREEN") && w.screen) {
+    const NSRect work = w.screen.visibleFrame;
+    const NSRect frame = [w frameRectForContentRect:NSMakeRect(0, 0, size.width, size.height)];
+    size.width = std::min(size.width, work.size.width - (frame.size.width - size.width));
+    size.height = std::min(size.height, work.size.height - (frame.size.height - size.height));
+  }
+  if (w && !NSEqualSizes(self.frame.size, size)) {
+    NSRect frame = [w frameRectForContentRect:NSMakeRect(0, 0, size.width, size.height)];
+    const NSRect old = w.frame;
+    frame.origin = NSMakePoint(old.origin.x, NSMaxY(old) - frame.size.height);   // the title bar stays where it was
+    [w setFrame:frame display:YES];
+    self.frame = NSMakeRect(0, 0, size.width, size.height);
+  }
+  if (lobby && !self.lobbyTimer) {
+    __weak MULaunchView* weak = self;
+    self.lobbyTimer = [NSTimer timerWithTimeInterval:0.1 repeats:YES block:^(NSTimer*) { [weak lobbyTick]; }];
+    [NSRunLoop.mainRunLoop addTimer:self.lobbyTimer forMode:NSRunLoopCommonModes];   // the launcher runs modally
+  }
+  [self setNeedsDisplay:YES];
+}
 - (void)checkForUpdate {
   if (const char* off = std::getenv("MELEE_UPDATE_CHECK"); off && *off == '0') return;
   NSString* commit = [NSBundle.mainBundle objectForInfoDictionaryKey:@"MUBuildCommit"];
@@ -871,11 +943,26 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 - (void)mouseMoved:(NSEvent*)e {
   const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
   int nav = -1;
-  for (int i = 0; i < 4 && !self.notesOpen; ++i) if (NSPointInRect(p, LR(12, NAV_Y + i * NAV_GAP, RAIL_W - 24, NAV_H))) nav = i;
+  for (int i = 0; i < 5 && !self.notesOpen; ++i) if (NSPointInRect(p, LR(12, NAV_Y + i * NAV_GAP, RAIL_W - 24, NAV_H))) nav = i;
   if (nav != self.hotNav) { self.hotNav = nav; [self setNeedsDisplay:YES]; }
   [([self buttonAt:p] ? NSCursor.pointingHandCursor : NSCursor.arrowCursor) set];
 }
-- (void)mouseDown:(NSEvent*)e { self.down = [self buttonAt:[self convertPoint:e.locationInWindow fromView:nil]]; [self setNeedsDisplay:YES]; }
+- (void)mouseDown:(NSEvent*)e {
+  const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+  self.down = [self buttonAt:p];
+  if ([self.down isEqualToString:@"lb:volume"]) [self lobbyVolumeAt:p];
+  [self.window makeFirstResponder:self];
+  [self setNeedsDisplay:YES];
+}
+- (void)mouseDragged:(NSEvent*)e { if ([self.down isEqualToString:@"lb:volume"]) [self lobbyVolumeAt:[self convertPoint:e.locationInWindow fromView:nil]]; }
+- (void)scrollWheel:(NSEvent*)e {   // the Lobby page's player list and chat log scroll by rows
+  if (self.tab != 4) return;
+  const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+  const CGFloat step = e.scrollingDeltaY > 0 ? -1 : e.scrollingDeltaY < 0 ? 1 : 0;
+  if (p.x > self.bounds.size.width - 316) self.lobbyPlayerScroll = std::max<CGFloat>(0, self.lobbyPlayerScroll + step);
+  else self.lobbyChatScroll = std::max<CGFloat>(0, self.lobbyChatScroll - step);
+  [self setNeedsDisplay:YES];
+}
 - (void)mouseUp:(NSEvent*)e {
   NSString* hit = [self buttonAt:[self convertPoint:e.locationInWindow fromView:nil]];
   NSString* pressed = self.down; self.down = nil; [self setNeedsDisplay:YES];
@@ -896,9 +983,14 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   NSArray<NSString*>* parts = [name componentsSeparatedByString:@":"];
   NSString* key = parts[0]; const int index = parts.count > 1 ? parts[1].intValue : 0;
   const std::string support = home() + "/Library/Application Support/Dashdance";
-  if ([key isEqualToString:@"nav"]) { self.tab = index; self.toolTip = nil; }
+  if ([key isEqualToString:@"lb"] && parts.count > 1) {   // the Lobby page's buttons: "lb:<name>" or "lb:<name>:<index>"
+    [self lobbyActivate:[@"lb:" stringByAppendingString:parts[1]] index:parts.count > 2 ? parts[2].intValue : 0];
+    [self setNeedsDisplay:YES];
+    return;
+  }
+  if ([key isEqualToString:@"nav"]) { [self selectTab:kNavTabs[std::clamp(index, 0, 4)]]; self.toolTip = nil; }
   else if ([key isEqualToString:@"build"]) s.vanilla = index == 1;
-  else if ([key isEqualToString:@"play"]) { [NSApp stopModalWithCode:NSModalResponseOK]; return; }
+  else if ([key isEqualToString:@"play"]) { if (!self.gameTask) [NSApp stopModalWithCode:NSModalResponseOK]; return; }
   else if ([key isEqualToString:@"browse"]) {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     panel.message = @"Choose your Super Smash Bros. Melee NTSC 1.02 disc image";
@@ -1083,6 +1175,8 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
 - (BOOL)windowShouldClose:(NSWindow*)w { [NSApp stopModalWithCode:NSModalResponseCancel]; return YES; }
 @end
 
+#include "mu_launcher_lobby.inl"   // the Multiplayer Lobby page
+
 namespace host {
 void mac_show_error(const std::string& title, const std::string& detail) {
   // Screenshot and test runs never put an alert on the player's screen: the message goes to the log instead.
@@ -1129,19 +1223,36 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
         if (!notes) ini_set("notesseen", MELEE_PORT_VERSION);
       }
     }
-    if (const char* page = std::getenv("MELEE_LAUNCHER_PAGE")) view.tab = std::clamp(std::atoi(page), 0, 3);   // screenshots
+    // The Multiplayer Lobby: its thread starts now (requests reach the player whatever page shows; nothing is sent before Go Online).
+    mu_lobby::start(support_dir() + "/melee-unlocked/Lobby", settings.account_name, settings.account_code, !settings.iso.empty());
+    view.lobbySnap = nlohmann::json{{"phase", "offline"}};
+    view.lobbyRoom = @""; view.lobbyFriend = -1; view.lobbySeen = [NSMutableDictionary dictionary]; view.editVolume = 65;
+    view.chatField = [view lobbyField:@"Send a message..."]; view.nameField = [view lobbyField:@"Display name"];
+    view.locationField = [view lobbyField:@"Location"]; view.friendField = [view lobbyField:@"Slippi code, e.g. FOX#123"];
+    {   // the lobby's clock runs on every page: an accepted request starts its game, a test script runs
+      __weak MULaunchView* weak = view;
+      view.lobbyTimer = [NSTimer timerWithTimeInterval:0.1 repeats:YES block:^(NSTimer*) { [weak lobbyTick]; }];
+      [NSRunLoop.mainRunLoop addTimer:view.lobbyTimer forMode:NSRunLoopCommonModes];
+    }
     // The replay list is read off the main thread (parsing .slp files takes a moment), as the original scans.
     view.picked = -1;
     [view reloadReplays];
     window.contentView = view;
+    if (const char* page = std::getenv("MELEE_LAUNCHER_PAGE")) [view selectTab:std::clamp(std::atoi(page), 0, 4)];   // screenshots (4: the lobby)
     // MELEE_LAUNCHER_SHOT=<file.png> (screenshots, tests): the window opens off every screen, is drawn into that file after
     // two seconds (the update check and the replay list have answered by then) and closes as if dismissed.
     const char* shot = std::getenv("MELEE_LAUNCHER_SHOT");
-    if (shot) [window setFrameOrigin:NSMakePoint(-20000, -20000)];
+    // MELEE_LAUNCHER_OFFSCREEN=1 (tests: the lobby script): off every screen like a screenshot run, but it stays until the script quits.
+    const bool offscreen = shot || std::getenv("MELEE_LAUNCHER_OFFSCREEN");
+    if (offscreen) {
+      [window setFrameOrigin:NSMakePoint(-20000, -20000)];
+      static id awake = [NSProcessInfo.processInfo beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep reason:@"launcher off screen"];
+      (void)awake;
+    }
     else [window center];
-    if (shot) [window orderFront:nil]; else [window makeKeyAndOrderFront:nil];
+    if (offscreen) [window orderFront:nil]; else [window makeKeyAndOrderFront:nil];
     [window makeFirstResponder:view];
-    if (!shot) [NSApp activateIgnoringOtherApps:YES];
+    if (!offscreen) [NSApp activateIgnoringOtherApps:YES];
     if (shot) {
       // Off every screen the window counts as hidden, and App Nap would hold the timer back: keep the app awake.
       static id activity = [NSProcessInfo.processInfo beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep reason:@"launcher screenshot"];
@@ -1162,6 +1273,10 @@ bool mu_launcher_run(LauncherSettings& settings, const std::string& error) {
     [view checkForUpdate];
     if (std::getenv("MELEE_LAUNCHER_LIVE")) dispatch_async(dispatch_get_main_queue(), ^{ [view toggleLive]; [view setNeedsDisplay:YES]; });   // tests
     const NSModalResponse r = [NSApp runModalForWindow:window];
+    [view.lobbyTimer invalidate];
+    if (view.gameTask.running) [view.gameTask waitUntilExit];   // a lobby match's game still runs: its result is recorded
+    if (view.gameTask) mu_lobby::game_ended();
+    mu_lobby::stop();   // off the public lobby before the engine replaces this process (or the launcher quits)
     [view closeTheme];
     [window orderOut:nil];
     return r == NSModalResponseOK;

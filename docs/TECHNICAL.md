@@ -12,7 +12,8 @@ The bundle `melee-unlocked-macOS.app` holds two programs:
   rebuilt in AppKit from its Win32 paint code. It keeps `launcher.ini`, reads the Slippi sign-in for the Play page, lists
   the replay folder, runs the mod installer and the crash report, and on PLAY `execv`s the engine with its choices
   (`--iso`, `--profile-dir`, `--volume`, `--scale`, `--fullscreen`, `--no-vsync`, `--vanilla`, `--net-delay`, `--offline`,
-  `--user-dir`). Watch starts the engine beside it with `--replay`.
+  `--user-dir`). Watch starts the engine beside it with `--replay`. The Multiplayer Lobby page runs melee-unlocked's peer
+  lobby (below) and starts the engine beside it for an accepted match.
 - **`MeleeUnlockedEngine`** (`mu-engine/app`): melee-unlocked's host services run the game image (an AArch64 Linux ELF built
   from the decompilation's C, `mu-engine/runner` loads it) on the main thread, paced to the console's 60 Hz. Through the
   host's frontend hooks (`mu-engine/patches/0011`) the game gets this repository's controllers (keyboard, SDL gamepads, the
@@ -20,6 +21,28 @@ The bundle `melee-unlocked-macOS.app` holds two programs:
   (`port/runtime/gx`). melee-unlocked's settings panel (`mu-engine/app/ui`, drawn with Dear ImGui over the picture) and
   Melee-NX-NetPlay's frontend layer (`mu-engine/app/fe`: settings.ini, mods, Training, replays and their viewer, overlays,
   Fight a pro) run in the same process.
+
+### The Multiplayer Lobby
+
+melee-unlocked's serverless lobby: its `port/app/launcher_lobby_p2p.cpp` (the BitTorrent mainline DHT through its vendored
+jech/dht, Monocypher's signed and encrypted messages, lobby protocol 4), compiled from the fetched tree as it is on
+`mu-engine/lobby_shim` (POSIX sockets and a stand-in for its `launcher_lang.h`, from Melee-NX-NetPlay), runs on a thread of the
+launcher (`port/runtime/host/mu_lobby.cpp`, upstream's `launcher_lobby.cpp` worker: a tick every 50 ms, commands queued, a
+snapshot for the page). The page (`mu_launcher_lobby.inl`) is upstream's `launcher_lobby_ui.inl` drawn in AppKit at its
+980 x 768: Go Online, Lobby chat with a tab per private chat, Friends, Match history, Your profile (name, location, three
+mains, Auto reject invites, the request sound and its volume), the Players card (Send Match Request, Private Chat, Add
+Friend), the peer-to-peer match and its fighter, the request bar and the status line with upstream's Copy code. Its files
+are upstream's, in `melee-unlocked/Lobby`: `lobby-profile.json`, `lobby-peer-identity.json`, `lobby-history.json`, `lobby.log`.
+
+An accepted match starts the engine beside the launcher, which stays (as upstream's launcher does): a Slippi Direct match with
+upstream's `--lobby-direct CODE --lobby-character N` (the engine's `fe/features/lobby.cpp` goes to Training as that fighter
+and searches Direct for the code, plays the match and ends the run), a peer-to-peer match with upstream's `p2p_arguments`
+(`--p2p-*`: melee-unlocked's own mu_net session, `mu-engine/runner/p2p_bridge.cpp` in the netplay object, net_host's p2p
+mode; the lobby lets its UDP port go to the game and opens again on it afterwards). Both get `--lobby-status-file`: the game
+writes upstream's mailbox (`{"status":"In match","stocks":[n]}`, and a `.results` line per game for Direct) from a thread of
+its own, the lobby shows it as the player's presence and records the history from it (or from mu_net's result file).
+Winsock accepts a `sendto` address length longer than the address and macOS does not, which kept every DHT announce from
+leaving: the shim cuts the length to the address family's.
 
 User data lives in `~/Library/Application Support/Dashdance`: `launcher.ini` (shared by both programs: each writes its own
 keys and keeps the rest), `Slippi/user.json` (the app's own sign-in), `Replays/`, and the engine's folder `melee-unlocked/`
@@ -104,6 +127,15 @@ All tests keep their windows hidden and never contact Slippi's servers.
   picture and sound), `net_rollback_test.sh`, `app_online_menus_test.sh`: loopback only, under a sandbox profile that refuses
   every outgoing connection except to 127.0.0.1, against `tools/mac/mock_matchmaking_ws.py` and `tools/mac/mock_slippi_http.py`.
   The bar is `net check: EQUAL` and 0 desync messages.
+- **Multiplayer Lobby.** `mu-engine/tools/lobby_loopback_test.sh ISO`: two launchers (scratch homes, windows off every
+  screen, driven by `MELEE_LAUNCHER_LOBBY_SCRIPT`) and a stand-in for a melee-unlocked PC (`mu-engine/tools/lobby_peer.cpp`:
+  upstream's lobby code as fetched, the headless runner as its game) find each other through a one-node local DHT
+  (`tools/mac/dht_bootstrap.py`; jech/dht refuses 127.0.0.0/8, so it binds this Mac's own LAN address, which the kernel delivers
+  locally) under a sandbox that refuses every outgoing connection except to localhost and the test's own UDP ports; then
+  public and private chat, auto reject, the request chime (written to a WAV by `MELEE_LOBBY_CHIME_FILE`, never played), a
+  peer-to-peer match and a Slippi Direct match (the mock queue), the return to the lobby page and the histories. A
+  peer-to-peer match alone: two runners or engines with `--p2p-port`, `--p2p-peer 127.0.0.1:PORT`, `--p2p-slot`, `--p2p-chars`,
+  `--p2p-stage`, `--p2p-seed` (`mu-engine/tools/p2p_loopback_test.sh`).
 - **Replays.** Playing a replay back compares every post-frame record with the file; the log's last replay line must say
   `0 differ`.
 - **Launcher.** `MELEE_LAUNCHER_SHOT=<file.png>` draws the launcher off every screen into a file; with `MELEE_LAUNCHER_PLAY=1`

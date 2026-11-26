@@ -152,6 +152,24 @@ void set_engine_setting(const std::string& key, const std::string& value) {
 }
 }  // namespace host
 
+namespace host {
+// The engine's arguments for the launcher's choices (PLAY, and a Multiplayer Lobby match with its own options added).
+std::vector<std::string> engine_arguments(const LauncherSettings& settings) {
+  const fs::path support = support_dir();
+  const std::string volume_text = std::to_string(settings.volume), scale_text = settings.scale > 0 ? std::to_string(settings.scale) : "auto";
+  std::vector<std::string> args = {"--iso", settings.iso, "--profile-dir", support.string(), "--volume", volume_text, "--scale", scale_text};
+  if (settings.fullscreen) args.push_back("--fullscreen");
+  if (!settings.vsync) args.push_back("--no-vsync");
+  if (settings.vanilla) args.push_back("--vanilla");
+  // Online: the input delay; offline when Slippi Online is off; the Slippi Launcher's sign-in when this app has none of its own.
+  args.push_back("--net-delay"); args.push_back(settings.online_delay <= 0 ? "auto" : std::to_string(std::clamp(settings.online_delay, 1, 9)));
+  if (!settings.online) args.push_back("--offline");
+  if (settings.replay_dir != (support / "Replays").string()) { args.push_back("--replay-dir"); args.push_back(settings.replay_dir); }
+  if (settings.account_from_launcher) { const std::string dir = find_slippi_user_dir(); if (!dir.empty()) { args.push_back("--user-dir"); args.push_back(dir); } }
+  return args;
+}
+}  // namespace host
+
 int main(int argc, char** argv) {
   std::string iso_arg;
   bool choose_disc = false;
@@ -262,16 +280,8 @@ int main(int argc, char** argv) {
   }
 
   // The engine replaces this process, with the launcher's choices.
-  const std::string volume_text = std::to_string(settings.volume), scale_text = settings.scale > 0 ? std::to_string(settings.scale) : "auto";
-  std::vector<std::string> args = {engine, "--iso", settings.iso, "--profile-dir", support.string(), "--volume", volume_text, "--scale", scale_text};
-  if (settings.fullscreen) args.push_back("--fullscreen");
-  if (!settings.vsync) args.push_back("--no-vsync");
-  if (settings.vanilla) args.push_back("--vanilla");
-  // Online: the input delay; offline when Slippi Online is off; the Slippi Launcher's sign-in when this app has none of its own.
-  args.push_back("--net-delay"); args.push_back(settings.online_delay <= 0 ? "auto" : std::to_string(std::clamp(settings.online_delay, 1, 9)));
-  if (!settings.online) args.push_back("--offline");
-  if (settings.replay_dir != (support / "Replays").string()) { args.push_back("--replay-dir"); args.push_back(settings.replay_dir); }
-  if (settings.account_from_launcher) { const std::string dir = find_slippi_user_dir(); if (!dir.empty()) { args.push_back("--user-dir"); args.push_back(dir); } }
+  std::vector<std::string> args = host::engine_arguments(settings);
+  args.insert(args.begin(), engine);
   std::vector<char*> argv_engine;
   for (std::string& a : args) argv_engine.push_back(a.data());
   argv_engine.push_back(nullptr);

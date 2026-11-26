@@ -10,10 +10,10 @@ settings…, `port/runtime/host/mu_settings_window.mm`, grouped as melee-unlocke
 |---|---|---|
 | There | 231 | The Mac app already had it with a working effect (location in Notes). |
 | There, row added | 24 | The engine already honoured the key but nothing let the player change it; now a row. |
-| Added | 15 | New in this change, with its effect in the engine or launcher. |
+| Added | 24 | New, with its effect in the engine or launcher (the Multiplayer Lobby's nine with the lobby). |
 | Not added | 0 | Applies on the Mac but is not there yet (reason in Notes). |
-| N/A | 96 | Cannot apply on the Mac (Windows APIs, NVIDIA, the Static Recomp, melee-unlocked-only network features, internal markers). Not shown. |
-| Excluded | 21 | Left out on purpose: YouGame, the BitTorrent Multiplayer Lobby, crash upload to melee-unlocked's relay. |
+| N/A | 99 | Cannot apply on the Mac (Windows APIs, NVIDIA, the Static Recomp, melee-unlocked-only network features, internal markers). Not shown. |
+| Excluded | 9 | Left out on purpose: YouGame, crash upload to melee-unlocked's relay. |
 
 
 Fixed along the way: the panel's Launcher colour now changes the launcher's colour; an automatic online delay stays automatic
@@ -395,17 +395,17 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | Hide short games (`replayhideshort`) | Launcher: Replay Viewer page | There | in-game panel > GAME > Replays |
 | Show it as it was played (uses the .trace file) (`replayasplayed`) | Launcher: Replay Viewer page | There | in-game panel > GAME > Replays |
 | Search players, characters, stages, files / Watch live / queue (`-`) | Launcher: Replay Viewer page | There | Watch live and Open a replay are there; the search field is not |
-| Open to: Vanilla/Akaneia/ACE/Custom ISO (`lobbyopen`) | Launcher: Multiplayer Lobby page | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Custom ISO (for Open to: Custom) (`lobbyiso / lobbyisoname`) | Launcher: Multiplayer Lobby page | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Display name (`lobby-profile.json: name`) | Launcher: Multiplayer Lobby page > Profile | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Location (`lobby-profile.json: location`) | Launcher: Multiplayer Lobby page > Profile | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Your three mains (`lobby-profile.json: mains`) | Launcher: Multiplayer Lobby page > Profile | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Connection (`lobby-profile.json: mode`) | Launcher: Multiplayer Lobby page > Profile | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Bootstrap peer (optional) (`lobby-profile.json: url`) | Launcher: Multiplayer Lobby page > Profile | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| - (advanced ports) (`lobby-profile.json: udp_port / peer_port`) | Launcher: Multiplayer Lobby page > Profile | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Auto reject invites: On/Off (`lobby-profile.json: auto_reject_invites`) | Launcher: Multiplayer Lobby page | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Request sound: On/Off (`lobby-profile.json: request_sound`) | Launcher: Multiplayer Lobby page | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Request volume (`lobby-profile.json: request_volume`) | Launcher: Multiplayer Lobby page | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
-| Match fighter / color (first main by default) (`lobby-profile.json: p2p_ch / p2p_col`) | Launcher: Multiplayer Lobby page | Excluded | the BitTorrent Multiplayer Lobby is left out (done on the Switch first) |
+| Open to: Vanilla/Akaneia/ACE/Custom ISO (`lobbyopen`) | Launcher: Multiplayer Lobby page | N/A | vanilla only on the Mac: upstream plays Akaneia, ACE and a custom ISO in a lobby match on its Static Recomp, which this app does not have; the profile announces "open": ["vanilla"] as upstream's Source Port launchers do |
+| Custom ISO (for Open to: Custom) (`lobbyiso / lobbyisoname`) | Launcher: Multiplayer Lobby page | N/A | as Open to: a custom ISO lobby match needs the Static Recomp |
+| Display name (`lobby-profile.json: name`) | Launcher: Multiplayer Lobby page > Profile | Added | the launcher's Multiplayer Lobby page > Profile (port/runtime/host/mu_launcher_lobby.inl, mu_lobby.cpp): Display name, empty is the Slippi account's name; lobby-profile.json in melee-unlocked/Lobby |
+| Location (`lobby-profile.json: location`) | Launcher: Multiplayer Lobby page > Profile | Added | Multiplayer Lobby page > Profile: Location, shown on the player's card |
+| Your three mains (`lobby-profile.json: mains`) | Launcher: Multiplayer Lobby page > Profile | Added | Multiplayer Lobby page > Profile: the 26 character buttons, one to three mains (the first is the peer-to-peer fighter unless one is chosen) |
+| Connection (`lobby-profile.json: mode`) | Launcher: Multiplayer Lobby page > Profile | N/A | always "peer": upstream's hosted lobby service is a stub |
+| Bootstrap peer (optional) (`lobby-profile.json: url`) | Launcher: Multiplayer Lobby page > Profile | Added | read as upstream reads it (a peer address, or dht://host:port for a DHT entry point of one's own); no row, as upstream hides it; the lobby test gives its local DHT node here |
+| - (advanced ports) (`lobby-profile.json: udp_port / peer_port`) | Launcher: Multiplayer Lobby page > Profile | Added | peer_port read as upstream reads it (a fixed UDP port); no row |
+| Auto reject invites: On/Off (`lobby-profile.json: auto_reject_invites`) | Launcher: Multiplayer Lobby page | Added | Multiplayer Lobby page > Profile: Auto reject invites: every match request is declined at once and the player told (lobby_loopback_test.sh step 4) |
+| Request sound: On/Off (`lobby-profile.json: request_sound`) | Launcher: Multiplayer Lobby page | Added | Multiplayer Lobby page > Profile: Request sound: upstream's chime (660 then 880 Hz, 0.3 s) on each incoming request, through AudioToolbox |
+| Request volume (`lobby-profile.json: request_volume`) | Launcher: Multiplayer Lobby page | Added | Multiplayer Lobby page > Profile: the volume slider (0-100%) |
+| Match fighter / color (first main by default) (`lobby-profile.json: p2p_ch / p2p_col`) | Launcher: Multiplayer Lobby page | Added | the page header's fighter button (upstream's choose_fighter: First main or a character, and a colour), used in a peer-to-peer match's setup |
 | On/Off switch per installed mod (`mod_enabled / mod_te_enabled / mod_tmce_enabled (port-settings.ini)`) | Launcher: Mods page | There | as the mod profile: Mods page Use / In use and in-game MODS (one profile per start) |
 | Get / Update / Remove / Choose skins (opens Settings > Mods) (`-`) | Launcher: Mods page | N/A | Windows-only (xdelta3.exe builds) |

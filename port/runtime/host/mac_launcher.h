@@ -5,6 +5,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <vector>
 namespace host {
 struct LauncherSettings {
   std::string iso;             // remembered disc image; empty until chosen
@@ -35,5 +36,7 @@ std::string engine_path();
 // The engine's settings.ini (melee-unlocked/settings.ini): one "key value" line, read and written in place.
 std::string engine_setting(const std::string& key);
 void set_engine_setting(const std::string& key, const std::string& value);
+// The engine's arguments (without the executable) for these choices: PLAY's, which a Multiplayer Lobby match extends (main_mac.cpp).
+std::vector<std::string> engine_arguments(const LauncherSettings& settings);
 void log(const char* fmt, ...);   // the launcher's log (main_mac.cpp): stderr and melee-unlocked/launcher.log
 }  // namespace host

@@ -37,6 +37,8 @@ from the upstream repositories on 2026-09-14. It is a factual record, not legal 
 | [librashader](https://github.com/SnowflakePowered/librashader) v0.12.0 (chyyran), tag `librashader-v0.12.0`, commit `87e8a97b50516d997defeaa168173dcd185d4022` | Built from source by `mu-engine/librashader.sh` (its C API crate with the Metal runtime only, crates pinned by the tag's Cargo.lock) into `librashader.dylib`, bundled unmodified in the app's `Contents/Frameworks` with its `LICENSE.md` and `LICENSE-GPL.md`, loaded at run time by `mu-engine/app/gfx/effects_mac.mm` through `librashader_ld.h` (headers from the fetched melee-unlocked tree); nothing of it is committed. Its source is the tag above | MPL-2.0 (the runtime; GPL-3.0 compatible); the C headers MIT | Its README, "License": "the runtimes, are all licensed under the Mozilla Public License version 2.0"; `LICENSE.md` is the MPL-2.0 text; `librashader.h`: "SPDX-License-Identifier: MIT". |
 | [Dolphin](https://github.com/dolphin-emu/dolphin) | Ports: GX register layouts and shader generation (`gx_regs.h`, `gx_shader.cpp`) | GPL-2.0-or-later | Ported files carry `SPDX-License-Identifier: GPL-2.0-or-later` (for example `VideoCommon/PixelShaderGen.cpp`, `VideoCommon/BPMemory.h`). Its COPYING says the repository as a whole "is compatible with the GPLv3 license". |
 | [Slippi Ishiiruka](https://github.com/project-slippi/Ishiiruka) | Ports: netplay, matchmaking and the user record in the engine's netplay object (`mu-engine/net/hle`, through Melee-NX-NetPlay); the GameFiles in `port/slippi_sys` (from `Data/Sys`) | GPL-2.0-or-later | Its Readme: "licensed under the terms of the GNU General Public License, version 2 or later (GPLv2+)". Source headers such as `EXI_DeviceSlippi.cpp` and `SlippiNetplay.cpp`: "Licensed under GPLv2+". |
+| melee-unlocked's peer lobby (Multiplayer Lobby) | The launcher's Multiplayer Lobby (`port/runtime/host/mu_lobby.cpp`, `mu_launcher_lobby.inl`) compiles its `port/app/launcher_lobby_p2p.cpp` and `.h` and the English launcher text `launcher_lang_en.inl` from the fetched tree, unchanged but for line ends (build-time copies in `build/mac/mu-engine/app/gen/lobby`); `mu_launcher_lobby.inl` follows its `launcher_lobby.cpp` and `launcher_lobby_ui.inl` (the page's layout and drawing, the request chime's tones, the history's and the result mailbox's rules); `mu-engine/lobby_shim/launcher_lang.h` is a stand-in for its `launcher_lang.h` written to the same calls (from Melee-NX-NetPlay, same author); `mu-engine/tools/lobby_peer.cpp` (tests) links the same files; nothing of it is committed | GPL-2.0-or-later, used here under GPL-3.0-or-later | `launcher_lobby_p2p.cpp`'s header: "SPDX-License-Identifier: GPL-2.0-or-later". |
+| melee-unlocked's peer-to-peer match (mu_net) | `mu-engine/runner/p2p_bridge.cpp` (Melee-NX-NetPlay's, same author) is adapted from its `port/app/source_p2p.cpp` (the options, the session descriptor, the answers to the game's session commands); its `port/runtime/mu_net/*.cpp` and `.h` and `port/runtime/host/early_input_rules.h` are compiled from the fetched tree into the netplay object (`mu-engine/net_sources.sh`, `build.sh net_object`); the engine's `fe/features/lobby.cpp` follows its `host.cpp` lobby mailbox (`publish_lobby_status`, `publish_lobby_result`); nothing of it is committed | GPL-2.0-or-later, used here under GPL-3.0-or-later | `source_p2p.cpp`'s and `rollback_session.cpp`'s headers: "SPDX-License-Identifier: GPL-2.0-or-later". |
 | [slippi-rust-extensions](https://github.com/project-slippi/slippi-rust-extensions) | The Discord presence (`port/runtime/hle/discord_rpc.cpp`) follows [pull request 36](https://github.com/project-slippi/slippi-rust-extensions/pull/36), which is not merged | GPL-2.0, no version stated | The repository ships the GPLv2 text as `LICENSE`; neither its README nor any crate's `Cargo.toml` states a version. Section 9 of GPLv2: "If the Program does not specify a version number of this License, you may choose any version ever published by the Free Software Foundation." |
 
 ## Components under other licences
@@ -46,6 +48,8 @@ from the upstream repositories on 2026-09-14. It is a factual record, not legal 
 | [SDL 3](https://github.com/libsdl-org/SDL) 3.4.10 | Fetched and built from source by `port/CMakeLists.txt` (pinned by SHA-256) | zlib | Yes |
 | [ENet](https://github.com/lsalzman/enet) | `port/third_party/enet`; Melee-NX-NetPlay's changed `enet.h`, `peer.c` and `protocol.c` in `mu-engine/net/enet` | MIT, see its `LICENSE` | Yes |
 | [nlohmann/json](https://github.com/nlohmann/json) 3.4.0 | `port/third_party/nlohmann/json.hpp` | MIT, notice in the header | Yes |
+| [jech/dht](https://github.com/jech/dht) (Juliusz Chroboczek) | The BitTorrent mainline DHT (BEP 5) under the Multiplayer Lobby: melee-unlocked's vendored copy, `port/third_party/dht/dht.c` and `dht.h`, compiled from the fetched tree into the launcher (and the test peer); not committed. Full text below | MIT: its `LICENCE`, "Copyright (c) 2009, 2010 by Juliusz Chroboczek / Permission is hereby granted, free of charge, [...]" | Yes |
+| [Monocypher](https://monocypher.org) (Loup Vaillant, Michael Savage, Fabio Scotoni) | The Multiplayer Lobby's and the peer-to-peer match's signatures, key exchange and encryption (Ed25519, X25519, BLAKE2b, XChaCha20-Poly1305): melee-unlocked's vendored copy, `port/third_party/monocypher/monocypher.c`, `monocypher-ed25519.c` and their headers, compiled from the fetched tree into the launcher and the netplay object; not committed. Full text below | BSD-2-Clause or CC0-1.0, at the user's choice: `monocypher.c`'s header "SPDX-License-Identifier: BSD-2-Clause OR CC0-1.0", its `LICENCE.md`: "Monocypher as a whole is dual-licensed." | Yes |
 | [VirtualFriend](https://github.com/agg23/virtualfriend) | The on-screen controller layout and touch model in `window_sdl.cpp` are adapted from it | MIT | Yes (as an adaptation) |
 
 ## Not in this repository
@@ -133,4 +137,62 @@ freely, subject to the following restrictions:
 2. Altered source versions must be plainly marked as such, and must not be
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
+```
+
+### jech/dht
+
+```
+Copyright (c) 2009, 2010 by Juliusz Chroboczek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+### Monocypher (its BSD-2-Clause licence; it is also offered under CC0-1.0)
+
+```
+Copyright (c) 2017-2023, Loup Vaillant
+Copyright (c) 2017-2019, Michael Savage
+Copyright (c) 2017-2023, Fabio Scotoni
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the
+   distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 ```

@@ -336,5 +336,28 @@ target_include_directories(mu_replaystats_objs PRIVATE "${MU_TREE}/port/app" "${
   "${MU_TREE}/port/runtime/hle" "${MU_REPO}/port/third_party" "${MU_TREE}/port/third_party")
 target_compile_options(mu_replaystats_objs PRIVATE -O2 -Wno-deprecated-declarations)
 set_target_properties(mu_replaystats_objs PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
-target_sources(melee_launcher_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs> $<TARGET_OBJECTS:mu_crash_objs> $<TARGET_OBJECTS:mu_replaystats_objs>)
+file(STRINGS "${MU_TREE}/VERSION" _mu_lobby_version LIMIT_COUNT 1)
+string(STRIP "${_mu_lobby_version}" _mu_lobby_version)
+# The launcher's Multiplayer Lobby (port/runtime/host/mu_lobby.cpp): melee-unlocked's peer lobby (launcher_lobby_p2p.cpp/.h and its
+# English launcher text, copied from the fetched tree as they are, line ends aside, into a folder of their own so that the lobby's
+# includes find mu-engine/lobby_shim: POSIX sockets and its launcher_lang.h stand-in, not the fetched tree's Win32 headers), its DHT
+# (jech/dht, MIT) and Monocypher (BSD-2-Clause or CC0-1.0), linked into the launcher the same way.
+set(LOBBY_GEN "${CMAKE_CURRENT_BINARY_DIR}/gen/lobby")
+file(MAKE_DIRECTORY "${LOBBY_GEN}")
+foreach(_f launcher_lobby_p2p.cpp launcher_lobby_p2p.h launcher_lang_en.inl)
+  execute_process(COMMAND perl -pe "s/\\r$//; s/^\\xEF\\xBB\\xBF// if $. == 1" INPUT_FILE "${MU_TREE}/port/app/${_f}" OUTPUT_FILE "${LOBBY_GEN}/${_f}.new")
+  configure_file("${LOBBY_GEN}/${_f}.new" "${LOBBY_GEN}/${_f}" COPYONLY)
+endforeach()
+add_library(mu_lobby_objs OBJECT "${MU_REPO}/port/runtime/host/mu_lobby.cpp" "${MU_REPO}/mu-engine/lobby_shim/lobby_shim.cpp" "${LOBBY_GEN}/launcher_lobby_p2p.cpp"
+  "${MU_TREE}/port/third_party/dht/dht.c" "${MU_TREE}/port/third_party/monocypher/monocypher.c" "${MU_TREE}/port/third_party/monocypher/monocypher-ed25519.c")
+set_target_properties(mu_lobby_objs PROPERTIES CXX_STANDARD 17 CXX_EXTENSIONS ON)
+target_include_directories(mu_lobby_objs BEFORE PRIVATE "${MU_REPO}/mu-engine/lobby_shim" "${LOBBY_GEN}")
+target_include_directories(mu_lobby_objs PRIVATE "${MU_TREE}/port/third_party/dht" "${MU_TREE}/port/third_party/monocypher" "${MU_REPO}/port/third_party")
+target_compile_definitions(mu_lobby_objs PRIVATE MU_LOBBY_BUILD="${_mu_lobby_version}:source")
+target_compile_options(mu_lobby_objs PRIVATE -O2 -g -fno-strict-aliasing)
+set_source_files_properties("${MU_TREE}/port/third_party/dht/dht.c" "${MU_TREE}/port/third_party/monocypher/monocypher.c"
+  "${MU_TREE}/port/third_party/monocypher/monocypher-ed25519.c" "${LOBBY_GEN}/launcher_lobby_p2p.cpp" PROPERTIES COMPILE_OPTIONS "-w")
+target_sources(melee_launcher_mac PRIVATE $<TARGET_OBJECTS:mu_modinstall_objs> $<TARGET_OBJECTS:mu_crash_objs> $<TARGET_OBJECTS:mu_replaystats_objs> $<TARGET_OBJECTS:mu_lobby_objs>)
+target_link_libraries(melee_launcher_mac PRIVATE "-framework AudioToolbox")
+target_include_directories(melee_launcher_mac PRIVATE "${MU_REPO}/mu-engine/lobby_shim" "${LOBBY_GEN}")   # the Lobby page: the lobby's text and helpers
 target_link_libraries(melee_launcher_mac PRIVATE curl z mu_zstd)
