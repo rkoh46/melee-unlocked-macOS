@@ -271,7 +271,7 @@ set(_gfx_includes "${GFX}/shim" "${GFX_GEN}" "${FE}" "${DD}/gx" "${DD}/host" "${
   "${MU_TREE}/port/runtime/abi" "${IMGUI}" "${MU_TREE}/port/runtime/gx")
 set_source_files_properties(${_gfx_mu_sources} PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes}"
   COMPILE_OPTIONS "-include;${GFX}/shim/gfx_host_shim.h;-Wno-deprecated-declarations;-Wno-unused-function;-Wno-unused-variable")
-set_source_files_properties("${GFX}/lab_mac.cpp" PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes}")
+set_source_files_properties("${GFX}/lab_mac.cpp" PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes};${MU_REPO}/mu-engine/modinstall")
 set_source_files_properties("${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" PROPERTIES INCLUDE_DIRECTORIES "${_gfx_includes};${MU_TREE}/port/third_party/librashader"
   COMPILE_OPTIONS "-fobjc-arc")
 target_sources(melee_unlocked_mac PRIVATE ${_gfx_mu_sources} "${GFX}/effects_mac.mm" "${GFX}/media_apple.mm" "${GFX}/lab_mac.cpp")

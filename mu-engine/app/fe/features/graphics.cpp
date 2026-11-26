@@ -19,6 +19,9 @@ namespace fe::gfx {
 std::function<void(float, int, int, float, float)> apply_renderer;
 void lab_retrace();   // gfx/lab_mac.cpp: the Lab view's frame from the game, on the simulation thread
 void lab_settings_changed();
+void lab_download();          // the silhouette packs from melee-unlocked's content release (SHA-256 checked)
+std::string lab_status();
+void lab_end();
 }
 
 namespace fe::features {
@@ -134,6 +137,7 @@ void retrace(const Retrace&) {
   fe::gfx::lab_retrace();
 }
 void run_end() {
+  fe::gfx::lab_end();   // a download in flight finishes first
   auto& l = live();
   say("graphics: ssao %g, texture packs %s%s, menu videos %s, shader preset %s, Lab view %s, glitch detector %s, HDR %s",
       l.ssao.load(), on_off(l.custom_textures.load()).c_str(), l.dump_textures.load() ? " (dumping)" : "", on_off(l.video_backgrounds.load()).c_str(),
@@ -180,6 +184,7 @@ void register_graphics() {
                   [](int) { live().lab_view.store(!live().lab_view.load()); edited(); }, nullptr, write_all});
   add_menu_entry({"Picture", "  Lab fighters", [] { return std::string(kLabFighters[std::clamp(live().lab_fighters.load(), 0, 3)]); },
                   [](int d) { live().lab_fighters.store((live().lab_fighters.load() + (d < 0 ? 3 : 1)) % 4); edited(); }, nullptr, write_all});
+  add_menu_entry({"Picture", "  Lab fighters download (silhouettes)", [] { return fe::gfx::lab_status(); }, nullptr, [] { fe::gfx::lab_download(); }, nullptr});
   add_menu_entry({"Picture", "  Lab stage", [] { return std::string(kLabStage[std::clamp(live().lab_stage.load(), 0, 3)]); },
                   [](int d) { live().lab_stage.store((live().lab_stage.load() + (d < 0 ? 3 : 1)) % 4); edited(); }, nullptr, write_all});
   add_menu_entry({"Picture", "One-frame glitch detector", [] { return on_off(live().flicker_scan.load()); },
