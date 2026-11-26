@@ -7,6 +7,10 @@
 // was. Later starts find the plain image and use it at once.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "disc_rvz.h"   // fetched tree, port/app
+#include "disc_ciso_gcz.h"   // CISO and GCZ (copied from Melee-NX-NetPlay 0.4.8)
+
+#include <cstdio>
+#include <cstring>
 
 #include <chrono>
 #include <filesystem>
@@ -20,10 +24,38 @@ bool mu_disc_convert(std::string* iso, const std::string& own_folder) {
   std::error_code ec;
   const fs::path given = fs::u8path(*iso);
   if (!fs::is_regular_file(given, ec)) return false;
-  if (disc_rvz::detect(given) == disc_rvz::Format::NotCompressed) return true;   // a plain image
   fs::path folder = given.parent_path();
   if (folder.empty() || ::access(folder.c_str(), W_OK) != 0) folder = fs::u8path(own_folder);
   const fs::path target = folder / "GALE01.iso";
+  // CISO and GCZ (melee-unlocked only detects them), as Melee-NX-NetPlay 0.4.8 does: written once as GALE01.iso, the Adler-32 of
+  // every GCZ block checked; the result must read GALE01.
+  if (const auto cg = fe::disc_ciso_gcz::detect(given.u8string()); cg != fe::disc_ciso_gcz::Format::None) {
+    const char* kind = cg == fe::disc_ciso_gcz::Format::Ciso ? "CISO" : "GCZ";
+    if (fs::is_regular_file(target, ec) && disc_rvz::detect(target) == disc_rvz::Format::NotCompressed) {
+      host::log("disc: %s was converted before: playing %s", iso->c_str(), target.u8string().c_str());
+      *iso = target.u8string();
+      return true;
+    }
+    host::log("disc: converting %s (%s) into %s, once", iso->c_str(), kind, target.u8string().c_str());
+    std::string error;
+    int last_tenth = -1;
+    const bool ok = fe::disc_ciso_gcz::convert(given.u8string(), target.u8string(), [&](uint64_t done, uint64_t total) {
+      const int tenth = total ? int(done * 10 / total) : 0;
+      if (tenth != last_tenth) { last_tenth = tenth; host::log("disc: converting: %d%%", tenth * 10); }
+      return true;
+    }, &error);
+    char id[7] = {};
+    if (ok) if (FILE* f = std::fopen(target.c_str(), "rb")) { if (std::fread(id, 1, 6, f) != 6) id[0] = 0; std::fclose(f); }
+    if (!ok || std::strncmp(id, "GALE01", 6) != 0) {
+      if (ok) { fs::remove(target, ec); error = std::string("the image is ") + id + ", not Super Smash Bros. Melee (GALE01)"; }
+      host::log("disc: %s not converted: %s", iso->c_str(), error.c_str());
+      return false;
+    }
+    host::log("disc: %s written from the %s image", target.u8string().c_str(), kind);
+    *iso = target.u8string();
+    return true;
+  }
+  if (disc_rvz::detect(given) == disc_rvz::Format::NotCompressed) return true;   // a plain image
   if (fs::is_regular_file(target, ec) && disc_rvz::detect(target) == disc_rvz::Format::NotCompressed) {
     host::log("disc: %s was converted before: playing %s", iso->c_str(), target.u8string().c_str());
     *iso = target.u8string();

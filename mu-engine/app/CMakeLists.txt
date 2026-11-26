@@ -197,7 +197,7 @@ target_compile_options(mu_gecko PRIVATE -O2 -g -fno-strict-aliasing)
 # RVZ and WIA discs (disc_convert.cpp): melee-unlocked's disc_rvz.cpp and the bzip2 it vendors, from the fetched tree; LZMA from
 # the mod installer's LZMA SDK objects, Zstandard from mu_zstd.
 set(_mu_tp "${MU_TREE}/port/third_party")
-add_library(mu_rvz OBJECT "${MU_APPSRC}/disc_convert.cpp" "${MU_TREE}/port/app/disc_rvz.cpp" "${_mu_tp}/bzip2/blocksort.c" "${_mu_tp}/bzip2/huffman.c"
+add_library(mu_rvz OBJECT "${MU_APPSRC}/disc_convert.cpp" "${MU_APPSRC}/disc_ciso_gcz.cpp" "${MU_TREE}/port/app/disc_rvz.cpp" "${_mu_tp}/bzip2/blocksort.c" "${_mu_tp}/bzip2/huffman.c"
   "${_mu_tp}/bzip2/crctable.c" "${_mu_tp}/bzip2/randtable.c" "${_mu_tp}/bzip2/compress.c" "${_mu_tp}/bzip2/decompress.c" "${_mu_tp}/bzip2/bzlib.c")
 set_target_properties(mu_rvz PROPERTIES CXX_STANDARD 17)
 target_include_directories(mu_rvz PRIVATE "${_mu_tp}" "${MU_TREE}/port/app")

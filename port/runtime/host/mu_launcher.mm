@@ -260,14 +260,14 @@ __attribute__((weak)) int stage_of(const std::string&) { return -1; }
 // MODS page writes the same key).
 namespace {
 // The disc check: a GameCube disc image starts with its game code (GALE01 is Melee NTSC) and has the revision at byte 7
-// (2 for NTSC 1.02, the one melee-unlocked and Slippi play). Compressed images (.ciso, .rvz) are named, not read.
+// (2 for NTSC 1.02, the one melee-unlocked and Slippi play). Compressed images (.ciso, .gcz, .rvz, .wia) are named, not read: the engine converts them at its first start.
 std::string disc_check(const std::string& path) {
   static std::string for_path, answer;
   if (path == for_path) return answer;
   for_path = path;
   std::string ext = path.size() > 4 ? path.substr(path.find_last_of('.') + 1) : "";
   for (auto& c : ext) c = char(std::tolower((unsigned char)c));
-  if (ext == "rvz" || ext == "ciso" || ext == "gcz" || ext == "wia") return answer = "Disc: a compressed image (." + ext + "); melee-unlocked reads a plain .iso";
+  if (ext == "rvz" || ext == "ciso" || ext == "gcz" || ext == "wia") return answer = "Disc: a compressed image (." + ext + "); written once as GALE01.iso beside it at the first start";
   FILE* f = std::fopen(path.c_str(), "rb");
   unsigned char h[8] = {};
   const bool read = f && std::fread(h, 1, sizeof h, f) == sizeof h;
@@ -994,7 +994,7 @@ void mod_profile_set(const std::string& profile) { host::set_engine_setting("mod
   else if ([key isEqualToString:@"browse"]) {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     panel.message = @"Choose your Super Smash Bros. Melee NTSC 1.02 disc image";
-    panel.allowedFileTypes = @[@"iso", @"gcm", @"ciso", @"rvz"];
+    panel.allowedFileTypes = @[@"iso", @"gcm", @"ciso", @"gcz", @"rvz", @"wia"];
     if ([panel runModal] == NSModalResponseOK) { s.iso = panel.URL.path.UTF8String; self.error.clear(); }
   }
   else if ([key isEqualToString:@"modsfolder"]) [self reveal:support + "/melee-unlocked/Mods" create:YES];
