@@ -360,8 +360,17 @@ void tables(MuHostApi* host, MuGameApi* game) {
       auto_lcancel ? "on" : "off", zelda_sheik ? "on" : "off");
   say("options: offline Squad Strike %s", squad_strike ? "on (Z on the VS character select adds fighters)" : "off");
 }
+// melee-unlocked's notice that the opponent has automatic L-cancel on (A5, its pc_settings.cpp draw_lcancel_overlays): the other
+// player of a connected Direct match says so in its build message (net-0011's flag, net/patches/mac-0004). Set here each
+// retrace, drawn by the panel (mu_panel.cpp): 0 none, 1 on the character select (no fighters yet), 2 in the match.
+std::atomic<int> lc_opponent_notice{0};
 void on_retrace(const Retrace& info) {
   g_retrace = info.retrace;
+  int notice = 0;
+  if (info.online && !replay_playing() && netplay_bridge::search_info().state == 4 && netplay_bridge::opponent_auto_lcancel())
+    notice = info.fighting ? 2 : 1;
+  if (notice && !lc_opponent_notice.load(std::memory_order_relaxed)) say("options: the opponent has automatic L-cancel on (its build message; this side %s)", auto_lcancel ? "too: on for both in this Direct match" : "has it off");
+  lc_opponent_notice.store(notice, std::memory_order_relaxed);
   g_online.store(info.online || info.scene_major == 8, std::memory_order_relaxed);
   if (info.scene_major != g_scene_major || info.scene_minor != g_scene_minor) {
     g_scene_major = info.scene_major; g_scene_minor = info.scene_minor;
@@ -383,6 +392,7 @@ std::string on_off(bool v) { return v ? "On" : "Off"; }
 }  // namespace
 
 bool online() { return g_online.load(std::memory_order_relaxed); }
+int lcancel_opponent_notice(bool* local_on) { if (local_on) *local_on = auto_lcancel; return lc_opponent_notice.load(std::memory_order_relaxed); }
 bool vanilla() { return settings_vanilla() || settings_vanilla_only(); }
 uint32_t retrace() { return g_retrace; }
 uint32_t scene_major() { return g_scene_major; }

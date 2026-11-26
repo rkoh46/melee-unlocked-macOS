@@ -194,6 +194,7 @@ bool handle(uint8_t command, const uint8_t* payload, uint32_t size, std::vector<
 // mumac: the host's controller read and setting for input suggestions, and its pad poll.
 void set_suggestion_hooks(int (*read)(int, uint8_t*), int (*setting)()) { g_suggest_read.store(read); g_suggest_setting.store(setting); }
 void suggestion_note_poll() { mu_net_suggest_note_poll(); }
+bool opponent_auto_lcancel() { return slippi::online::opponent_auto_lcancel(); }   // net/patches/mac-0004
 void set_gecko_hooks(const GeckoHooks& hooks) { static GeckoHooks kept; kept = hooks; g_gecko.store(&kept); }   // mumac: net-0014
 bool request_match(int mode, const std::string& connect_code, uint8_t character, uint8_t color) {
   if (mode <= 0 || mode > 4) return false;                  // Ranked is refused; see ranked_refusal()

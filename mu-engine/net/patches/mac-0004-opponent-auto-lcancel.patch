@@ -1,0 +1,35 @@
+Opponent's Auto L-cancel (mu-engine/net/patches/mac-0004): slippi::online::opponent_auto_lcancel() says whether the other player of a
+connected Direct match has Auto L-cancel on (its build message's flag 0x10, net-0011), for melee-unlocked's notice on the
+character select (A5). Display only. Applied by ../../net_sources.sh after the net patches.
+SPDX-License-Identifier: GPL-2.0-or-later
+
+--- a/port/runtime/hle/slippi_online.cpp	2026-11-25 18:03:12
++++ b/port/runtime/hle/slippi_online.cpp	2026-11-25 18:03:28
+@@ -1213,6 +1213,16 @@
+ bool auto_lcancel_agreed() {
+   return g_last_search.mode == Matchmaking::DIRECT && g_netplay &&
+          g_netplay->GetSlippiConnectStatus() == NetplayClient::ConnectStatus::CONNECTED && g_netplay->AutoLcancelAgreed();
++}
++// mu-engine/net/patches/mac-0004: the other player of a connected Direct match says in its build message that its Auto L-cancel is
++// on (flag 0x10, net-0011): melee-unlocked's opponent_auto_lcancel, for its notice on the character select. Display only.
++bool opponent_auto_lcancel() {
++  if (g_last_search.mode != Matchmaking::DIRECT || !g_netplay ||
++      g_netplay->GetSlippiConnectStatus() != NetplayClient::ConnectStatus::CONNECTED) return false;
++  const int local = local_player_slot();
++  for (uint8_t port = 0; port < 4; ++port)
++    if (port != local && g_netplay->RemoteNxBuild(port).auto_lcancel) return true;
++  return false;
+ }
+ int effective_delay() {
+   if (!g_config.delay_auto) return g_config.delay;
+--- a/port/runtime/hle/slippi_online.h	2026-11-25 18:03:12
++++ b/port/runtime/hle/slippi_online.h	2026-11-25 18:03:28
+@@ -36,6 +36,8 @@
+ int effective_delay();
+ // patches/net-0011: a connected Direct match where every player's build offered Auto L-cancel (this one included).
+ bool auto_lcancel_agreed();
++// mu-engine/net/patches/mac-0004: the other player of a connected Direct match has Auto L-cancel on (its build message says so).
++bool opponent_auto_lcancel();
+ 
+ void init();
+ void shutdown();

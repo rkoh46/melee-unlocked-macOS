@@ -106,6 +106,7 @@ void egg_draw(float x0, float y0, float x1, float y1, double time);
 }
 namespace fe::features {
 __attribute__((weak)) bool practice_menu_chord(int port);   // features/proai.cpp: the Practice menu
+__attribute__((weak)) int lcancel_opponent_notice(bool* local_on);   // features/options.cpp: the opponent's automatic L-cancel (A5)
 __attribute__((weak)) uint32_t cosmetics_off_online(uint32_t* stages);   // features/cosmetics.cpp: skins served standard online
 }
 #include "feature_hooks.h"
@@ -1410,6 +1411,27 @@ void draw_skin_online_notice() {
   ImGui::End();
 }
 
+// melee-unlocked's notice (its pc_settings.cpp draw_lcancel_overlays, A5): a Direct opponent whose build says its automatic
+// L-cancel is on. Shown on the character select, and for the first eight seconds after the opponent's game says so: with both
+// players locked in before they connect, the select closes half a second later, which nobody could read.
+void draw_lcancel_opponent_notice() {
+  static double said_at = -1.0;
+  bool local_on = false;
+  const int notice = &fe::features::lcancel_opponent_notice ? fe::features::lcancel_opponent_notice(&local_on) : 0;
+  if (!notice) { said_at = -1.0; return; }
+  if (said_at < 0.0) said_at = ImGui::GetTime();
+  if (notice != 1 && ImGui::GetTime() - said_at >= 8.0) return;
+  const ImVec2 display = ImGui::GetIO().DisplaySize;
+  ImGui::SetNextWindowPos(ImVec2(display.x * 0.5f, 10), ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+  ImGui::SetNextWindowBgAlpha(0.75f);
+  ImGui::Begin("LCancelOpponentNotice", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+                                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+  ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Your opponent has automatic L-cancel on.");
+  // Between these builds it acts only when every player offers it (net-0011): say so when this player's is off.
+  if (!local_on) ImGui::TextUnformatted("It works in Direct only when both players turn it on, so it is off for both of you.");
+  ImGui::End();
+}
+
 // ---- fonts and artwork ----
 ImFont* g_heading = nullptr;
 ImFont* g_body = nullptr;
@@ -1569,6 +1591,7 @@ void panel_draw(int window_w, int window_h) {
   io.ConfigNavCursorVisibleAlways = shown;
   if (!open) {
     draw_skin_online_notice();
+    draw_lcancel_opponent_notice();
     // The easter egg over the game picture (4:3 in the middle of the screen, or the whole width with widescreen).
     if (g_in_game_feed && !g_in_match.load()) {
       const ImVec2 d = io.DisplaySize;

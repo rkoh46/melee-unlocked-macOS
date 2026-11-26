@@ -113,6 +113,9 @@ NETPLAY_API void replay_event(uint8_t command, const uint8_t* payload, uint32_t 
 NETPLAY_API void set_suggestion_hooks(int (*read)(int port, uint8_t out[8]), int (*setting)());
 // The game is about to read its controllers (the host's pad poll, simulation thread): a change read after this is in the next frame.
 NETPLAY_API void suggestion_note_poll();
+// The other player of a connected Direct match has Auto L-cancel on (its build message says so; net/patches/mac-0004), for
+// melee-unlocked's notice on the character select (A5). Display only.
+NETPLAY_API bool opponent_auto_lcancel();
 // Gecko codes agreed online (net/patches/net-0014, Melee-NX-NetPlay's protocol: melee-unlocked's gecko_online messages as
 // NP_MSG_NX_GECKO to a build whose build message has flag 0x40). The netplay object asks for these by name (mu_net_gecko_*);
 // they are local to it, so the host hands its own over (fe/features/gecko.cpp). Without them nothing is offered or run.
