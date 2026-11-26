@@ -535,8 +535,11 @@ std::string generate_pixel_shader(const PSUid& uid) {
     if (ccUses(11) || ccUses(10) || acUses(5)) {
       char rasswap[5] = {"rgba"[bp.ksel_swap1(rswap * 2)], "rgba"[bp.ksel_swap2(rswap * 2)], "rgba"[bp.ksel_swap1(rswap * 2 + 1)], "rgba"[bp.ksel_swap2(rswap * 2 + 1)], 0};
       int rasindex = bp.order_colorchan(n);
-      if (rasindex == 0 && !rs.ras0) { o.w("col0 = round(col0 * 255.0);\n"); rs.ras0 = true; }
-      if (rasindex == 1 && !rs.ras1) { o.w("col1 = round(col1 * 255.0);\n"); rs.ras1 = true; }
+      // The rasterized colour is clamped to 0..255 as the console's rasterizer does: the interpolated value can land a hair past
+      // 1.0 (or under 0) where a pixel or MSAA sample is shaded off the triangle's interior, round() then gave 256 (or -1), and the
+      // CHK_O_U8 wrap below turned a white vertex colour black: MSAA's black specks (gap 5, app_graphics_test.sh msaa).
+      if (rasindex == 0 && !rs.ras0) { o.w("col0 = round(clamp(col0, 0.0, 1.0) * 255.0);\n"); rs.ras0 = true; }
+      if (rasindex == 1 && !rs.ras1) { o.w("col1 = round(clamp(col1, 0.0, 1.0) * 255.0);\n"); rs.ras1 = true; }
       o.w("ras_t = %s.%s;\n", rasTable[rasindex], rasswap);
       rs.overflow[10] = rs.overflow[11] = rasindex < 2;
     }

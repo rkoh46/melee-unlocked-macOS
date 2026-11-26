@@ -37,7 +37,7 @@ Sharpening reaches the Metal present pass; watching a replay keeps the profile f
 | Aspect ratio (`aspect`) | Panel: Video | There | in-game panel > VIDEO > Picture |
 | Window size (`window`) | Panel: Video | Added | settings.ini window WxH: the game window opens at that size (mu_play_main.cpp), still resizable; Follow window is the default. Log: window: 960x720 points |
 | Internal resolution (`scale`) | Panel: Video | There | Launcher Settings page > DISPLAY |
-| Anti-aliasing (`msaa / ssaa`) | Panel: Video | There | in-game panel > VIDEO > Picture (Anti-aliasing (MSAA), Quality preset); VIDEO > Display row hidden |
+| Anti-aliasing (`msaa / ssaa`) | Panel: Video | There | in-game panel > VIDEO > Picture (Anti-aliasing (MSAA), Quality preset); VIDEO > Display row hidden; MSAA no longer leaves black specks (MAC_FIXES 11) |
 | Anisotropic filtering (`anisotropy`) | Panel: Video | There | in-game panel > VIDEO > Display (Anisotropic filtering); VIDEO > Picture Quality preset |
 | Get mod looks (Install: Diet Melee / Animelee / Animelee x DBZ) (`-`) | Panel: Video > Get mod looks | N/A | Windows-only (xdelta3.exe tool, ShellExecute); hidden in YouGame app |
 | Look (`- (sets lightweight + look_* keys)`) | Panel: Video > Low-Detail Modes | There | in-game panel > GAME > Looks |

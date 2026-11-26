@@ -33,10 +33,15 @@ const char* kPrelude =
     "inline float3 max(float a, float3 b) { return max(float3(a), b); }\n"
     "inline float3 max(float3 a, float b) { return max(a, float3(b)); }\n";
 
+// The varyings are interpolated at the centroid of the covered samples (Dolphin does the same under MSAA). With MSAA an edge
+// pixel's shader runs once for the samples a triangle covers, and at the pixel centre that point can lie outside the triangle:
+// the colours and texture coordinates were then extrapolated past the edge, a vertex colour past 0 clamped to black, and about
+// 130 black specks a frame showed along polygon edges (app_graphics_test.sh msaa). Without MSAA the one sample is the centre,
+// so the picture is unchanged.
 std::string vs_output_struct(uint32_t numTexGens) {
-  std::string s = "struct VS_OUTPUT {\nfloat4 pos [[position]];\nfloat4 colors_0;\nfloat4 colors_1;\n";
-  for (uint32_t i = 0; i < numTexGens; ++i) { char b[48]; std::snprintf(b, sizeof b, "float3 tex%u;\n", i); s += b; }
-  s += "float4 clipPos;\n};\n";
+  std::string s = "struct VS_OUTPUT {\nfloat4 pos [[position]];\nfloat4 colors_0 [[centroid_perspective]];\nfloat4 colors_1 [[centroid_perspective]];\n";
+  for (uint32_t i = 0; i < numTexGens; ++i) { char b[64]; std::snprintf(b, sizeof b, "float3 tex%u [[centroid_perspective]];\n", i); s += b; }
+  s += "float4 clipPos [[centroid_perspective]];\n};\n";
   return s;
 }
 

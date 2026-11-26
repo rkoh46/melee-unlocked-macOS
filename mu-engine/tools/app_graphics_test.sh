@@ -38,7 +38,20 @@ msaa)   # launcher.ini msaa (melee-unlocked's key) at a fixed internal resolutio
   fresh msaa-off ''; printf 'msaa=1\nscale=2\n' > "$root/msaa-off/launcher.ini"; MELEE_CAPTURE_BURST=1700,1 run msaa-off 1720 --scale 2
   fresh msaa-4 ''; printf 'msaa=4\nscale=2\n' > "$root/msaa-4/launcher.ini"; MELEE_CAPTURE_BURST=1700,1 run msaa-4 1720 --scale 2
   grep -h "MSAA" "$root/msaa-4/log" | sed 's/^\[ *[0-9.]*\] //' | head -2
-  echo "msaa: $(mean_diff "$root/msaa-off/melee-unlocked/capture/blink_01700.ppm" "$root/msaa-4/melee-unlocked/capture/blink_01700.ppm")";;
+  echo "msaa: $(mean_diff "$root/msaa-off/melee-unlocked/capture/blink_01700.ppm" "$root/msaa-4/melee-unlocked/capture/blink_01700.ppm")"
+  # Black specks (specks.py: one-pixel-thin near-black marks between bright pixels) at 2x, 4x and 8x, against the same frame
+  # without MSAA: the ones there too are the game's own art (an eye, a digit's outline). Expected: 0 more than without MSAA.
+  for m in 2 8; do fresh msaa-$m ''; printf "msaa=$m\nscale=2\n" > "$root/msaa-$m/launcher.ini"; MELEE_CAPTURE_BURST=1700,1 run msaa-$m 1720 --scale 2; done
+  python3 -I - "$here/specks.py" "$root" <<'PY'
+import subprocess, sys
+def specks(p): return {tuple(map(int, l.split()[1].split(","))) for l in subprocess.run([sys.executable, "-I", sys.argv[1], p, "--list", "100000"], capture_output=True, text=True).stdout.splitlines()[1:]}
+off = specks(sys.argv[2] + "/msaa-off/melee-unlocked/capture/blink_01700.ppm")
+for m in (2, 4, 8):
+    s = specks(sys.argv[2] + "/msaa-%d/melee-unlocked/capture/blink_01700.ppm" % m)
+    extra = [p for p in s if not any((p[0] + dx, p[1] + dy) in off for dx in (-2, -1, 0, 1, 2) for dy in (-2, -1, 0, 1, 2))]
+    print("msaa: %dx: %d specks, %d also without MSAA, %d more than without MSAA" % (m, len(s), len(s) - len(extra), len(extra)))
+PY
+  ;;
 capture)
   fresh capture ''; MELEE_CAPTURE_BURST=1600,90 run capture 1720
   echo "capture: $(ls "$root/capture/melee-unlocked/capture" | wc -l | tr -d ' ') pictures; $(grep -c 'captured ' "$root/capture/log") logged";;
