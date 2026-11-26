@@ -429,6 +429,7 @@ int main(int argc, char** argv) {
     else if (a == "--replay") replay = next();
     else if (a == "--replay-dir") replay_dir = next();
     else if (a == "--no-record") record = false;
+    else if (a == "--lobby-direct" || a == "--lobby-character" || a == "--lobby-status-file") next();   // fe/features/lobby.cpp reads them
     else if (a == "--restarted") host::log("play: started again from the settings panel's Restart the game");
     else if (a == "--no-audio-device") audio_device = false;
     else if (a == "--script-real-clock") script_clock = true;   // tests: a scripted match on the real clock and seed (as a player's)   // tests: mix and count the sound, open no output device
@@ -478,7 +479,7 @@ int main(int argc, char** argv) {
   slippi_menus::set_sys_dir(sys_dir);
   // Online: the player's own Slippi sign-in (support/Slippi/user.json, as the classic engine) unless the launcher said
   // offline; a search starts from the game's Online Play page. --online without menus (tests) asks for a match at boot.
-  const bool menus_online = !offline && !vanilla && script.empty() && !sys_dir.empty() && net.online.empty() && net.net.empty();
+  const bool menus_online = !offline && !vanilla && script.empty() && !sys_dir.empty() && net.online.empty() && net.net.empty() && !net.p2p;   // --p2p-*: melee-unlocked's own match, no Slippi
   if (menus_online) { net.online = "unranked"; net.from_menus = true; if (net.user_dir.empty()) net.user_dir = (support / "Slippi").string(); }
 
   // Controller settings the dashboard keeps (launcher.ini): the keyboard layout and each controller's mapping and port.

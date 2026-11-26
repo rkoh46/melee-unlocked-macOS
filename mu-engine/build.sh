@@ -118,6 +118,15 @@ NET_INC="-Imu-engine/runner -I$NS -Ibuild/mu-engine/netsrc/enet/include -Iport/t
   -Iport/third_party -Iport/third_party/nlohmann/include -Iport/app -Inative"
 # The Slippi release this netplay implements (Melee-NX-NetPlay tools/slippi_pin.json).
 NET_DEF='-DMU_NET_SERVICES -DSLIPPI_PIN_VERSION=\"3.7.0\" -DSLIPPI_PIN_TAG=\"v3.7.0\" -DSLIPPI_PIN_MATCHMAKING_URL=\"wss://matchmaking.slippi.gg/v1/queue\"'
+# melee-unlocked's own peer-to-peer match (runner/p2p_bridge.cpp over its mu_net session; net_sources.sh copies mu_net, Monocypher
+# and the Win32 shim into the netplay sources): its own include path, so nothing of the shim reaches the Slippi sources. Its build
+# id is melee-unlocked's version, which both sides of a peer-to-peer match compare.
+NETROOT=build/mu-engine/netsrc
+P2P_INC="-I$NETROOT/win32_shim -I$NETROOT/port/runtime/mu_net -I$NETROOT/port/third_party/monocypher -Imu-engine/runner -Iport/third_party/enet/include"
+P2P_CXX="mu-engine/runner/p2p_bridge.cpp $NETROOT/win32_shim/lobby_shim.cpp $NETROOT/port/runtime/mu_net/rollback_session.cpp $NETROOT/port/runtime/mu_net/peer_connector.cpp
+  $NETROOT/port/runtime/mu_net/peer_identity.cpp $NETROOT/port/runtime/mu_net/input_transport.cpp $NETROOT/port/runtime/mu_net/session_security.cpp
+  $NETROOT/port/runtime/mu_net/result_outbox.cpp $NETROOT/port/runtime/mu_net/session_types.cpp"
+P2P_C="$NETROOT/port/third_party/monocypher/monocypher.c $NETROOT/port/third_party/monocypher/monocypher-ed25519.c"
 net_object() {
   ( cd "$repo"; unset DEVELOPER_DIR
     bash mu-engine/net_sources.sh build/mu-engine/netsrc > /dev/null
@@ -135,8 +144,12 @@ net_object() {
       clang++ -arch arm64 -std=gnu++20 -O2 -g -w -fvisibility=hidden -fvisibility-inlines-hidden -Iport/runtime/hle -Iport/runtime/host -Iport/runtime/ppc -Iport/runtime/gx \
         -Iport/runtime -Iport/third_party -Iport/third_party/nlohmann/include -c $f -o $o/app_$(basename $f .cpp).o & done
     clang++ -arch arm64 -std=gnu++20 -O2 -g -w -fobjc-arc -fvisibility=hidden -Iport/runtime/hle -c port/runtime/hle/slippi_http_apple.mm -o $o/app_slippi_http_apple.o &
+    p2p_version=$(head -1 build/mu-engine/mu/VERSION | tr -d '\r')
+    for f in $P2P_CXX; do
+      clang++ -arch arm64 -std=gnu++20 -O2 -g -w -fvisibility=hidden -fvisibility-inlines-hidden $P2P_INC -DMELEE_PORT_VERSION="\"$p2p_version\"" -c $f -o $o/p2p_$(basename $f .cpp).o & done
+    for f in $P2P_C; do clang -arch arm64 -O2 -w -fvisibility=hidden -c $f -o $o/p2p_$(basename $f .c).o & done
     wait
-    nm -gU $o/netplay_bridge_mac.o | awk '$3 ~ /netplay_bridge/ {print $3}' > $o/exported.txt
+    nm -gU $o/netplay_bridge_mac.o $o/p2p_p2p_bridge.o | awk '$3 ~ /netplay_bridge/ {print $3}' | sort -u > $o/exported.txt
     ld -r -arch arm64 -exported_symbols_list $o/exported.txt $o/*.o -o build/mu-engine/out/netplay.o )
   echo "built $out/netplay.o"
 }

@@ -29,4 +29,14 @@ void set_suggestion_hooks(int (*)(int, uint8_t*), int (*)()) {}
 void suggestion_note_poll() {}
 bool opponent_auto_lcancel() { return false; }
 void set_gecko_hooks(const GeckoHooks&) {}
+bool p2p_option(const std::string&, const char*) { return false; }
+bool p2p_requested() { return false; }
+int p2p_local_slot() { return 0; }
+int p2p_character() { return 2; }
+bool p2p_start(const P2pHooks&, std::string* error) { if (error) *error = "this build has no online play"; return false; }
+bool p2p_handle(uint8_t, const uint8_t*, uint32_t, std::vector<uint8_t>*) { return false; }
+int p2p_exit_request() { return -1; }
+void p2p_report() {}
+void p2p_shutdown() {}
+void p2p_reset() {}
 }

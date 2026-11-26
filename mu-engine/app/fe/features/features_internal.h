@@ -31,6 +31,7 @@ void register_gecko();               // gecko.cpp: the player's Gecko codes (Gec
 void register_phob();                // phob.cpp: PhobGCC settings on a stock controller (the adapter's raw reports), its menu
 void register_modlooks();            // modlooks.cpp: Get mod looks (Diet Melee, Animelee) from the authors' downloads
 void register_graphics();            // graphics.cpp: SSAO, texture packs, menu videos, shader presets, HDR, Lab view, captures
+void register_lobby();               // lobby.cpp: the game's half of a Multiplayer Lobby match (--lobby-direct, --lobby-status-file)
 
 // options.cpp: the session as the modules see it, updated once per retrace and by the netplay commands.
 bool online();                       // an online flow, search or match: offline-only features stay off
